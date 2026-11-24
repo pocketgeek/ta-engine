@@ -298,15 +298,15 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         case Cmd::Unload:
             if (owns(c.unitId)) world.unloadAt(c.unitId, c.x, c.z, Fixed::raw(c.targetId), c.queue != 0);
             break;
-        case Cmd::SetWeapon:
-            if (owns(c.unitId)) world.setWeapon(c.unitId, c.targetId);
-            break;
+
         case Cmd::RepeatTrain:
             // The type it repeats again ends the repeat: taking work back, not a new order.
             if (owns(c.unitId)) {
                 const auto* type = reg.find(c.type);
                 if (type && (producer->repeatType == type || admits())) world.setRepeat(c.unitId, type);
             }
+            break;
+        case Cmd::SetWeapon: case Cmd::BuildManaArea:   // retired Kingdoms verbs: never applied
             break;
         case Cmd::Destroy:
             if (owns(c.unitId)) world.destroy(c.unitId);
@@ -479,18 +479,18 @@ std::vector<int> startSpotsFor(const std::vector<MatchSlot>& slots, size_t autho
 }
 
 namespace {
-// Feature definition fields the sim cares about: is it a mana deposit, and its
+// Feature definition fields the sim cares about: is it a metal deposit, and its
 // footprint (for nav blocking). Loaded from the feature TDFs.
-struct FeatDef { bool mana = false; bool glowy = false; int blocking = 0; int fx = 1, fz = 1;
-                 int reclaimable = 0; bool autoReclaimable = true; float energy = 0, metal = 0; float sacredSite = 0;
+struct FeatDef { bool deposit = false; int blocking = 0; int fx = 1, fz = 1;
+                 int reclaimable = 0; bool autoReclaimable = true; float energy = 0, metal = 0;
                  uint8_t projectileHeight = 0;
                  // Burning chain (see World::tickBurning).
                  bool flamable = false; bool hasBurnAnim = false; uint32_t burnTicks = 0;
                  int spreadChance = 0; int sparkTicks = 0; std::string burnt;
                  uint32_t dieTicks = 0;   // seqnamedie playback (World::damageFeature)
                  // Corpse lifecycle (features/corpses).
-                 int decomposeTicks = 0; bool resurrectable = false; bool animatable = false;
-                 bool isStone = false; bool isFrozen = false;
+                 int decomposeTicks = 0; bool resurrectable = false;
+
                  bool indestructible = false;
                  float hp = 0; std::string dead;
                  std::string object;
@@ -512,15 +512,8 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     FeatDef d;
                     std::string cat = node.valueOr("category", "");
                     std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
-                    // TA: the "deposit" features are the ore patches -- indestructible
-                    // features carrying metal (docs/retail-ai.md: the AI sends extractors
-                    // to them; docs/retail-economy.md section 6: they set the cell metal).
-                    d.mana = false;
                     // Lone scenery Legion's pinwheel ignores (RetailMapFeatureType::treeOrRock).
                     d.treeOrRock = cat == "trees" || cat == "plant" || cat == "plants" || cat == "rocks";
-                    // The buildable deposit is the animated Sacred Stone centre;
-                    // the static Standing Stones (animating=0) around it are ruins.
-                    d.glowy = d.mana && node.numberOr("animating", 0) != 0;
                     d.blocking = int(node.numberOr("blocking", 0));
                     d.fx = int(node.numberOr("footprintx", 1));
                     d.fz = int(node.numberOr("footprintz", 1));
@@ -531,8 +524,10 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     d.energy = float(int32_t(node.numberOr("energy", 0)) & 0xffff);
                     d.metal = float(int32_t(node.numberOr("metal", 0)) & 0xffff);
                     d.indestructible = (int32_t(node.numberOr("indestructible", 0)) & 1) != 0;
-                    d.mana = d.indestructible && d.metal > 0;
-                    d.sacredSite = float(node.numberOr("sacredsite",0));
+                    // TA: the "deposit" features are the ore patches -- indestructible
+                    // features carrying metal (docs/retail-ai.md: the AI sends extractors
+                    // to them; docs/retail-economy.md section 6: they set the cell metal).
+                    d.deposit = d.indestructible && d.metal > 0;
                     d.flamable = node.numberOr("flamable", 0) != 0;
                     d.burnTicks = burnTiming.duration(node);
                     d.hasBurnAnim = d.burnTicks != 0;
@@ -544,11 +539,10 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     // 494337..494353: _ftol(decomposetime * 30.0), its low 16 bits.
                     d.decomposeTicks = int(node.numberOr("decomposetime", 0) * 30) & 0xffff;
                     d.resurrectable = node.numberOr("resurrectable", 0) != 0;
-                    d.animatable = node.numberOr("animatable", 0) != 0;
+
                     d.object = node.valueOr("object", "");
                     std::transform(d.object.begin(), d.object.end(), d.object.begin(), ::tolower);
-                    d.isStone = node.numberOr("isstone", 0) != 0;
-                    d.isFrozen = node.numberOr("isfrozen", 0) != 0;
+
                     d.indestructible = node.numberOr("indestructible", 0) != 0;
                     d.hp = float(node.numberOr("damage", 0));
                     d.dead = node.valueOr("featuredead", "");
@@ -597,11 +591,10 @@ struct FeatTypeInterner {
         t.treeOrRock = di->second.treeOrRock;
         t.decomposeTicks = di->second.decomposeTicks;
         t.resurrectable = di->second.resurrectable;
-        t.animatable = di->second.animatable;
+
         t.reclaimable = di->second.reclaimable != 0;
         t.autoReclaimable = di->second.autoReclaimable;
-        t.isStone = di->second.isStone;
-        t.isFrozen = di->second.isFrozen;
+
         t.indestructible = di->second.indestructible;
         t.hp = di->second.hp;
         t.object = di->second.object;
@@ -628,8 +621,7 @@ struct FeatTypeInterner {
 static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                              const std::unordered_map<std::string, FeatDef>& defs,
                              FeatTypeInterner& types,
-                             std::vector<std::pair<float, float>>& rawMana,
-                             std::vector<std::pair<float, float>>& rawAll) {
+                             std::vector<std::pair<float, float>>& rawDeposits) {
     std::vector<RetailMapFeatureType> placementTypes;
     for (auto name:map.featureNames) {
         std::transform(name.begin(),name.end(),name.begin(),::tolower);
@@ -660,7 +652,7 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
     if (map.featureNames.empty()) return;
     // Only the features that survived install (495360 removes the earlier of
     // two overlapping ones): retail has no record of the others, so they make
-    // no sacred site (0x62dbc8), no deposit, no blocker and no target.
+    // no deposit, no blocker and no target.
     const auto& installed = world.installedMapFeatures();
     for (int cz = 0; cz < map.height; ++cz)
         for (int cx = 0; cx < map.width; ++cx) {
@@ -678,15 +670,11 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             // Retail feature records name the footprint origin (0x4931e0).
             float x = float(cx * 16 + di->second.fx * 8);
             float z = float(cz * 16 + di->second.fz * 8);
-            if (di->second.mana) {
-                rawAll.push_back({x, z});
-                if (di->second.glowy) rawMana.push_back({x, z});   // buildable centre
-            }
+            if (di->second.deposit) rawDeposits.push_back({x, z});
             // Retail movement treats the feature definition's blocking flag as
             // authoritative. Decorative waves and other nonblocking map art must
-            // not become route obstacles; glowy Sacred Stone centres stay clear
-            // even when their definition carries the static ruin's blocking bit.
-            if (!di->second.glowy && di->second.blocking != 0) {
+            // not become route obstacles.
+            if (di->second.blocking != 0) {
                 int fx = di->second.fx, fz = di->second.fz;
                 world.blockCells(cx, cz, fx, fz, true);
             }
@@ -694,7 +682,7 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             // authored walls have hit points but permit neither reclaim nor fire.
             // Their damage state still belongs in every peer's simulation.
             const bool destructible = di->second.hp > 0 && !di->second.indestructible;
-            if ((di->second.reclaimable || di->second.flamable || destructible) && !di->second.mana) {
+            if ((di->second.reclaimable || di->second.flamable || destructible) && !di->second.deposit) {
                 world.addFeature(cz * map.width + cx, x, z, di->second.energy,
                                  di->second.fx, di->second.fz, di->second.blocking != 0,
                                  types.intern(key),false);
@@ -702,38 +690,31 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
         }
 }
 
-// Cluster the mana features into deposits, publish them, and carve each one clear.
-// Also shared: the carve is nav state, so a path that registers features without it
-// would let Standing Stones make their own deposit unbuildable.
-static void installManaSpots(World& world,
-                             std::vector<std::pair<float, float>> rawMana,
-                             const std::vector<std::pair<float, float>>& rawAll) {
-    // The buildable spot is the glowing Sacred Stone centre, not the ring of static
-    // Standing Stones (both are category=mana). Fallback: a deposit with no glowy
-    // centre in the data uses its category=mana features instead.
-    if (rawMana.empty()) rawMana = rawAll;
-    std::vector<int> par(rawMana.size());
+// Cluster the ore-patch features into deposits and publish them (shared by both
+// feature-registration paths, so they agree).
+static void installDepositSpots(World& world, const std::vector<std::pair<float, float>>& raw) {
+    std::vector<int> par(raw.size());
     for (size_t i = 0; i < par.size(); ++i) par[i] = int(i);
     std::function<int(int)> find = [&](int a) {
         while (par[size_t(a)] != a) { par[size_t(a)] = par[size_t(par[size_t(a)])]; a = par[size_t(a)]; }
         return a;
     };
     const float link2 = 60.0f * 60.0f;
-    for (size_t i = 0; i < rawMana.size(); ++i)
-        for (size_t j = i + 1; j < rawMana.size(); ++j) {
-            float dx = rawMana[i].first - rawMana[j].first, dz = rawMana[i].second - rawMana[j].second;
+    for (size_t i = 0; i < raw.size(); ++i)
+        for (size_t j = i + 1; j < raw.size(); ++j) {
+            float dx = raw[i].first - raw[j].first, dz = raw[i].second - raw[j].second;
             if (dx * dx + dz * dz < link2) par[size_t(find(int(i)))] = find(int(j));
         }
     std::map<int, std::pair<std::pair<double, double>, int>> acc;
-    for (size_t i = 0; i < rawMana.size(); ++i) {
+    for (size_t i = 0; i < raw.size(); ++i) {
         auto& a = acc[find(int(i))];
-        a.first.first += rawMana[i].first; a.first.second += rawMana[i].second; ++a.second;
+        a.first.first += raw[i].first; a.first.second += raw[i].second; ++a.second;
     }
-    std::vector<std::pair<float, float>> manaSpots;
+    std::vector<std::pair<float, float>> spots;
     for (auto& [root, a] : acc)
-        manaSpots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
+        spots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
     // TA: the clustered ore patches -- where the AI sends metal extractors.
-    world.setManaSpots(manaSpots);
+    world.setDepositSpots(spots);
 }
 
 // Register the map's obstacle features into the sim world (reclaim + burning),
@@ -745,18 +726,16 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
     world.clearFeatureTypes();
     auto defs = loadFeatureDefs(vfs);
     FeatTypeInterner types(defs);
-    std::vector<std::pair<float, float>> rawMana, rawAll;
-    scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
-    installManaSpots(world, rawMana, rawAll);
+    std::vector<std::pair<float, float>> rawDeposits;
+    scanFeaturePlane(world, map, defs, types, rawDeposits);
+    installDepositSpots(world, rawDeposits);
     if (reg)
         for (const auto& [tid, ut] : reg->types()) {
             if (!ut.corpse.empty()) {
                 int ci = types.intern(ut.corpse);
                 if (ci >= 0) world.mapCorpse(&ut, ci);
             }
-            if (!ut.stoneFeat.empty() || !ut.frozenFeat.empty())
-                world.mapStatue(&ut, types.intern(ut.stoneFeat),
-                                types.intern(ut.frozenFeat));
+
         }
     if (reg) linkRaisedUnits(types.table, *reg);
     world.setFeatureTypes(std::move(types.table));
@@ -916,8 +895,8 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // First-seen order over the row-major cell walk = identical on every peer.
     FeatTypeInterner types(defs);
     auto featTypeIdx = [&](const std::string& nm) { return types.intern(nm); };
-    std::vector<std::pair<float, float>> rawMana, rawAll;
-    scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
+    std::vector<std::pair<float, float>> rawDeposits;
+    scanFeaturePlane(world, map, defs, types, rawDeposits);
     // Corpse defs: every unit type's FBI corpse= feature (and its chains) joins
     // the table so death can mint corpse records without art/def lookups later.
     for (const auto& [tid, ut] : reg.types()) {
@@ -925,12 +904,11 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             int ci = featTypeIdx(ut.corpse);
             if (ci >= 0) world.mapCorpse(&ut, ci);
         }
-        if (!ut.stoneFeat.empty() || !ut.frozenFeat.empty())
-            world.mapStatue(&ut, featTypeIdx(ut.stoneFeat), featTypeIdx(ut.frozenFeat));
+
     }
     linkRaisedUnits(types.table, reg);
     world.setFeatureTypes(std::move(types.table));
-    installManaSpots(world, rawMana, rawAll);
+    installDepositSpots(world, rawDeposits);
 
     // Players + teams.
     world.setPlayerCount(int(cfg.slots.size()));
@@ -1026,8 +1004,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     unit->hp = Fixed::fromInt(std::clamp(int(health),0,std::max(0,type->maxHp)));
                     unit->scenarioArmor = float(double(unit->scenarioArmor) * double(std::clamp(placed.armor,0,1000)) * double(0.01f));
                     unit->scenarioWeapon = float(double(unit->scenarioWeapon) * double(std::clamp(placed.weapon,0,1000)) * double(0.01f));
-                    unit->xp = ta::sim::retailExperienceForLevel(unit->xp, std::clamp(placed.veteran, 0, 9),
-                        type->experiencePoints, type->noVeteran, unit->vetOverride);   // setLevel 4cd335
+                    unit->rank = std::clamp(placed.veteran, 0, 9);   // the placement's rank (4cd335)
                     unit->veteran = unit->veteranLevel();
                     if (type->isStructure()) world.blockFoot(*type, x, z, true);
                     world.finishAsFeature(id);   // 51230c: a placed wall becomes its feature

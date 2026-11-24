@@ -685,20 +685,18 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
     for (size_t p = 0; p < passes; ++p) {
         const ta::ai::Profile* profile = engine ? &profiles[p].second : nullptr;
         for (const auto& side : sides) {
-            bool anything = false, anyBuilder = false, builderOn = false, anyLode = false, lodeOn = false;
+            bool anything = false, anyBuilder = false, builderOn = false;
             for (const auto* t : side.units) {
                 if (t->commander) continue;
                 anything = anything || !off(*t, profile);
                 if (t->isBuilder) { anyBuilder = true; builderOn = builderOn || !off(*t, profile); }
-                if (t->onMana) { anyLode = true; lodeOn = lodeOn || !off(*t, profile); }
             }
             std::string sideName = side.side;
             for (char& c : sideName) c = char(std::toupper(static_cast<unsigned char>(c)));
             std::string message;
             if (!anything && side.units.size() > 1) message = "this AI cannot build anything for " + sideName;
-            else if ((anyBuilder && !builderOn) || (anyLode && !lodeOn))
-                message = "this AI cannot grow its economy for " + sideName + ": every " +
-                          (anyBuilder && !builderOn ? "builder" : "lodestone") + " is off";
+            else if (anyBuilder && !builderOn)
+                message = "this AI cannot grow its economy for " + sideName + ": every builder is off";
             if (message.empty()) continue;
             auto it = std::find_if(sideFindings.begin(), sideFindings.end(), [&](const auto& f) { return f.first == message; });
             if (it == sideFindings.end()) { sideFindings.push_back({message, {}}); it = sideFindings.end() - 1; }

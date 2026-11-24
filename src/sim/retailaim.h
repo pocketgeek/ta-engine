@@ -118,14 +118,10 @@ inline bool retailBallisticInRange(int32_t dx,int32_t dy,int32_t dz,int32_t spee
 namespace ta::sim {
 // 52fe30's facing request (51b340 -> 4dc0b0) as a native heading: 53612a of
 // the unit's origin minus the point its slot aims at, wrapping. The handler's
-// vtable +0x14 picks the point. Only MeleeWeapon's (531f00) answers true and
-// faces the target's origin; every other class -- Line of Sight and its
-// subclasses, Ballistic, Dropped, Guided, Remote Effect and its subclasses,
-// Wandering -- answers false (42a6b0) and faces 51aa50's led SweetSpot
-// (52ff67).
-inline uint16_t retailSlotFacing(const std::array<int32_t,3>& origin,
-        const std::array<int32_t,3>& targetOrigin,const std::array<int32_t,3>& led,bool melee) {
-    const auto& point=melee ? targetOrigin : led;
+// vtable +0x14 picks the point: every TA class (Line of Sight, Ballistic,
+// Dropped, Guided) answers false (42a6b0) and faces 51aa50's led SweetSpot
+// (52ff67); only Kingdoms' melee faced the target's origin.
+inline uint16_t retailSlotFacing(const std::array<int32_t,3>& origin,const std::array<int32_t,3>& point) {
     return uint16_t(retailDirection(Fixed::raw(std::bit_cast<int32_t>(uint32_t(origin[0])-uint32_t(point[0]))),
                                     Fixed::raw(std::bit_cast<int32_t>(uint32_t(origin[2])-uint32_t(point[2])))).v);
 }

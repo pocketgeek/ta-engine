@@ -13,7 +13,7 @@ namespace ta::net {
 
 enum class Cmd : uint8_t {
     Move, Attack, AttackMove, Patrol, Stop, Train, Build, Load, Unload, Guard,
-    SetWeapon,     // targetId = weapon slot (0=primary, 1, 2)
+    SetWeapon,     // retired (Kingdoms' weaponswitching): kept for the numbering, never applied
     RepeatTrain,   // ctrl+click a conjure icon: toggle infinite production of `type`
     Destroy,       // self-destruct unitId (Ctrl+D) -- via the command path so
                    // networked sims stay in lockstep

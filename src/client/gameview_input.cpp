@@ -28,7 +28,7 @@
             (e.key.keysym.sym == SDLK_LSHIFT || e.key.keysym.sym == SDLK_RSHIFT)) {
             const auto released = e.key.keysym.sym == SDLK_LSHIFT ? KMOD_LSHIFT : KMOD_RSHIFT;
             if (!(e.key.keysym.mod & KMOD_SHIFT & ~released) && shiftBuildPlaced_ &&
-                !buildDrag_ && !manaBuildDrag_) {
+                !buildDrag_) {
                 placing_ = nullptr;
                 shiftBuildPlaced_ = false;
             }
@@ -223,7 +223,7 @@
             else if (unitInfoType_) unitInfoType_ = nullptr;   // close Unit Info first
             else if (outcome_ != 0 || watchOver_) { menuRequested_ = true; }
             else if (placing_ || pendingCmd_) {
-                placing_ = nullptr; pendingCmd_ = 0;buildDrag_=manaBuildDrag_=false;
+                placing_ = nullptr; pendingCmd_ = 0;buildDrag_=false;
                 shiftBuildPlaced_ = shiftOrderArmed_ = false;
             }
             else if (!selection_.empty()) selection_.clear();
@@ -348,11 +348,7 @@
             // the elevated cell drawn under the cursor, not the low cell behind.
             float wx, wz;
             pickWorld(float(e.button.x), float(e.button.y), wx, wz);
-            if (placing_->onMana) {
-                manaBuildDrag_=true;buildDrag_=false;
-                bdX0_=wx;bdZ0_=wz;bdAnchor_=dragAnchorAt(float(e.button.x),float(e.button.y));
-                bdQueue_=(SDL_GetModState() & KMOD_SHIFT)!=0;
-            } else if ((SDL_GetModState() & KMOD_SHIFT) && !(SDL_GetModState() & KMOD_CTRL)) {
+            if ((SDL_GetModState() & KMOD_SHIFT) && !(SDL_GetModState() & KMOD_CTRL)) {
                 // Shift: begin a drag — a whole line of these gets queued on
                 // release (a single shift-click is just a zero-length line).
                 buildDrag_ = true;
@@ -381,32 +377,6 @@
                     placing_ = nullptr;
                     shiftBuildPlaced_ = false;
                 }
-            }
-        } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
-                   manaBuildDrag_) {
-            manaBuildDrag_=false;
-            float wx,wz;pickWorld(float(e.button.x),float(e.button.y),wx,wz);
-            // Under the area threshold this is a single lodestone placement.
-            const bool box=areaBoxAt(bdAnchor_,float(e.button.x),float(e.button.y));
-            if (box) {
-                if (placeManaBuildBox(bdX0_,bdZ0_,wx,wz,bdQueue_) && bdQueue_)
-                    shiftBuildPlaced_=true;
-                if (!bdQueue_) { placing_=nullptr;shiftBuildPlaced_=false; }
-            } else if (placing_ && !selection_.empty()) {
-                std::vector<int> clearing;
-                if (canPlaceLocked(placing_,wx,wz) || clearableAt(placing_,wx,wz,clearing)) {
-                    ta::net::Command c;c.kind=ta::net::Cmd::Build;
-                    c.unitId=selectedBuilder() ? selectedBuilder()->id : selection_.front();
-                    c.x=wx;c.z=wz;c.queue=bdQueue_;
-                    std::snprintf(c.type,sizeof c.type,"%s",placing_->id.c_str());issue(c);
-                    if (bdQueue_) shiftBuildPlaced_=true;
-                    else { placing_=nullptr;shiftBuildPlaced_=false; }
-                }
-            }
-            // Shift may have been released during this drag, before any work
-            // was issued. Finish the drag normally, then disarm its build icon.
-            if (shiftBuildPlaced_ && !(SDL_GetModState() & KMOD_SHIFT)) {
-                placing_=nullptr;shiftBuildPlaced_=false;
             }
         } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
                    buildDrag_) {
@@ -446,7 +416,7 @@
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT &&
                    placing_) {
             placing_ = nullptr;
-            buildDrag_ = manaBuildDrag_ = false;
+            buildDrag_ = false;
             shiftBuildPlaced_ = false;
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             dragging_ = true;
@@ -872,15 +842,6 @@
         clampMapScroll();
     }
 
-    bool GameView::placeManaBuildBox(float x0,float z0,float x1,float z1,bool queue) {
-        if (!placing_ || !placing_->onMana || selection_.empty()) return false;
-        const auto* builder=selectedBuilder();
-        if (!builder) return false;
-        ta::net::Command c;c.kind=ta::net::Cmd::BuildManaArea;
-        c.unitId=builder->id;c.x=x0;c.z=z0;c.x2=x1;c.z2=z1;c.queue=queue;
-        std::snprintf(c.type,sizeof c.type,"%s",placing_->id.c_str());issue(c);
-        return true;
-    }
 
     bool GameView::placeBuildLine(float x0, float z0, float x1, float z1) {
         if (!placing_ || selection_.empty()) return false;

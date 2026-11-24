@@ -25,12 +25,11 @@ struct RenderOrder {
     const ta::sim::UnitType* buildType=nullptr;
     int targetId=0,reclaimFeat=0,repairTarget=0;
     uint32_t issuedTick=0;
-    uint32_t areaNextSpot=0;
     bool load=false,unload=false,attackMove=false,patrol=false,guard=false,goal=false;
-    bool reclaimArea=false,buildRectangle=false,manaBuildArea=false;
+    bool reclaimArea=false,buildRectangle=false;
     // Bit-fields, so the record stays within its 64 bytes. revive: a
     // RESURRECT leg (Order::reviveKind; reclaimFeat is the body).
-    bool areaExploring:1=false,areaApproached:1=false,trailPreview:1=false,revive:1=false;
+    bool areaApproached:1=false,trailPreview:1=false,revive:1=false;
     // A factory output's PARK and a flyer's landing (VTOL_LandIfCan): neither is work, so
     // the IDLE BUILDERS strip counts a unit holding only these as idle (as ai::idle does).
     bool park:1=false,landing:1=false;
@@ -90,7 +89,7 @@ struct UnitR {
     bool underConstruction = false, buildBegun = false;
     bool selectable = true;     // retail +0x130 & 0x20: false while a mission script runs it
     bool cloaked = false, cloakOn = true, active = true;
-    float frozenFor = 0, stonedFor = 0, paralyzedFor = 0;
+    float paralyzedFor = 0;
     float selfDestructT = -1;   // >=0 = self-destruct countdown (seconds) armed
     int buildSiteId = 0, productionSiteId = 0, reclaimId = 0, repairId = 0;
     bool conjuring = false;
@@ -114,15 +113,11 @@ struct UnitR {
     // orders are (never another side's destination for a player). hasSpot false: none.
     bool hasSpot = false;
     float spotX = 0, spotZ = 0;
-    // Deposits the first lodestone area job has already tried (sorted spot
-    // indices); the order-line preview plans the remaining ones from it.
-    std::vector<uint32_t> areaVisited;
     void captureOrders(const ta::sim::Unit& unit) {
         orders.assign(unit.orders.begin(),unit.orders.end());
         rally.assign(unit.rally.begin(),unit.rally.end());
-        areaVisited.clear();
     }
-    void clearOrders() {orders.clear();rally.clear();areaVisited.clear();hasSpot=false;}
+    void clearOrders() {orders.clear();rally.clear();hasSpot=false;}
     // Orders given to this unit set its output's rally instead (World::setRally):
     // a production building, or a mobile builder while it repeats production.
     bool holdsRally() const { return type && (type->producesUnits() || repeatType); }
@@ -220,7 +215,7 @@ struct UnitR {
     bool corpsePhase = false;                  // dead, death anim done, body still lies
     uint8_t deathType = 1;                     // killing blow damagetype (3 = gib)
     uint8_t severity = 0;                      // retail Killed severity (1..100)
-    int corpseFeat = -1;                       // resolved corpse/statue FeatType index
+    int corpseFeat = -1;                       // resolved corpse FeatType index
     bool corpseReclaimable = false;
     bool corpseFading = false;                 // a reclaim finished it: neither raised nor reclaimed
     bool corpseSinking = false;                // a water grave: the body is drawn at corpseSinkY
@@ -232,8 +227,7 @@ struct UnitR {
         return corpsePhase ? std::min(corpseSinking ? corpseSinkAlpha : uint8_t(255),corpseDecayAlpha) : uint8_t(255);
     }
     int corpseCellX=0,corpseCellZ=0,corpseFootX=0,corpseFootZ=0;
-    bool corpseStatue = false;                 // petrified/frozen: the body stays UPRIGHT,
-                                               // unlike a normal corpse which lies flat
+
     int justBuilt = 0;                         // one-tick: unit id produced this tick, else 0
     bool disco = false, headbang = false;      // cached world_.disco/headbangTarget(player)
     bool sightShared = false;                  // cached sharesSightToLocal(player)

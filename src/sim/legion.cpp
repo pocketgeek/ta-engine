@@ -12353,7 +12353,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // The centre distance (px) at which tickCombat brakes this attacker in
     // reach of `t` (its selected weapon, or the longest when every weapon
     // fires; a structure target padded by its half extent, as tickCombat
-    // pads it, only for a melee reach weapon; melee at footprint contact),
+    // pads it, only for a unit with no reach weapon),
     // or a guard's 70 px; and whether shooting from there needs a line of
     // sight. 0: no reach (no weapon).
     // The same float expressions as the hashed combat path, read as int px.
@@ -12361,9 +12361,8 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         if(guard)return {70,false};
         if(!t||!t->type||!u.type||u.type->weapons.empty())return {0,false};
         const int slot=std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
-        const bool all=!u.type->weaponSwitching&&u.type->weapons.size()>1;
+        const bool all=u.type->weapons.size()>1;
         const Weapon& sel=u.type->weapons[size_t(slot)];
-        if(sel.melee)return {8*(std::max(u.type->footX,u.type->footZ)+std::max(t->type->footX,t->type->footZ))+8,false};
         // A walker chases on its order slot (World::approachSlot, Attack_Chase 0x4034a0).
         const float best=World::chasesOnOrderSlot(u)?float(u.type->weapons[size_t(w.approachSlot(u))].range)
             :all?u.type->maxRange():sel.range;
@@ -12371,20 +12370,18 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         const bool los=w.approachNeedsClearLine(u,*t);   // tickCombat's own test
         return {int(best+pad),los};
     }
-    // Does the reach weapon measure a structure centre to centre (combatReach:
-    // then it gets no pad; every class but melee)?
+    // Does the unit have a reach weapon (combatReach: then it gets no pad, as
+    // every TA class measures a structure centre to centre)?
     bool centreReach(const Unit& u) const {
-        const int slot=w.approachSlot(u);
-        return slot>=0&&u.type->weapons[size_t(slot)].centreReach();
+        return w.approachSlot(u)>=0;
     }
     // tickCombat's own radial reach (float), as reachPx before its floor;
-    // 0 for melee (not radial: see meleeInRange) or no weapon.
+    // 0 with no weapon.
     float reachFloat(const Unit& u,const Unit* t) const {
         if(!t||!t->type||!u.type||u.type->weapons.empty())return 0.0f;
         const int slot=std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
-        const bool all=!u.type->weaponSwitching&&u.type->weapons.size()>1;
+        const bool all=u.type->weapons.size()>1;
         const Weapon& sel=u.type->weapons[size_t(slot)];
-        if(sel.melee)return 0.0f;
         const float best=World::chasesOnOrderSlot(u)?float(u.type->weapons[size_t(w.approachSlot(u))].range)
             :all?u.type->maxRange():sel.range;
         const float pad=t->type->maxVel<=Fixed()&&!centreReach(u)?8.0f*float(std::max(t->type->footX,t->type->footZ))+24.0f:0.0f;

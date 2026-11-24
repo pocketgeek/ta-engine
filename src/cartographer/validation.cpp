@@ -213,25 +213,12 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
             }
             const auto label="Start "+std::to_string(start.number)+" ("+monarch->name+")";
             if(metadata.starts.size()>1 && !connected)issue(label+": no ground approach route to another start; transports may be intentional",x,z);
-            if(world->hasManaSpots()) {
+            if(world->hasDepositSpots()) {
                 bool reachable=false;
-                for(const auto& [mx,mz]:world->manaSpots())if(world->pathExists(monarch,mx,mz,x,z)) {reachable=true;break;}
-                if(!reachable)issue(label+": no ground approach route to a mana deposit",x,z);
+                for(const auto& [mx,mz]:world->depositSpots())if(world->pathExists(monarch,mx,mz,x,z)) {reachable=true;break;}
+                if(!reachable)issue(label+": no ground approach route to a metal deposit",x,z);
             }
         }
-    }
-    if(!world->hasManaSpots() && std::any_of(registry.types().begin(),registry.types().end(),[](const auto& entry){return entry.second.onMana;}))
-        issue("No recognized mana deposits; skirmish players cannot expand their lodestone economy");
-    struct ManaCandidate {const ta::sim::UnitType* type;float x,z;};
-    std::vector<ManaCandidate> manaCandidates;
-    for(const auto& [x,z]:world->manaSpots()) {
-        std::string blocked;
-        for(const auto& [id,type]:registry.types())if(type.onMana &&
-            (restrictions.empty() || restrictions.count(folded(id)))) {
-            if(world->canPlace(&type,x,z))manaCandidates.push_back({&type,x,z});
-            else {if(!blocked.empty())blocked+=", ";blocked+=type.name.empty()?id:type.name;}
-        }
-        if(!blocked.empty())issue("Mana deposit: engine rejects lodestone footprint for "+blocked,x,z);
     }
     // Classify all distinct mobile movement/footprint profiles, not just routes
     // between starts. Reuse equivalent profiles and release each scan before
@@ -283,14 +270,7 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
     }
     for(const auto& candidate:startCandidates)if(!world->canPlace(candidate.type,candidate.x,candidate.z))
         issue("Start "+std::to_string(candidate.number)+": preplaced units currently block "+candidate.type->name,candidate.x,candidate.z);
-    for(const auto& candidate:manaCandidates) {
-        const bool hasLodestone=std::any_of(world->units().begin(),world->units().end(),[&](const auto& unit) {
-            const float dx=unit.x.toFloat()-candidate.x,dz=unit.z.toFloat()-candidate.z;
-            return unit.type && unit.type->onMana && dx*dx+dz*dz<44*44;
-        });
-        if(!hasLodestone && !world->canPlace(candidate.type,candidate.x,candidate.z))
-            issue("Mana deposit: preplaced units currently block "+candidate.type->name,candidate.x,candidate.z);
-    }
+
     for(const auto& region:scenario.regions) {
         if(region.name.empty() || !regions.insert(folded(region.name)).second)issue("Region name is empty or duplicated: "+region.name,-1,-1,true);
         if(std::min(region.x1,region.x2)<0 || std::min(region.z1,region.z2)<0 || std::max(region.x1,region.x2)>=map.width || std::max(region.z1,region.z2)>=map.height)

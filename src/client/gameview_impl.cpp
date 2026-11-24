@@ -1067,7 +1067,7 @@
         for(auto it=smokeOwners_.begin();it!=smokeOwners_.end();) {
             const auto* owner=world_.unit(*it);
             if(!owner || ta::retailAttachedSfxOwnerRemoved(owner->alive(),owner->deadFor,
-                    owner->corpseStatue,owner->corpseAnimationTicks())) {
+                    owner->corpseAnimationTicks())) {
                 smoke.removedOwners.push_back(*it);it=smokeOwners_.erase(it);
             } else ++it;
         }
@@ -1101,7 +1101,7 @@
             if(event.code>=2 && event.code<=5 && owner && !owner->type->canFly)continue;
             const bool transient=event.code==263 || event.code==264;
             if(owner && (transient || !ta::retailAttachedSfxOwnerRemoved(owner->alive(),
-                    owner->deadFor,owner->corpseStatue,owner->corpseAnimationTicks())) &&
+                    owner->deadFor,owner->corpseAnimationTicks())) &&
                localSeesLive(*owner)) {
                 smoke.emissions.push_back(event);
                 if(!transient)smokeOwners_.insert(event.unitId);
@@ -1191,8 +1191,6 @@
         s.cloaked = u.cloaked; s.cloakOn = u.cloakOn; s.active = u.active;
         // The sim counts these in TICKS now (retail's representation); the HUD
         // wants seconds, so the conversion happens here, at the render boundary.
-        s.frozenFor = float(u.frozenFor) / 30.0f;
-        s.stonedFor = float(u.stonedFor) / 30.0f;
         s.paralyzedFor = float(u.paralyzedFor) / 30.0f;
         s.selfDestructT = ta::client::selfDestructSeconds(u.selfDestructT);
         s.hasConstructionEmitter=bool(u.constructionEmitter || u.cosmeticConstructionEmitter);
@@ -1210,7 +1208,7 @@
         s.moverMoving = u.speed.v != 0;
         s.buildRemaining = u.underConstruction ? 1.0f - u.constructionFraction() : 0.0f;
         s.buildProgress = (float(u.buildProgress) + float(u.buildFraction) / 65536.0f) / 30.0f;   // ticks -> seconds
-        // Orders/rally/areaVisited are read for the VIEWED player's units only (the order
+        // Orders/rally are read for the VIEWED player's units only (the order
         // trails, queued-build ghosts and the HUD all gate on hudPlayer()); a watcher can
         // put any player on show, so it copies them all, as the buildQueue below does.
         // Copying them for every unit was the bulk of the capture cost at 10k units. Queues are tiny and only factories hold
@@ -1234,8 +1232,7 @@
                         u.deadFor >= u.corpseAnimationTicks();
         s.deathType = u.deathType;
         s.severity = u.severity;
-        s.corpseFeat = u.corpseStatue >= 0 ? u.corpseStatue
-                                           : world_.corpseTypeOf(u.type);
+        s.corpseFeat = world_.corpseTypeOf(u.type);
         s.corpseReclaimable=false;
         s.corpseFading=u.corpseFading;
         // A water grave sinks to its sea bed (4959c0); the body is drawn at
@@ -1263,7 +1260,7 @@
             s.corpseCellZ=ta::sim::footprintOrigin(u.z,u.type->footZ)+u.type->corpseAdjZ;
             s.corpseFootX=corpse.fx;s.corpseFootZ=corpse.fz;
         }
-        s.corpseStatue = u.corpseStatue >= 0;
+
         // UnitR::speed is documented px/s and consumers (the flyer altitude servo,
         // the MotionControl percentage) rely on that; the sim keeps px/TICK now.
         s.justBuilt = u.justBuilt;
@@ -1337,8 +1334,6 @@
         captureSlots_[slot].corpseFoot = std::max(s.corpseFootX, s.corpseFootZ);   // Frame::maxCorpseFoot
         captureSlots_[slot].step = std::max({std::fabs(s.x - s.px - s.pox), std::fabs(s.z - s.pz - s.poz),
                                              std::fabs(s.swap.ox), std::fabs(s.swap.oz)});   // Frame::maxInterpStep
-        // An area lodestone job (manaBuildArea) draws a ghost on each deposit it
-        // will still build (GameView::areaBuildGhosts).
         captureSlots_[slot].buildGhosts = std::any_of(s.orders.begin(), s.orders.end(),
             [](const RenderOrder& o) { return bool(o.buildType); });   // Frame::buildGhostUnits
     }
@@ -1666,11 +1661,10 @@
             fb.fogGen = fogPlaneGen_;
         }
         fb.fogW = w; fb.fogH = h;
-        // 0x4f9970: the local player's own units with a radar distance, built and
-        // not status-locked (the same units 4f6a40 stamps sight for).
+        // 0x4f9970: the local player's own units with a radar distance, built
+        // (the same units 4f6a40 stamps sight for).
         for (const auto& u : world_.units())
-            if (u.player == localPlayer_ && u.alive() && u.type && !u.underConstruction &&
-                u.stonedFor <= 0 && u.frozenFor <= 0)
+            if (u.player == localPlayer_ && u.alive() && u.type && !u.underConstruction)
                 fogRadar_.add(u.x.v, u.z.v, world_.radarDistance(*u.type));
         fogRadar_.finish();
     }
@@ -1844,12 +1838,12 @@
             // the effect lands when that shot arrives. Fire breath draws its own
             // emitter, not a bolt.
             if (h.weapon && h.weapon->beam && h.weapon->projVel <= 0.0f && !h.weapon->straight &&
-                !h.weapon->lightning && h.weapon->flameKind<0 && !h.weapon->melee &&
+                !h.weapon->lightning && h.weapon->flameKind<0 &&
                 h.weapon->fx != ta::sim::WeaponFx::Fire &&
                 (noFog_ || cellVisibleR(h.x, h.z))) {
                 BeamFx b;
                 b.model = h.weapon->shotModel;
-                b.sprite = h.weapon->weaponArt.empty() ? h.weapon->shotArt : h.weapon->weaponArt;
+                b.sprite = h.weapon->weaponArt;
                 b.player = h.fromPlayer;
                 b.x1 = h.fromX; b.z1 = h.fromZ;
                 b.x2 = h.x;     b.z2 = h.z;
@@ -1885,7 +1879,7 @@
             // ordinary impact path meant 30 generic dust bursts and 30 hit sounds a
             // second, each one a dozen-plus particles. The storm's own animation and
             // its one-shot cast sound carry it instead.
-            if (h.weapon && h.weapon->kind == ta::sim::Weapon::Kind::Wandering) continue;
+
             // A status spell that lands (charm, stone, freeze) adds a silent event
             // carrying only its explosion, on the victim (HitFx::sound/explosion).
             if (h.weapon && h.sound && !h.weapon->soundHit.empty()) {
@@ -2109,12 +2103,9 @@
                 // These native initializers start one faction nimbus on the
                 // caster, restarting any prior instance (52c540 serves the
                 // ordinary and status Line-of-Sight classes, and lightning
-                // through 52cbf0). Remote/wandering initialization does not
-                // require projectile velocity.
-                using Kind = ta::sim::Weapon::Kind;
-                if (w.nimbus && (((w.straight || w.lightning ||
-                                   w.losStatus != ta::sim::Weapon::LosStatus::None) && w.projVel > 0) ||
-                    w.kind == Kind::Remote || w.kind == Kind::Wandering)) {
+                // through 52cbf0).
+                if (w.nimbus && (w.straight || w.lightning ||
+                                 w.losStatus != ta::sim::Weapon::LosStatus::None) && w.projVel > 0) {
                     if (!factionNimbusLoaded_) {
                         factionNimbus_ = ta::gaf::factionNimbus(vfs_);
                         factionNimbusLoaded_ = true;
@@ -2145,8 +2136,8 @@
                     // Destroyed cargo remains hidden. Native 512860 propagates
                     // a zero-severity/type-8 death packet to attached passengers,
                     // bypassing their ordinary Killed/Dying presentation.
-                    // Explicit retirement includes a lodestone consumed by an
-                    // upgrade. It is not a combat death and has no death script.
+                    // Explicit retirement (a scripted removal) is not a combat
+                    // death and has no death script.
                     // Combat severity survives retirement, so a skipped render snapshot
                     // must not swallow the authored death sound and detached effects.
                     if (u.embarked() || (u.deadFor>=float(ta::sim::World::kRetiredTicks)/30.0f &&
@@ -4223,16 +4214,7 @@
             case ta::Act::SelectFactory:
                 selectOwned([](const UnitR& u){ return u.type->isBuilder && u.type->isStructure(); });
                 return true;
-            case ta::Act::SelectMelee:
-                selectOwned([](const UnitR& u){
-                    if (!u.type->canMove) return false;
-                    for (const auto& w : u.type->weapons) if (w.melee) return true;
-                    return false;
-                });
-                return true;
-            case ta::Act::SelectMagic:   // Kingdoms casters; TA has none
-                selectOwned([](const UnitR&){ return false; });
-                return true;
+
             case ta::Act::SelectBoats:
                 selectOwned([](const UnitR& u){
                     return u.type->domain == ta::sim::UnitType::Domain::Water;
@@ -4292,13 +4274,7 @@
                 }
                 pendingCmd_ = 0;
                 return true;
-            case ta::Act::CycleWeapon:                       // cycle active weapon
-                if (const auto* u = multiWeaponSel()) {
-                    int n = int(u->type->weapons.size());
-                    selectWeapon((u->weaponSlot + 1) % n);
-                }
-                pendingCmd_ = 0;
-                return true;
+
             case ta::Act::Stop:                              // stop (immediate)
                 for (int id : selection_) {
                     ta::net::Command c;
@@ -4626,51 +4602,6 @@
             for (size_t f=0;f<still.children[i].animationFrames.size();++f)
                 addFrame(still.children[i].animationFrames[f],still.children[i].animationFrameMasks[f]);
         }
-    }
-
-    void GameView::buildStatueMeta(const PieceMeta& meta, PieceMeta& statue, const std::string& texture) {
-        if (texture.empty() || !atlasRect_.count(texture)) {statue=meta;return;}   // no statue art: its own
-        statue.skip=meta.skip;
-        statue.animated=false;
-        const auto rect=atlasRect_.find(texture);
-        const auto mask=shadowMasks_.find(texture);
-        const size_t* frame=animatedTex_.count(texture) ? &modelTextureAnimations_.at(texture).frame : nullptr;
-        const size_t count=meta.primTex.size();
-        statue.primTex.assign(count,texture);
-        statue.primAtlas.assign(count,rect==atlasRect_.end() ? nullptr : &rect->second);
-        statue.primShadowMasks.assign(count,mask==shadowMasks_.end() ? nullptr : &mask->second);
-        statue.primAnimated.assign(count,frame!=nullptr);
-        if (frame && count) {
-            statue.animated=true;
-            statue.animationFrames={frame};statue.animationFrameMasks={uint8_t(mask!=shadowMasks_.end())};
-        }
-        statue.children.resize(meta.children.size());
-        for (size_t i=0;i<meta.children.size();++i) {
-            buildStatueMeta(meta.children[i],statue.children[i],texture);
-            if (statue.children[i].animated && !statue.animated) {
-                statue.animated=true;
-                statue.animationFrames=statue.children[i].animationFrames;
-                statue.animationFrameMasks=statue.children[i].animationFrameMasks;
-            }
-        }
-    }
-
-    std::string GameView::statueTexture(const std::string& model, bool frozen) {
-        if (!statueSidesLoaded_) {
-            statueSidesLoaded_=true;
-            if (const auto data=vfs_.tryRead("gamedata/sidedata.tdf")) try {
-                const auto sides=ta::tdf::parseText(std::string(data->begin(),data->end()),"gamedata/sidedata.tdf");
-                for (const auto& [key,node]:sides.children)
-                    statueSides_.push_back({ta::hpi::MountSet::key(node.valueOr("nameprefix","")),
-                                            ta::hpi::MountSet::key(node.valueOr("stoneanim","")),
-                                            ta::hpi::MountSet::key(node.valueOr("frozenanim",""))});
-            } catch (const std::exception&) {}
-        }
-        if (statueSides_.empty()) return {};
-        const std::string prefix=ta::hpi::MountSet::key(model.substr(0,3));
-        const auto side=std::find_if(statueSides_.begin(),statueSides_.end(),
-                                     [&](const auto& s){return !s[0].empty() && s[0]==prefix;});
-        return (side==statueSides_.end() ? statueSides_.front() : *side)[frozen ? 2 : 1];
     }
 
     bool GameView::pieceWorldFx(const UnitR& u, const Anim& a, const std::string& pieceName,

@@ -703,8 +703,7 @@ namespace {
         loadPanel(side_);
         loadGui(side_);
         loadOrderButtons();
-        for (auto& [name, texture] : weaponIcons_) gpuvram::destroy(texture);
-        weaponIcons_.clear();
+
         for (auto& [name, texture] : icons_) if (texture) gpuvram::destroy(texture);
         icons_.clear();   // build portraits reload smoothed (or not) on next use
         for (auto& [name, texture] : scoreboardLogos_) gpuvram::destroy(texture);
@@ -948,76 +947,6 @@ namespace {
                 blockText(b.label, r.x - tw - 9, r.y + 18, px, {235, 225, 180, 255});
             }
         }
-        drawWeaponButtons(winW, winH);
-    }
-
-    const UnitR* GameView::multiWeaponSel() {
-        if (selection_.empty()) return nullptr;
-        const auto* u = frameUnitP(selection_.front());
-        if (u && u->alive() && u->type && u->type->weapons.size() > 1) return u;
-        return nullptr;
-    }
-
-    void GameView::drawWeaponButtons(int winW, int winH) {
-        weaponRects_.clear();
-        const auto* u = multiWeaponSel();
-        if (!u) return;
-        int n = int(u->type->weapons.size());
-        const float bw = 26, gap = 4;
-        // A row just above the HUD bar, right-aligned to the order column's right
-        // edge (the row can be wider than the 56px column, so don't centre it or it
-        // runs off the screen edge).
-        float y = float(winH) - barH() - bw - 8;
-        float row = n * bw + (n - 1) * gap;
-        float x0 = float(winW) - 4 - row;
-        for (int i = 0; i < n; ++i) {
-            SDL_FRect r{x0 + i * (bw + gap), y, bw, bw};
-            weaponRects_.push_back(r);
-            bool active = u->weaponSlot == i;
-            bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w && mouseY_ >= r.y &&
-                       mouseY_ <= r.y + r.h;
-            SDL_SetRenderDrawColor(ren_, active ? 90 : 34, active ? 70 : 30,
-                                   active ? 30 : 26, 235);
-            SDL_RenderFillRectF(ren_, &r);
-            SDL_SetRenderDrawColor(ren_, active ? 255 : (hot ? 200 : 120),
-                                   active ? 220 : (hot ? 180 : 105),
-                                   active ? 90 : 80, 255);
-            SDL_RenderDrawRectF(ren_, &r);
-            char lbl[16];
-            std::snprintf(lbl, sizeof lbl, "%d", i + 1);
-            blockText(lbl, r.x + 8, r.y + 6, 2.0f,
-                      active ? SDL_Color{255, 240, 180, 255} : SDL_Color{205, 195, 165, 255});
-            if (hot && !u->type->weapons[size_t(i)].name.empty()) {
-                const std::string& nm = u->type->weapons[size_t(i)].name;
-                float px = 1.6f, tw = blockWidth(nm.c_str(), px);
-                SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
-                SDL_FRect tb{r.x - tw - 14, r.y + 4, tw + 10, 20};
-                SDL_RenderFillRectF(ren_, &tb);
-                blockText(nm.c_str(), r.x - tw - 9, r.y + 7, px, {235, 225, 180, 255});
-            }
-        }
-    }
-
-    void GameView::selectWeapon(int slot) {
-        for (int id : selection_) {
-            const auto* u = frameUnitP(id);
-            if (!u || !u->type || int(u->type->weapons.size()) <= slot) continue;
-            ta::net::Command c;
-            c.kind = ta::net::Cmd::SetWeapon;
-            c.unitId = id;
-            c.targetId = slot;
-            issue(c);
-        }
-    }
-
-    bool GameView::weaponButtonClick(float mx, float my) {
-        for (size_t i = 0; i < weaponRects_.size(); ++i) {
-            const auto& r = weaponRects_[i];
-            if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
-            if (!watchOnly()) selectWeapon(int(i));   // a watcher's click is swallowed, no more
-            return true;
-        }
-        return false;
     }
 
     int GameView::guiIdx(const char* name) const {
@@ -1111,12 +1040,6 @@ namespace {
             add("Inactive", 'F');
             add("Active", 'N');
         }
-        int nw = int(front->type->weapons.size());
-        if (nw > 1) {
-            add("PrimaryWeapon", '1');
-            add("SecondaryWeapon", '2');
-            if (nw > 2) add("SpecialWeapon", '3');
-        }
         return out;
     }
 
@@ -1151,9 +1074,7 @@ namespace {
             bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w && mouseY_ >= r.y &&
                        mouseY_ <= r.y + r.h;
             bool active = false;
-            if (cmd >= '1' && cmd <= '3')
-                active = selFront && selFront->weaponSlot == (cmd - '1');
-            else if (cmd == 'O' || cmd == 'D' || cmd == 'H') {
+            if (cmd == 'O' || cmd == 'D' || cmd == 'H') {
                 // A producer of units shows the stance chosen for its output.
                 const int want = cmd == 'O' ? 0 : cmd == 'D' ? 1 : 2;
                 active = selFront && (selFront->showsOutputStance() ? selFront->outputStance == want
@@ -1184,22 +1105,7 @@ namespace {
             auto tx = [&](int i) -> SDL_Texture* {
                 return i >= 0 && i < int(tex.size()) ? tex[size_t(i)] : nullptr;
             };
-            // Weapon slots composite the weapon's own icon (anims/weaponpic) -- the
-            // WPrimaryButton GAF is just an empty recess. The pic already includes the
-            // frame, so it replaces the slot art.
-            if (cmd >= '1' && cmd <= '3' && selFront) {
-                int slot = cmd - '1';
-                SDL_Texture* wt = slot < int(selFront->type->weapons.size())
-                    ? weaponIcon(selFront->type->weapons[size_t(slot)].name, active || hot)
-                    : nullptr;
-                if (wt) SDL_RenderCopyF(ren_, wt, nullptr, &r);
-                else {
-                    char n[2] = {cmd, 0};
-                    float px = std::max(1.4f, r.h / 18.0f), tw = blockWidth(n, px);
-                    blockText(n, r.x + (r.w - tw) * 0.5f, r.y + r.h * 0.28f, px,
-                              {200, 190, 160, 255});
-                }
-            } else {
+            {
                 // A push button is Pressed while it is armed (waiting for you to
                 // click a target) or during the click flash; a toggle is Pressed while
                 // it is the selected option. Hover no longer changes the face -- it
@@ -1294,8 +1200,6 @@ namespace {
                     c.unitId = id;
                     issue(c);
                 }
-            } else if (cmd >= '1' && cmd <= '3') {
-                selectWeapon(cmd - '1');
             } else if (cmd == 'O' || cmd == 'D' || cmd == 'H') {
                 int st = cmd == 'O' ? 0 : cmd == 'D' ? 1 : 2;
                 // A producer's lit output stance clicked again is cleared: its
@@ -1682,7 +1586,7 @@ namespace {
     }
 
     bool GameView::orderColumnClick(float mx, float my, int winW) {
-        if (weaponButtonClick(mx, my)) return true;
+
         if (orderBtns_.empty() || selection_.empty()) return false;
         for (size_t i = 0; i < orderBtns_.size(); ++i) {
             SDL_FRect r = orderBtnRect(i, winW);
@@ -1704,27 +1608,6 @@ namespace {
         return false;
     }
 
-    SDL_Texture* GameView::weaponIcon(const std::string& wname, bool selected) {
-        std::string base;
-        for (char c : wname)
-            if (c != ' ') base += char(std::tolower((unsigned char)c));
-        std::string key = base + (selected ? "#s" : "#n");
-        if (auto it = weaponIcons_.find(key); it != weaponIcons_.end()) return it->second;
-        SDL_Texture* tex = nullptr;
-        const char* suf = selected ? "sbh" : "sb";
-        std::string paths[2] = {"anims/weaponpic/" + base + suf + ".jpg",
-                                selected ? "anims/weaponpic/default_selected.jpg"
-                                         : "anims/weaponpic/default_up.jpg"};
-        for (const auto& path : paths) {
-            try {
-                auto img = ta::jpeg::load(vread(path));
-                tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
-                break;
-            } catch (const std::exception&) {}
-        }
-        weaponIcons_[key] = tex;
-        return tex;
-    }
 
     void GameView::colorSwatch(float x, float y, float s, int color, std::function<void(int)> action) {
         SDL_FRect r{x, y, s, s};
@@ -2153,7 +2036,7 @@ bool GameView::idleBuilder(const UnitR& u) const {
     for (const auto& o : u.orders) {
         if (o.park || o.landing) continue;
         if (o.goal || o.buildType || o.targetId || o.reclaimFeat || o.reclaimArea || o.repairTarget ||
-            o.patrol || o.guard || o.load || o.unload || o.attackMove || o.manaBuildArea) return false;
+            o.patrol || o.guard || o.load || o.unload || o.attackMove) return false;
     }
     return true;
 }

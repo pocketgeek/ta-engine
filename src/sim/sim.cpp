@@ -234,7 +234,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // cap a modded maxdamage there so every Fixed::fromInt(maxHp) on the
             // HP, heal and repair paths stays inside 16.16's whole-number range.
             t.maxHp = truncSat32(double(float(std::min(info->numberOr("maxdamage", 100), 32767.0))));
-            t.experiencePoints = int32_t(info->numberOr("experiencepoints", 666));
             t.isBuilder = info->numberOr("builder", 0) != 0;
             t.commander = info->numberOr("commander", 0) != 0;   // the Monarch
             // Integer-then-float (atol): 12.9 -> 12.
@@ -262,9 +261,8 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.targetingUpgrade = (int32_t(info->numberOr("istargetingupgrade", 0)) & 1) != 0;
             t.buildTime = float(info->numberOr("buildtime", 0));
             t.workerTime = float(info->numberOr("workertime", 1));
-            t.income = 0;    // Kingdoms mana fields: unused by TA data
+            t.income = 0;    // the engine's single-resource pool: unused by TA data
             t.storage = 0;
-            t.bounty = 0;
             t.footX = int(info->numberOr("footprintx", 1));
             t.footZ = int(info->numberOr("footprintz", 1));
             t.gate = (int(info->numberOr("gate",0))&1)!=0;
@@ -286,8 +284,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 if (last) while (ym.size() < cells) ym.push_back(last);
                 if (ym.size() == cells) t.yardMap = ym;
             }
-            t.onMana = false;
-            t.sacredIncome = false;
+
             // TA marks a transport with canload (flagsB bit 8, docs/retail-data.md).
             // Its only other transport keys are two bytes (TotalA.exe 0x42c251/
             // 0x42c266 -> type +0x22a/+0x22b): transportsize, the largest passenger
@@ -305,12 +302,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                                                info->valueOr("soundclass", "")));
             t.sight = float(info->numberOr("sightdistance", 180));
             t.corpse = lower(info->valueOr("corpse", ""));
-            t.stoneFeat = lower(info->valueOr("stone", ""));
-            t.frozenFeat = lower(info->valueOr("frozen", ""));
+
             t.corpseAdjX = int(info->numberOr("corpseadjustx", 0));
             t.corpseAdjZ = int(info->numberOr("corpseadjustz", 0));
-            t.canAnimate = info->numberOr("cananimate", 0) != 0;
-            t.animName_ = lower(info->valueOr("animatetype", ""));
+
             t.shadowArt = lower(info->valueOr("shadowart", ""));
             t.noShadow = info->numberOr("noshadow", 0) != 0;
             t.floater = info->numberOr("floater", 0) != 0;
@@ -376,7 +371,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.selfDestructCountdown = info->value("selfdestructcountdown")
                 ? (int32_t(info->numberOr("selfdestructcountdown", 5)) & 7) : 5;
             t.radar = float(info->numberOr("radardistance", 0));
-            t.noVeteran = info->numberOr("noveteran", 0) != 0;
             t.builderLimited = info->numberOr("builderlimited", 0) != 0;
             t.canGuard = info->numberOr("canguard", 0) != 0;
             t.canPatrol = info->numberOr("canpatrol", 0) != 0;
@@ -401,7 +395,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             if (t.cloakCost > 0 && t.minCloakDist == 0) t.minCloakDist = 80;
             // Boolean in retail too: the parser does `and eax,1`.
             t.fireAtWillRandom = (int(info->numberOr("fireatwillrandom", 0)) & 1) != 0;
-            t.weaponSwitching = info->numberOr("weaponswitching", 0) != 0;
+
             t.kamikaze = info->numberOr("kamikaze", 0) != 0;
             t.kamikazeDist = int32_t(uint16_t(int(info->numberOr("kamikazedistance", 0))));
             t.shootMe = info->numberOr("shootme", 0) != 0;
@@ -431,12 +425,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // gates, onoffable without the key, start closed.
             t.activateWhenBuilt = info->numberOr("activatewhenbuilt", 0) != 0;
             t.damageModifier = Fixed::fromRetailNumber(info->numberOr("damagemodifier", 1.0)).v;
-            t.cantBeStoned = info->numberOr("cantbestoned", 0) != 0;
-            t.cantBeFrozen = info->numberOr("cantbefrozen", 0) != 0;
-            // Retail forces both on Monarchs (icd: def bit18 -> cantbestoned +
-            // cantbefrozen) -- else petrify would be an instant Monarch kill.
-            if (t.commander) t.cantBeStoned = t.cantBeFrozen = true;
-            t.cantBeCaptured = info->numberOr("cantbecaptured", 0) != 0;
+
             t.immuneToParalyzer = info->numberOr("immunetoparalyzer", 0) != 0;
             t.cantBeTransported = info->numberOr("cantbetransported", 0) != 0;
             {   // bloodcolor1 = "r g b"
@@ -669,12 +658,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
     // on every loadDir call, so it is idempotent and cannot be left stale by a
     // second load.
     internCategories();
-    // Fix up cross-type references now that every unit is in the table
-    // (animatetype=MONGHOUL names another unit the animator raises).
-    for (auto& [id, t] : types_)
-        if (!t.animName_.empty())
-            if (auto it = types_.find(t.animName_); it != types_.end())
-                t.animateType = &it->second;
 }
 
 void TypeRegistry::loadBuildTree(const hpi::Vfs& vfs, const std::string& /*prefix*/) {
@@ -997,20 +980,6 @@ void World::creditCreationStorage(int unitId) {
     p.storage=float(storage+double(p.storage));
 }
 
-// 512c6b..512c99: a credited kill pays the victim type's mogriumbounty
-// (type +0x222) into the killer player's pool and lifetime total, uncapped.
-void World::creditKillBounty(int player, float bounty) {
-    if (bounty == 0.0f || !validUnitOwner(player)) return;
-    auto& p=players_[size_t(player)];
-    if (p.retailResources) {
-        auto& r=*p.retailResources;
-        r.stored=float(double(bounty)+double(r.stored));
-        r.totalProduced+=double(bounty);
-        p.mana=r.stored;
-        return;
-    }
-    p.mana+=double(bounty);
-}
 
 // A finished creation (512060 at 51230c) and a completion (429990 at 429a92)
 // of a type with isfeature (+0x260 & 0x1000000; the four walls) leave the
@@ -1149,8 +1118,7 @@ Fixed World::retailUnderwaterCap(const Unit& u,Fixed cap) const {
 void World::brakeGround(Unit& u,std::optional<Bam> facing) {
     const Fixed multiplier=groundTerrainMultiplier(u);
     u.turnReqBam=0;
-    u.speed=fxMin(retailUnderwaterCap(u,retailGroupMaximum_>Fixed() ? retailGroundPitchCap(retailGroupMaximum_,u.groundPitch)
-                  : retailGroundSpeedCap(u.baseSpeed*multiplier,u.groundPitch,u.groundSpeedMode)),
+    u.speed=fxMin(retailUnderwaterCap(u,retailGroundSpeedCap(u.baseSpeed*multiplier,u.groundPitch,u.groundSpeedMode)),
         fxMax(Fixed(),u.speed-u.type->brake*multiplier));
     if (facing && u.speed==Fixed()) {
         const int32_t diff=retailTurnRequest(*facing,u.heading);
@@ -1182,10 +1150,7 @@ SinCos World::steerGround(Unit& u,RetailSteeringPoint start,RetailSteeringPoint 
     const Fixed delta=retailGroundAcceleration(u.x,u.z,start,end,next,u.heading,u.speed,
         effectiveMaximum,u.type->accel*multiplier,u.type->brake*multiplier,uint16_t(rate),
         u.groundMovementMode==0 ? &aim : nullptr,u.groundMovementMode==0 ? direction : -1);
-    // 4d95f0: a paced group member's capped maximum replaces the speed-mode
-    // scaled one (retail skips the mode factor there); pitch still applies.
-    u.speed=fxMin(retailUnderwaterCap(u,retailGroupMaximum_>Fixed() ? retailGroundPitchCap(retailGroupMaximum_,u.groundPitch)
-                  : retailGroundSpeedCap(effectiveMaximum,u.groundPitch,u.groundSpeedMode)),
+    u.speed=fxMin(retailUnderwaterCap(u,retailGroundSpeedCap(effectiveMaximum,u.groundPitch,u.groundSpeedMode)),
                   fxMax(Fixed(),u.speed+delta));
     return retailGroundStep(u.heading,u.speed);
 }
@@ -2415,7 +2380,6 @@ void World::tickFlightPatrol(Unit& u) {
                     {order.x.v,0,order.z.v},[&](int n){return int(random(n));});
                 if (check==1) {
                     // Ahead again: 50c480, then 4d6a50(unit,0) drops every mission.
-                    w.leaveRetailGroupCentre(u);
                     u.orders.clear();
                     return 2;
                 }
@@ -3049,7 +3013,7 @@ bool World::tickLegionLift(Unit& u) {
     // The caller skips the rest of the unit's update: the weapon timers still
     // count down (52ae90), or a flyer lifted mid-reload could not fire until
     // it landed again.
-    const bool reloadAll=!u.type->weaponSwitching && u.type->weapons.size()>1;
+    const bool reloadAll=u.type->weapons.size()>1;
     for (size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
         if ((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0) --u.reloads[slot];
     return true;
@@ -3083,7 +3047,6 @@ bool World::tickHoldLift(Unit& u) {
     const Unit* target=nullptr;
     for (int s=0;s<n && idle;++s) {
         if (!(u.slotAuto>>s&1) || !u.slotTarget[size_t(s)]) continue;
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
         const Unit* t=unit(u.slotTarget[size_t(s)]);
         if (t && t->alive() && t->hp>Fixed() && slotInRange(u,*t,s)) { target=t;break; }
     }
@@ -3103,7 +3066,7 @@ bool World::tickHoldLift(Unit& u) {
             (u.fireStartPending && tickCounter_-u.fireStartTick>=kHoldLiftNoRelease);
         if (!cannot && slotNeedsFacing(*u.type))
             for (int s=0;s<n && !cannot;++s) {
-                if (u.slotTarget[size_t(s)]!=target->id || (u.type->weaponSwitching && s!=u.weaponSlot)) continue;
+                if (u.slotTarget[size_t(s)]!=target->id) continue;
                 if (const auto aim=queryWeaponAim(u.id,target->id,s))
                     cannot=!retailFacingAligned(portHeadingToRetail(u.heading),aim->facing,
                                                 uint16_t(u.type->weapons[size_t(s)].aimTol));
@@ -3145,7 +3108,7 @@ bool World::tickHoldLift(Unit& u) {
     notifyFlightOccupancy(u);
     // The caller skips the rest of the unit's update, as for the Legion lift;
     // the weapon timers still count down and the auto slots fire (52ae90).
-    const bool reloadAll=!u.type->weaponSwitching && u.type->weapons.size()>1;
+    const bool reloadAll=u.type->weapons.size()>1;
     for (size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
         if ((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0) --u.reloads[slot];
     tickSlotWeapons(u);
@@ -3340,76 +3303,6 @@ uint32_t World::retailMissionFlags(Unit& u) {
     // standby flags at 0 (they are hashed); only the group code reads them.
     if (u.orders.empty() && u.standbyActive) return u.type->canFly ? 0x5010000u : u.standbyState.flags;
     return 0;
-}
-
-// 51b890: aggregate every group, set each member's navigator formation bit,
-// then apply the straggler slowdown. The changed-flag notification at
-// 51c612 (navigator vt+0x38) has no movement consumer and is not modelled.
-void World::tickRetailGroups() {
-    retailGroupPaced_.assign(units_.size(),0);
-    std::array<std::array<bool,100>,kMaxPlayers> formation{};
-    std::array<std::vector<RetailGroupUnit>,kMaxPlayers> roster;
-    std::array<std::vector<size_t>,kMaxPlayers> index;
-    TA_PASS();
-    for (size_t i=0;i<units_.size();++i) {
-        Unit& u=units_[i];
-        if (!u.alive() || !u.type || u.player<0 || u.player>=kMaxPlayers) continue;
-        const auto slot=retailGroupSlot(u.squad,u.aiGroup,aiFormation(u.player,u.aiGroup));
-        const int g=slot.group;
-        if (g<1 || g>=100) continue;
-        formation[size_t(u.player)][size_t(g)]|=slot.formation;
-        RetailGroupUnit entry;
-        entry.group=g;
-        // 51ba44..51ba8f: alive, not dying, finished, with a mover; the
-        // carrier (+0xa8) is not read, so a passenger stays a member at its
-        // +0x68, the attach point World's cargo step keeps. Its mission is
-        // BeCarried, which the attach (51b5a0 -> 4d49f0) puts in front: row
-        // flags 0x24 (5eb6b0), no moving or paced bit, and no group check
-        // (4024a0) -- World runs no missions aboard (E: check_retail_group.py
-        // carried, becarried).
-        entry.eligible=!u.underConstruction && !u.type->isStructure();
-        if (entry.eligible) {
-            entry.member=retailGroupMember(u);
-            entry.missionFlags=u.embarked() ? kRetailBeCarriedFlags : retailMissionFlags(u);
-            entry.typeMaximum=(u.type->maxVel*groundTerrainMultiplier(u)).v;
-        }
-        roster[size_t(u.player)].push_back(entry);index[size_t(u.player)].push_back(i);
-    }
-    std::vector<uint8_t> paced;
-    for (int player=0;player<kMaxPlayers;++player) {
-        retailGroupTick(roster[size_t(player)],formation[size_t(player)],retailGroups_[size_t(player)],paced);
-        for (size_t k=0;k<paced.size();++k) retailGroupPaced_[index[size_t(player)][k]]=paced[k];
-    }
-}
-
-// 50c480: take a member out of its group's moving aggregate for the rest of
-// the tick. With fewer than two moving members only a flyer subset clears.
-void World::leaveRetailGroupCentre(const Unit& u) {
-    if (!retailGroupOf(u) || u.type->isStructure()) return;
-    retailGroupLeave(retailGroups_[size_t(u.player)][size_t(retailGroupIndex(u))],retailGroupMember(u));
-}
-
-// 4d95f0's group cap for the unit about to move, after terrain scaling and
-// the speed mode; zero leaves the unit at its own maximum.
-Fixed World::retailGroupLimit(const Unit& u) const {
-    const size_t index=size_t(&u-units_.data());
-    if (index>=retailGroupPaced_.size() || !retailGroupPaced_[index] || u.type->canFly) return Fixed();
-    const auto* record=retailGroupOf(u);
-    if (!record || !record->active) return Fixed();
-    // 4d978f: owner kinds 1 and 2, this machine's human and computer, take
-    // the cap; kind 3 is a REMOTE player (navigator vt+0x3c instead, zero for
-    // ground navigators, 4e60d0), whose units its own machine moves. A
-    // computer player is kind 2 where it runs (the battle room 49d067, the
-    // mission loader 4a5524, the campaign start 4d298f), and lockstep runs
-    // every seat as its own machine does, so every owner takes the cap.
-    const Fixed multiplier=groundTerrainMultiplier(u);
-    const int32_t type=(u.type->maxVel*multiplier).v;
-    Fixed moded=Fixed::raw(type);
-    if (u.groundSpeedMode==1) moded=moded*Fixed::raw(0xaac0);
-    else if (u.groundSpeedMode==2) moded=moded*Fixed::raw(0x553f);
-    const bool boat=retailGroupMember(u).kind==RetailGroupClass::Boat;
-    return Fixed::raw(retailGroupSpeedCap(boat ? record->boatSpeed : record->groundSpeed,
-        (u.baseSpeed*multiplier).v,type,moded.v));
 }
 
 // A flyer's head order that Legion keeps with its formation: a plain move,
@@ -4423,7 +4316,6 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                     {goal.x.v,0,goal.z.v},[&](int n){return int(random(n));});
                 if (check==1) {
                     // Ahead again: drop out of the moving centre and the orders.
-                    w.leaveRetailGroupCentre(u);
                     w.cancelPath(u);u.orders.clear();u.routeStamp=-1;u.standbyActive=false;
                     return 2;
                 }
@@ -6382,9 +6274,7 @@ void World::setVeterancyOverride(int unitId, float multiplier) {
     Unit* u = unit(unitId);
     if (!u || !u->alive() || !u->type) return;
     u->vetOverride = multiplier;
-    // getLevel (0x519310) answers 10 while it is set, so the rank shown, the
-    // veteran model and every rank test read full rank; kills still add
-    // experience (xp) but cannot move it. Cleared, the rank comes from xp again.
+    // The rank reads 10 while it is set; cleared, the authored rank again.
     u->veteran = u->veteranLevel();
 }
 
@@ -6635,55 +6525,6 @@ bool World::tickSelfDestruct(Unit& u) {
     return selfDestructHit(u);
 }
 
-void World::setWeapon(int unitId, int slot) {
-    Unit* u = unit(unitId);
-    if (!u || !u->type) return;
-    int n = int(u->type->weapons.size());
-    // 51a8b0 accepts only a different, present weapon on a switching unit.
-    // Re-selecting the current slot must not restart its reload countdown.
-    if (!u->type->weaponSwitching || slot < 0 || slot >= std::min(n,3) ||
-        slot == u->weaponSlot) return;
-    u->weaponAuto = false;
-    switchWeaponSlot(*u,slot,true);
-}
-
-// 51a8b0: drop the old slot's target (TargetCleared only when one was set),
-// select the new slot, give it its switchreloadtime, raise the 0x40 event
-// and start COB SwitchWeapon(slot). The new slot inherits no target or point.
-bool World::switchWeaponSlot(Unit& u,int slot,bool fromCommand) {
-    const int n=int(u.type->weapons.size());
-    if (!u.type->weaponSwitching || slot<0 || slot>=std::min(n,3) || slot==u.weaponSlot) return false;
-    if (u.scriptAimTarget) clearScriptWeaponTarget(u,fromCommand);
-    dropSlotTarget(u,u.weaponSlot);
-    u.weaponSlot=slot;
-    u.reloads[size_t(slot)]=u.type->weapons[size_t(slot)].switchReloadTicks;
-    // The 0x40 event (+0xd0 |= 0x40 on every switch). Its ported readers
-    // sleep a tick and restart from stage 0: SUPPRESS (stage 4) and a
-    // flyer's attack at a point or on a unit (AirToGround 41c122,
-    // AirToGroundHover 41da9d, AirStrike 41b728, AirToAir 41ccc4). Only a
-    // unit on one gets it: a walker's unit attack (Attack_Chase,
-    // Attack_Melee) answers it in the same dispatch, and World runs that
-    // attack per tick (tickCombat on u.weaponSlot, which aims a slot its own
-    // weapons switched in the same update) with no mission to take the bit,
-    // which would otherwise linger and wake a later order. A
-    // formation the attack's group check put ahead of it waits on no 0x40:
-    // the bit stays until the attack, back from stage 0, takes it.
-    if (!u.orders.empty()) {
-        const Order* attack=formationAttack(u.orders);
-        const Order& front=attack ? *attack : u.orders.front();
-        const bool flyerAttack=u.type->canFly && !u.type->isStructure() && front.targetId && !front.guard &&
-            !front.load && !front.seekAttack && !front.seekGuard;
-        if ((attack ? attack->suppress : u.orders[currentLeg(u.orders)].suppress) || front.airPoint || flyerAttack)
-            u.missionEvents|=0x40u;
-    }
-    if (const auto script=unitScripts_.find(u.id);script!=unitScripts_.end()) {
-        const auto& file=*u.type->script();
-        script->second.state().startArguments(file,file.scriptIndex("SwitchWeapon"),{uint32_t(slot),0,0,0},1);
-        if (fromCommand) u.pendingWeaponAnimations.push_back({ta::RetailWeaponAnimation::Switch,uint8_t(slot),0,0});
-        else u.weaponAnimations.add(ta::RetailWeaponAnimation::Switch,slot);
-    }
-    return true;
-}
 
 void World::setStance(int unitId, int stance) {
     Unit* u = unit(unitId);
@@ -6741,7 +6582,7 @@ void World::setActive(int unitId, bool on) {
     if (u->active==on) return;
     u->active = on;
     // 51e4d0 notifies every script on an active-bit edge, including
-    // non-gate on/off units such as the Sacred Fire's emitter controller.
+    // non-gate on/off units.
     switchScript(*u,on);
 }
 
@@ -6780,10 +6621,6 @@ void World::attack(int unitId, int targetId, bool queue) {
     if (u->type->weapon.damage <= 0) return;
     // 4de62d: no canattack (attackStrippedAtLoad), no attack mission.
     if (attackStrippedAtLoad(*u->type)) return;
-    const Unit* target=unit(targetId);
-    const bool converts=std::any_of(u->type->weapons.begin(),u->type->weapons.end(),
-                    [](const Weapon& weapon){return weapon.mindControl;});
-    if (converts && (!target || !canAttackTarget(*u,*target))) return;
     if (!queue) {
         u->orders.clear();
         cancelPath(*u);
@@ -6863,12 +6700,6 @@ float Weapon::damageVs(const UnitType* t) const {
     return it == dmgVs.end() ? damage : float(it->second);
 }
 
-bool World::retailStatusRoll(const Unit& victim,float scale,uint32_t origin) {
-    const int32_t chance=std::min(99,(int32_t(victim.veteran)+16)*5);
-    damageCrtUsed_=true;   // the CRT stream now shapes the game: fold it
-    const int64_t roll=int64_t(crtRand(origin))*100/32768;
-    return roll<int64_t(double(chance)*double(scale));
-}
 
 void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fromId,
                      Unit* primary, std::optional<std::array<int32_t,3>> position,
@@ -6903,10 +6734,6 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             Fixed::fromFloat(hz).v};
         if (from) hf.fromPosition = std::array<int32_t,3>{from->x.v,
             (from->type && from->type->canFly ? from->flightY : from->groundY).v,from->z.v};
-        // The status callbacks' impacts (52d8d0, 52db40, 52dda0, 52f000, 52f360)
-        // call 529c10 with its effects flag clear: the sound, no explosion.
-        hf.explosion = !w.mindControl && w.status != Weapon::Status::Stoned &&
-                       w.status != Weapon::Status::Frozen;
         hits_.push_back(hf);
     }
     // What the shot did to the other side and to its own (529dc0 sums each
@@ -6937,72 +6764,6 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         ? attacker->vetMul() * attacker->atkBuff * attacker->scenarioWeapon : 1.0f;
     // Damage + status one victim, honouring veterancy, auras and immunities.
     auto hurt = [&](Unit& e, float scale) {
-        if (e.stonedFor > 0) return;   // petrified units are impervious
-        // Mind control, stone and freeze (the Line-of-Sight classes and the area
-        // spells alike) never damage: 52a460 / 529dc0 hand each unit to the
-        // class's callback instead of 52a330 -- charm 52da10 (also the Area Mind
-        // Control's, 52f041), stone 52dca0, freeze 52df00 (also the Area
-        // Freeze's, 52f3a1); tools/re/probe_los_status.py runs all three. The
-        // [DAMAGE] table only decides what may be TARGETED (retail zeroes
-        // monarch/god/dragon/fort/factory/naval/lodestone for the charms).
-        // Gates in the callbacks' order: the caster's own player (unit +0xfd
-        // against the shot's +0x92 -- an ally's unit is not spared), a body
-        // without a mover (+8, made only for bmcode 1 at 511fcf: no building),
-        // a Monarch (+0x264 0x40000); then charm: construction left (+0x108),
-        // in a transport, cantbecaptured; stone and freeze: cantbestoned /
-        // cantbefrozen (+0x268 bits 2 / 4), construction left. A unit past
-        // them draws its roll (retailStatusRoll), and a spell that takes puts
-        // the weapon's explosion class on it (492c80). A failed roll does
-        // nothing at all.
-        const bool stone = w.status == Weapon::Status::Stoned, freeze = w.status == Weapon::Status::Frozen;
-        if (w.mindControl || stone || freeze) {
-            if (e.player == fromPlayer || e.type->buildMovementCode != 1 || e.type->commander) return;
-            if (w.mindControl ? e.underConstruction || e.embarked() || e.type->cantBeCaptured
-                              : (stone ? e.type->cantBeStoned : e.type->cantBeFrozen) || e.underConstruction)
-                return;
-            if (!retailStatusRoll(e, scale, w.mindControl ? 0x52dab5u : stone ? 0x52dd32u : 0x52df92u))
-                return;
-            ++enemyDamage;   // the callback answers nonzero; the caster's own player was refused above
-            {
-                HitFx effect;
-                effect.x = e.x.toFloat(); effect.z = e.z.toFloat(); effect.weapon = &w;
-                effect.victimId = e.id;
-                effect.fromPlayer = fromPlayer;
-                effect.position = std::array<int32_t,3>{e.x.v, (e.type->canFly ? e.flightY : e.groundY).v, e.z.v};
-                effect.sound = false;
-                hits_.push_back(effect);
-            }
-            if (w.mindControl) {
-                // 52db08 calls 514da0 with no check of the new owner's room
-                // (probe_los_status.py, at the unit cap): it leaves a dying
-                // unit as it is, and at the cap sends only the capture event
-                // (changeOwner).
-                captureUnit(e, fromPlayer);
-                return;
-            }
-            // 51a140 -> 51a240 (type 14 stone / 15 freeze, amount 1): a dying unit
-            // takes nothing; otherwise the hit response (409a50), the death type
-            // and the last hitter, then 51a61a zeroes HP whatever the amount: the
-            // unit dies on the spot and the death edge places its stone=/frozen=
-            // STATUE (blocking, permanent, resurrectable back to life).
-            if (e.hp <= Fixed()) return;
-            // 51a140 names the hitter only while its object lives: a stone or
-            // freeze shot still lands after its caster retired (52db40 / 52dda0),
-            // and a caster that changed sides is a dead object to retail (514da0
-            // makes the new owner a new one), though World keeps its id.
-            retailHitResponse(e, attacker, freeze ? 15 : 14);
-            e.deathType = freeze ? 15 : 14;
-            if (attacker) { e.lastHitBy = fromId; e.lastHitPlayer = fromPlayer; }
-            if (freeze) e.frozenFor = int32_t(kTick); else e.stonedFor = int32_t(kTick);
-            e.hp = Fixed();
-            e.speed = Fixed();
-            static const bool kStatLog = ta::devEnv("TA_BURNLOG") != nullptr;
-            if (kStatLog)
-                std::fprintf(stderr, "statue kill: %s %s at %.0f,%.0f\n",
-                             e.type->id.c_str(), freeze ? "frozen" : "stoned",
-                             e.x.toFloat(), e.z.toFloat());
-            return;
-        }
         if (benchmarkMode() && e.type && e.type->commander) return;   // benchmark: Monarchs are invincible
         // Base × attacker attack (↑) ÷ victim armour (↓) × splash falloff. Retail
         // 0x52a330 then consumes one CRT draw per recipient and applies its
@@ -7261,15 +7022,15 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
 // fixed-point literal 0xCCCC/65536, so retail deliberately under-leads by 20% --
 // shots land slightly behind a runner rather than perfectly on it, which is what
 // makes a siege shell miss a moving blob and crater instead.
-// A ground-point target, a melee swing and a hitscan beam never lead; nor does a
-// weapon carrying `dontleadtargets`.
+// A ground-point target and a hitscan beam never lead; nor does a weapon
+// carrying `dontleadtargets`.
 static constexpr float kLeadFrac = float(0xCCCC) / 65536.0f;   // 0.79998779296875
 
 static void leadAim(const Unit& shooter, const Unit& tgt, const Weapon& w,
                     float& ax, float& az) {
     ax = tgt.x.toFloat();
     az = tgt.z.toFloat();
-    if (w.noLead || w.melee || w.beam || w.projVel <= 0.0f || tgt.speed.toFloat() == 0.0f) return;
+    if (w.noLead || w.beam || w.projVel <= 0.0f || tgt.speed.toFloat() == 0.0f) return;
     // Distance is the PRE-lead one, matching retail: a single pass, no iteration.
     float d = detmath::len((tgt.x - shooter.x).toFloat(), (tgt.z - shooter.z).toFloat());
     float t = kLeadFrac * d / w.projVel;
@@ -7296,7 +7057,6 @@ static std::array<uint16_t,2> storedLaunch(const Unit& u,int slot,bool ballistic
 bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,ShotTweak tweak) {
     const Weapon& w = u.type->weapons[size_t(slot)];
     Unit* const tu = t.unit;
-    if (w.mindControl && tu && !canCaptureTarget(u.player,*tu)) return false;
     // manapershot over the veteran multiplier (531ea0). The release (530220)
     // pays through 4010d0, which subtracts only a cost it can cover and whose
     // result is ignored: the shot leaves either way and mana never goes
@@ -7324,22 +7084,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // spread (ShotTweak). The slot's aim record holds AimX's TA angles,
     // which are not these launch angles.
     const bool solveAtRelease=true;
-    // Remote Effect: nothing travels. The spell materialises at the slot's AIM
-    // POINT and lands after builduptime -- so walking aside doesn't dodge an
-    // Earthquake, you have to leave its (up to 500px) radius. decaytime is the
-    // visual fade after the hit.
-    //
-    // Timeline, emulated against the retail handlers (init 52e890, per-tick
-    // 52e940; hail 52ed60/52ee80), in ticks after the fire tick T:
-    //   start  S = T+1 (+nimbustime for a nimbus caster with nimbus art)
-    //   landing L = S + shotart flight (0 without shotart)
-    //   impact  L + builduptime, expiry L + builduptime + decaytime
-    // The expiry test runs before the per-tick hook, so a hit due on the expiry
-    // tick never lands, and the hook does not run on the landing tick itself.
-
-    // Wandering: spawn a roaming storm at the aim point. It drifts for `duration`,
-    // grinding whatever it passes over, instead of landing one tap.
-
     if(w.flameKind>=0) {
         const int32_t raw=int32_t(double(w.projVel)*2184.5333333333333);
         if(raw<=0)return true;
@@ -7558,8 +7302,8 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         projectiles_.push_back(b);
         return true;
     }
-    if (w.melee || w.beam || w.projVel <= 0) {
-        // Legacy delivery: melee, and a Line-of-Sight weapon with no
+    if (w.beam || w.projVel <= 0) {
+        // Legacy delivery: a Line-of-Sight weapon with no
         // weaponvelocity (none shipped: every shipped Line-of-Sight class flies
         // above). The aim pass already queried these attachment points. Reuse
         // them for the viewer's beam without another script call at release.
@@ -7567,7 +7311,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         const auto muzzle=captured ? u.weaponMuzzlePoints[size_t(slot)] : std::array<int32_t,3>{};
         const auto aimPoint=captured ? u.weaponAimPoints[size_t(slot)] : std::array<int32_t,3>{};
         const size_t event=hits_.size();
-        // A melee shot sits on the target's origin (52bac0 copies +68..+70),
+        // An instant shot sits on the target's origin (52bac0 copies +68..+70),
         // a point target's on its aim point.
         if (!tu) applyHit(w, Fixed::raw(t.point[0]).toFloat(), Fixed::raw(t.point[2]).toFloat(), u.player, u.id,
                           nullptr, {}, t.point, slot);
@@ -7601,7 +7345,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // authored projectile is a mesh or a sprite. Preserve that native trajectory
     // for every ordinary ballistic shot; the renderer draws a mesh when present
     // and otherwise places the weapon sprite at the same 3D position.
-    if (w.ballistic && w.kind == Weapon::Kind::Normal && !w.melee &&
+    if (w.ballistic && w.kind == Weapon::Kind::Normal &&
         !w.beam) {
         const double rawSpeed = double(w.projVel) * 2184.5333333333333;
         if (rawSpeed > 0.0 && rawSpeed < double(INT32_MAX)) {
@@ -7655,30 +7399,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     return true;
 }
 
-// Retail melee ignores its TDF `range` entirely: MeleeWeapon::inRange (icd
-// @0x52b980) passes when the two units' footprint boxes are within half a cell
-// (8px) of TOUCHING on both axes -- edge adjacency, not a radial distance.
-// (Ranged weapons use the base test, icd @0x530580: 2D centre-to-centre,
-// inclusive.) Treating melee `range` as radial left Zhon beasts (range 250)
-// halting 15 cells out and biting air, and the Sailor (range 10) unable to ever
-// reach a legal firing distance past the 13px separation floor. The boxes are
-// the footprints' cells: 52b980 snaps each position to its footprint origin
-// ((pos - foot*8 + 8) >> 4, footprintOrigin) and centres the box on it, so a
-// body on the rectangle Attack_Melee walks to (4d4e80) is always in range,
-// wherever in its origin cell it stands.
-// Before the boxes it reads the target's +0x130 low bits (52b98c..52b997): a
-// target in the air (2, our flightGroundMode) is never in range, so a melee
-// weapon never aims or swings at a flyer; one that has landed (1) is boxed
-// like any other unit. World tested the boxes alone, in 2D, so a Titan under
-// a hovering Gryphon hammered it.
-static bool meleeInRange(const Unit& a, const Unit& b) {
-    if (b.flightGroundMode==2) return false;
-    auto axis=[](Fixed pa,int fa,Fixed pb,int fb) {
-        const int64_t ca=int64_t(footprintOrigin(pa,fa))*16+fa*8,cb=int64_t(footprintOrigin(pb,fb))*16+fb*8;
-        return std::abs(ca-cb)-8*int64_t(fa)-8*int64_t(fb)<8;
-    };
-    return axis(a.x,a.type->footX,b.x,b.type->footX) && axis(a.z,a.type->footZ,b.z,b.type->footZ);
-}
 
 // Naval shots cross both water and shore. Water depth is a movement restriction,
 // not a projectile blocker; sight grids still consult the shared obstacle overlay.
@@ -7692,54 +7412,18 @@ bool World::combatLineOfSight(const Unit& from,const Unit& to) const {
         std::max(to.type->footX,to.type->footZ)/2);
 }
 
-bool World::canCaptureTarget(int player,const Unit& target) const {
-    // Match the charm impact gates before choosing or pursuing a target. The
-    // weapon damage table is an additional targeting filter, not an immunity
-    // override for commanders, unfinished units, protected units, passengers or
-    // petrified units.
-    return target.type && target.alive() && target.hp>Fixed() && !target.underConstruction &&
-        target.type->buildMovementCode==1 &&   // the callback refuses a building (engine deviation to ask)
-        !target.embarked() && !target.type->commander && !target.type->cantBeCaptured &&
-        target.stonedFor<=0 && !allied(player,target.player) && !atUnitCap(player);
-}
-
-// Engine deviation: can a stone or freeze weapon take on this target at
-// all? The status callback (applyHit) refuses a building, a Monarch, a unit
-// with construction left and one immune to the status; retail's order
-// resolver does not ask, so a Basilisk ordered onto a ship fired for ever.
-bool World::statusCanTake(const Weapon& w,const Unit& t) const {
-    const bool stone=w.status==Weapon::Status::Stoned,freeze=w.status==Weapon::Status::Frozen;
-    if (!stone && !freeze) return true;
-    return t.type && t.type->buildMovementCode==1 && !t.type->commander && !t.underConstruction &&
-        !(stone ? t.type->cantBeStoned : t.type->cantBeFrozen);
-}
-
-// Can this weapon of `from` do anything to `target`? The order resolver's
-// layer test (4de7ec..4de817: a toairweapon slot refuses a target not in the
-// air, a noairweapon slot one in the air, its current layer, never its type)
-// and the damage table, then the engine deviations: a charm on a body it can
-// take, no aim point under water, a status the target can take.
-bool World::weaponServes(const Unit& from,const Weapon& weapon,const Unit& target) const {
+// Can this weapon do anything to `target`? The order resolver's layer test
+// (4de7ec..4de817: a toairweapon slot refuses a target not in the air, a
+// noairweapon slot one in the air, its current layer, never its type) and the
+// damage table, then the engine deviation: no aim point under water.
+bool World::weaponServes(const Unit&,const Weapon& weapon,const Unit& target) const {
     return !(weapon.noAir && target.flightGroundMode==2) && !(weapon.toAir && target.flightGroundMode!=2) &&
-        weapon.damageVs(target.type)>0 &&
-        (!weapon.mindControl || canCaptureTarget(from.player,target)) && !aimPointSubmerged(weapon,target) &&
-        statusCanTake(weapon,target);
+        weapon.damageVs(target.type)>0 && !aimPointSubmerged(weapon,target);
 }
 
 bool World::canAttackTarget(const Unit& from,const Unit& target) const {
     if (!from.type || !target.type) return false;
     const auto usable=[&](const Weapon& weapon) { return weaponServes(from,weapon,target); };
-    // Engine deviation: a switcher fires only its selected weapon, so a
-    // player's order is refused when that weapon cannot touch the target, even
-    // when another slot could (a Fallen Angel's Death Sword does nothing to a
-    // ship; a Thirsha's Lightning cannot reach a swimming Mer Warrior).
-    // Retail's resolver takes any slot and the unit then never hurts it. A
-    // computer's switcher takes it on any slot: its weapon choice
-    // (retailAiWeaponSwitch) moves to one that serves.
-    if (from.type->weaponSwitching && !from.type->weapons.empty() && !computerOwned(from.player)) {
-        const int slot=std::clamp(from.weaponSlot,0,int(from.type->weapons.size())-1);
-        return usable(from.type->weapons[size_t(slot)]);
-    }
     return std::any_of(from.type->weapons.begin(),from.type->weapons.end(),usable);
 }
 
@@ -7785,11 +7469,9 @@ void World::dropSlotTarget(Unit& u,int slot) {
     u.slotTarget[size_t(slot)]=0;
     u.aimWait[size_t(slot)]=0;
     u.slotPoint=uint8_t(u.slotPoint&~(1u<<slot));
-    // 51a7f0: TargetCleared(slot) only when a target was set, and for a
-    // switcher only on the selected slot.
+    // 51a7f0: TargetCleared(slot) only when a target was set.
     // TotalA.exe 0x49e1ea: no target, no outstanding aim.
     u.weaponAim[size_t(slot)].flags&=uint16_t(~ta::TaAimState::kRequested);
-    if (u.type->weaponSwitching && slot!=u.weaponSlot) return;
     if (const auto it=unitScript(u.id)) {
         const auto& file=*u.type->script();
         const int native=u.type->nativeWeaponSlot(slot);
@@ -7811,7 +7493,6 @@ void World::setSlotTarget(Unit& u,int slot,int id) {
 // are cleared as 51a700 clears them.
 void World::setSlotPoint(Unit& u,int slot,RetailGroundPoint p) {
     if (slot<0 || slot>=3) return;
-    if (u.type->weaponSwitching && slot!=u.weaponSlot) return;
     u.slotTarget[size_t(slot)]=0;
     u.slotPoint=uint8_t(u.slotPoint|(1u<<slot));
     u.slotPointAt[size_t(slot)]=p;
@@ -7970,9 +7651,9 @@ int World::approachSlot(const Unit& u) const {
         if (!u.orders.empty() && u.orders.front().dgun)
             for (int d=0;d<int(std::min<size_t>(3,u.type->weapons.size()));++d)
                 if (isDgunSlot(*u.type,d)) return d;
-        return u.type->weaponSwitching ? s : 0;
+        return 0;
     }
-    if (!u.type->weaponSwitching && u.type->weapons.size()>1)
+    if (u.type->weapons.size()>1)
         for (int sl=0;sl<int(u.type->weapons.size());++sl)
             if (u.type->weapons[size_t(sl)].range>u.type->weapons[size_t(s)].range) s=sl;
     return s;
@@ -7982,9 +7663,9 @@ World::CombatReach World::combatReach(const Unit& u,const Unit& t,float dist) co
     CombatReach r{};
     r.slot=approachSlot(u);
     r.weapon=r.slot>=0 ? &u.type->weapons[size_t(r.slot)] : nullptr;
-    // Approach on the reach this unit actually fights at: the selected weapon for a
-    // switcher, the longest of them when they all fire.
-    const bool allWeapons=!u.type->weaponSwitching && u.type->weapons.size()>1 && !chasesOnOrderSlot(u);
+    // Approach on the reach this unit actually fights at: the longest of its
+    // weapons when they all fire.
+    const bool allWeapons=u.type->weapons.size()>1 && !chasesOnOrderSlot(u);
     r.best=allWeapons ? u.type->maxRange() : (r.weapon ? float(r.weapon->range) : u.type->maxRange());
     // Range is to the target's footprint EDGE, not its centre. A building's centre is
     // deep inside a blocked footprint, so a centre-distance check leaves a short-range
@@ -7992,11 +7673,11 @@ World::CombatReach World::combatReach(const Unit& u,const Unit& t,float dist) co
     // STRUCTURE target, pad the effective range by its footprint half-extent plus a
     // small margin for where nav actually halts at the edge (mirrors the builder reach
     // in tickConstruction). Mobile targets keep centre-distance, so unit-vs-unit combat
-    // is unchanged. Only a melee approach weapon is padded: every other retail
-    // weapon class measures a building centre to centre (Weapon::centreReach),
-    // and so approaches to its range itself, as retail's Attack_Chase (403bb0)
-    // heads for a ring of the weapon's range round the target's centre.
-    r.pad=t.type->maxVel <= Fixed() && !(r.weapon && r.weapon->centreReach())
+    // is unchanged. No approach weapon is padded: every TA weapon class measures a
+    // building centre to centre (530580), and so approaches to its range itself,
+    // as retail's Attack_Chase (403bb0) heads for a ring of the weapon's range
+    // round the target's centre. Only a unit with no weapon gets the pad.
+    r.pad=t.type->maxVel <= Fixed() && !r.weapon
               ? 8.0f*float(std::max(t.type->footX,t.type->footZ))+24.0f
               : 0.0f;
     // A ballistic weapon reaches only where its arc does (52bc60, see
@@ -8015,10 +7696,9 @@ bool World::approachNeedsClearLine(const Unit& u,const Unit& t) const {
 
 bool World::slotInRange(const Unit& u,const Unit& t,int slot) const {
     const Weapon& w=u.type->weapons[size_t(slot)];
-    if (w.melee) return meleeInRange(u,t);
     if (w.ballisticClass()) return ballisticInRange(u,t,w);
     // The base test (530580) is centre to centre, inclusive, for a structure
-    // too (Weapon::centreReach): no footprint pad.
+    // too: no footprint pad.
     const int64_t r=w.range;
     return retailCentreDist2(u,t)<=r*r;
 }
@@ -8060,37 +7740,10 @@ bool World::slotClearShot(const Unit& u,const Unit& t,int slot) const {
 static constexpr uint8_t kBlockedShots=3;    // in a row before the spot is written off
 static constexpr int kBlockedSpot=16;        // px the shooter or the target may drift and keep the count
 
-// Engine deviation (owner's call 2026-11-15), part of statusShotRefused's: a
-// flying status caster (a charm, stone or freeze weapon) hovers round its
-// ring and drifts 20-40 px between shots, so its own spot would never hold,
-// while a building beside its target stops its charms from any point on that
-// side. For it the line is its bearing from the target: the count holds until
-// the target leaves its spot or that bearing turns by more than kBlockedBearing.
-// Only while its selected weapon is the status weapon: the Creon dragon's Blue
-// Flame keeps the spot rule of any hoverer.
-static constexpr int kBlockedBearing=0x2000;   // native angle units: 1/8 turn
-
-static bool statusWeapon(const Weapon& w) {
-    return w.mindControl || w.status==Weapon::Status::Stoned || w.status==Weapon::Status::Frozen;
-}
-
-static bool flyingStatusCaster(const Unit& u) {
-    if (!u.type || !u.type->canFly || u.type->weapons.empty()) return false;
-    return statusWeapon(u.type->weapons[size_t(std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1))]);
-}
-
 // Has the shooter or its target left the spots the blocked count was taken
 // between (more than kBlockedSpot either way)?
 static bool blockedSpotLeft(const Unit& u,int64_t sx,int64_t sz,int64_t tx,int64_t tz) {
     if (std::abs(tx-u.blockedTX)>kBlockedSpot || std::abs(tz-u.blockedTZ)>kBlockedSpot) return true;
-    if (flyingStatusCaster(u)) {
-        const auto bearing=[](int64_t dx,int64_t dz) {
-            return uint16_t(retailDirection(Fixed::fromInt(int(dx)),Fixed::fromInt(int(dz))).v);
-        };
-        const uint16_t turn=uint16_t(bearing(sx-tx,sz-tz)-bearing(int64_t(u.blockedX)-u.blockedTX,
-                                                                      int64_t(u.blockedZ)-u.blockedTZ));
-        return std::min<int>(turn,0x10000-turn)>kBlockedBearing;
-    }
     return std::abs(sx-u.blockedX)>kBlockedSpot || std::abs(sz-u.blockedZ)>kBlockedSpot;
 }
 
@@ -8135,22 +7788,6 @@ bool World::impactIndestructible(const Weapon& w,int cx,int cz) const {
     return true;   // bare terrain, water, or a map blocker with no feature record
 }
 
-// Engine deviation (owner's call 2026-11-15): a status shot (mind control,
-// stone, freeze) takes the first body it strikes (52d8d0, 52db40, 52dda0),
-// and retail lets the caster go on firing when that body is one the shot
-// cannot take: a Harpy charming a builder behind a Barracks spent every charm
-// on the Barracks. Such a body stops the shot as surely as a wall, so a strike on
-// a body other than the target that this weapon cannot take (a charm's
-// canCaptureTarget, a stone or freeze weapon's statusCanTake, and any body
-// of the caster's own side) counts as a blocked shot (noteShotImpact). Asked
-// before the hit lands, since a charm that takes the body changes its side.
-bool World::statusShotRefused(const Weapon& w,int player,int targetId,int struckId) const {
-    if (!statusWeapon(w)) return false;
-    const Unit* s=struckId && struckId!=targetId ? unit(struckId) : nullptr;
-    if (!s || !s->type || !s->alive()) return false;
-    if (allied(player,s->player)) return true;
-    return w.mindControl ? !canCaptureTarget(player,*s) : !statusCanTake(w,*s);
-}
 
 void World::noteShotImpact(int fromId,int targetId,const Weapon& w,const std::array<int32_t,3>& impact,int hitUnit,Fixed targetHp,
                            bool refused) {
@@ -8159,8 +7796,7 @@ void World::noteShotImpact(int fromId,int targetId,const Weapon& w,const std::ar
     if (!u || !u->alive() || !u->type || !t || !t->alive() || !t->type || targetId==fromId) return;
     if (hitUnit && !refused) {
         // The target itself: the line is open. Any other body neither opens
-        // nor blocks it (it can be killed, or it moves), unless it stopped a
-        // status shot that cannot take it (statusShotRefused).
+        // nor blocks it (it can be killed, or it moves).
         // A hit also renews the walk budget: the line it opened is spent once
         // the target or the shooter moves on.
         if (hitUnit==targetId && u->blockedTarget==targetId) { u->blockedShots=0;u->repositions=0;u->searchFailed=0; }
@@ -8221,7 +7857,7 @@ void World::noteNoArc(Unit& u,const Unit& t) {
 // SweetSpot above the surface, and it is a target again. Only a body over
 // water whose origin is under the surface is queried.
 bool World::aimPointSubmerged(const Weapon& w,const Unit& t) const {
-    if (w.melee || w.waterWeapon || w.unitsOnly || noSeaLevelTrigger_ || !t.type || t.type->canFly) return false;
+    if (w.waterWeapon || w.unitsOnly || noSeaLevelTrigger_ || !t.type || t.type->canFly) return false;
     if (t.groundY.v>=int32_t(uint32_t(uint8_t(seaLevel_))<<16) || heights_.empty() || terW_<=0) return false;
     // Water under it (511170's interpolated ground below the surface).
     if (retailTerrainHeight(t.x.v,t.z.v,terW_,terH_,[&](int x,int z) {
@@ -8339,8 +7975,8 @@ bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
     const Weapon& w=u.type->weapons[size_t(slot)];
     const int foot=footCells(u.type);
     const NavGrid& grid=navFor(u.type);
-    // The band is the strict centre test's (Weapon::centreReach: no footprint
-    // pad for a structure); a ballistic shell is also held to its arc (each
+    // The band is the strict centre test's (no footprint pad for a
+    // structure); a ballistic shell is also held to its arc (each
     // spot is solved below).
     const bool arc=w.ballisticClass();
     const int64_t hi=int64_t(w.range)-16,lo=std::max<int64_t>(int64_t(w.minRange)+16,
@@ -8436,12 +8072,8 @@ bool World::slotBadTarget(const Unit& u,int slot,const Unit& t) const {
 bool World::sweepKeepsTarget(const Unit& u,int slot,const Unit& t) const {
     const Weapon& w=u.type->weapons[size_t(slot)];
     if (!t.alive() || t.hp<=Fixed() || !t.type || allied(u.player,t.player) || t.embarked()) return false;
-    // 40fcb3..40fcc6: a melee slot keeps a grounded target only (+0x130 & 3
-    // == 1), so a flyer that takes off is let go; a landed one is kept.
-    if (w.melee && t.flightGroundMode!=1) return false;
     if (slotBadTarget(u,slot,t)) return false;
     if (w.status==Weapon::Status::Paralyzed && t.paralyzedFor>0) return false;
-    if (w.mindControl && t.underConstruction) return false;   // see retailSelectTarget
     if (shotBlockedHere(u,t)) return false;   // engine deviation: see noteShotImpact
     if (aimPointSubmerged(w,t)) return false;  // engine deviation, as is this
     return true;
@@ -8452,8 +8084,7 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
     const Weapon& w=u.type->weapons[size_t(slot)];
     // The mission scan gathers over def+0x226 (sightdistance) or the range.
     // Retail has no double-sight option (S, 4bfa50); with ours on, the scan
-    // gathers as far as the plane the unit stamps, so a melee unit's reach
-    // keeps up with its doubled sight.
+    // gathers as far as the plane the unit stamps.
     // TotalA.exe's Standby scan (0x43b700 -> picker 0x40b7b0, docs/retail-weapon-
     // scripts.md 8.1) gathers known enemies within the unit's own sightdistance;
     // each must then pass slot 0's range check (0x49abb0) below.
@@ -8500,27 +8131,14 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
         const int32_t eff=int32_t(w.damageVs(t.type));
         // 0x49abb0: distance^2 <= range^2 from the unit origin; kamikaze types
         // skip it. TA has no line-of-fire test (docs/retail-weapon-scripts.md 3).
-        if (!u.type->kamikaze && !w.melee && !(eff>0 && slotInRange(u,t,slot)))
+        if (!u.type->kamikaze && !(eff>0 && slotInRange(u,t,slot)))
             continue;   // 52ad60
         if (categoryMatch(u.type->noTargetCats,*t.type)) continue;
-        // 4127eb..4128db: a stone, freeze or charm class (vtable +0x1c / +0x20 /
-        // +0x24) skips a unit immune to it and one with construction left; it
-        // does not skip a paralyzed one. Their callbacks refuse a Monarch and a
-        // building too, but the picker does not look: the shot is wasted.
-        const bool status=w.status==Weapon::Status::Stoned || w.status==Weapon::Status::Frozen || w.mindControl;
-        if (w.status==Weapon::Status::Stoned && t.type->cantBeStoned) continue;
-        if (w.status==Weapon::Status::Frozen && t.type->cantBeFrozen) continue;
-        if (w.mindControl && t.type->cantBeCaptured) continue;
-        if (status && t.underConstruction) continue;
-        // Engine deviation: nor a target the callback refuses (statusCanTake).
-        if (!statusCanTake(w,t)) continue;
         // 4128e1..4128ff, 412905..41292c: a paralyzer (damage type 4, WeaponType
         // +0xc8 & 0xf) skips a type with immunetoparalyzer (UnitDef +0x260 bit
         // 26) and a unit already paralyzed (+0x114 & 0x10).
         if (w.dmgType==4 && (t.type->immuneToParalyzer || t.paralyzedFor>0)) continue;
-        // 412932..412945: a melee slot takes grounded units only (+0x130 & 3
-        // == 1): a flyer in the air never, a landed one like any other.
-        if (w.melee && t.flightGroundMode!=1) continue;
+
         // 530580's head: toairweapon takes a target in the air only, noairweapon
         // never one (+0x130 & 3 == 2) -- a landed flyer is a ground target.
         if (w.toAir && t.flightGroundMode!=2) continue;
@@ -8539,7 +8157,6 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
             const uint32_t q=uint32_t(int32_t(retailCentreDist2(u,t))/eff);
             score=fireRand(q)/2;
             score+=fireRand(q);
-            if (w.melee) { score+=fireRand(q);score+=fireRand(q);score+=fireRand(q); }
         }
         if (mobile) {
             // Turn penalty, on the turn rate the mover's terrain bits scale
@@ -8571,9 +8188,7 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
 
 int World::retailScanSlot(const Unit& u) const {
     if (!u.type || u.type->weapons.empty()) return -1;
-    // 519ac0: UnitDef +0x260 & 0x10000 (weaponswitching) and the selected
-    // slot (+0x130 >> 30) below 3; otherwise the first slot holding a weapon.
-    if (u.type->weaponSwitching && u.weaponSlot>=0 && u.weaponSlot<3) return u.weaponSlot;
+    // 519ac0: the first slot holding a weapon (TA has no weaponswitching).
     return 0;
 }
 
@@ -8624,7 +8239,6 @@ void World::retailGuardNoMoveSlots(Unit& u,int draw) {
         u.missionEvents&=~0xe00000u;
     }
     for (int s=0;s<slots;++s) {
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
         const Unit* t=unit(u.slotTarget[size_t(s)]);   // 51a9a0
         // slotClearShot: the engine's line-of-fire deviation, which is part of
         // "in reach" wherever the sweep and the weapon update test it (D4), so
@@ -8669,12 +8283,11 @@ bool World::retailAnswersAttacker(const Unit& e,const Unit& a,int s,bool mobile)
     if (!reach && mobile) {
         const int32_t leash=int32_t(uint16_t(std::clamp(e.type->leash,0,65535)));
         const int32_t oct=retailOctDistance(a.x.floorInt()-e.x.floorInt(),a.z.floorInt()-e.z.floorInt());
-        reach=oct<(leash*9)/10+(w.melee ? 0 : w.range);
+        reach=oct<(leash*9)/10+w.range;
     }
-    // 409db4..409dcc (4183e8..4184a5 in VTOL_Move): a melee weapon answers
-    // only an attacker on the ground (+0x130 & 3 == 1); the air bits test
-    // its current layer.
-    return reach && canAttackTarget(e,a) && !(w.melee && a.flightGroundMode!=1) &&
+    // 409db4..409dcc (4183e8..4184a5 in VTOL_Move): the air bits test the
+    // attacker's current layer.
+    return reach && canAttackTarget(e,a) &&
         !(w.toAir && a.flightGroundMode!=2) && !(w.noAir && a.flightGroundMode==2) && eff>0;
 }
 
@@ -8732,35 +8345,6 @@ bool World::retailWanderScan(Unit& u) {
     return true;
 }
 
-bool World::retailMeleeRetarget(Unit& u) {
-    Order& o=u.orders.front();
-    if (!o.autoTarget || u.type->canFly || u.type->isStructure() || !u.type->canMove) return false;
-    // Stage 1 far from the target: sleep 4 + rand(5) + rand(5) (404c2e).
-    const auto nap=[&]{ const uint32_t a=pathRand(5),b=pathRand(5); return tickCounter_+4+a+b; };
-    if (!o.airRunCount) { o.airRunCount=int32_t(nap()); return false; }
-    if (tickCounter_<uint32_t(o.airRunCount)) return false;
-    // Stage 2's timer wake on an automatic attack (+0x52 != 0, 40496a..):
-    // off Hold Position, rand(2) == 0, 4d8370, a hit other than the target,
-    // inside +0x56 of the origin when a leash is set, then rand(10) == 0:
-    // 5199f0 makes it the target and the mission starts again (stage 0).
-    int to=0;
-    if (u.moveState!=0 && pathRand(2)==0) {
-        if (const int found=retailHostScan(u);found && found!=o.targetId) {
-            const Unit* t=unit(found);
-            const bool inLeash=!o.chaseLeashed || !o.chaseLeash ||
-                retailGroundDistance({int16_t(t->x.floorInt()),int16_t(t->z.floorInt())},o.chaseOrigin)<o.chaseLeash;
-            if (inLeash && pathRand(10)==0) to=found;
-        }
-    }
-    if (!to) { o.airRunCount=int32_t(nap()); return false; }
-    if (u.scriptAimTarget) clearScriptWeaponTarget(u);
-    o.targetId=to;o.airRunCount=0;o.attackAimTick=Order::kAttackUnaimed;
-    if (o.buildRectangle) { o.buildRectangle.reset();o.controller=0;o.navigationExhausted=o.navigationConsumed=false; }
-    cancelPath(u);u.routeStamp=-1;
-    noteOrders(u.id);
-    return true;
-}
-
 // 40f330's slot part, for one player: a budget of N/30+1 counted units per
 // call from a cursor that walks the player's slot range and wraps. A dead or
 // dying unit, or one with construction left (40f3a1..40f3c9: the same test as
@@ -8802,39 +8386,19 @@ void World::tickFireSweep(int player) {
         Unit* u=unit(pool[i]);
         if (!u || !u->alive() || u->hp<=Fixed() || !u->type || u->player!=player || u->underConstruction) continue;
         if (!u->type->weapons.empty()) {
-            // 40f411: the switch block, after the armed test and before the
-            // fireState test, so the new slot is swept in this same visit.
-            if (aiOwner && u->type->weaponSwitching) retailAiWeaponSwitch(*u);
             syncSlotMode(*u);
             if (u->fireState==2 && u->slotAuto) {
                 for (int s=0;s<int(std::min<size_t>(3,u->type->weapons.size()));++s) {
                     if (!(u->slotAuto>>s&1)) continue;
                     const Weapon& w=u->type->weapons[size_t(s)];
                     if (w.cursorAirstrike || (w.commandFire && !aiOwner)) continue;
-                    if (u->type->weaponSwitching && s!=u->weaponSlot) continue;
                     if (const int held=u->slotTarget[size_t(s)]) {
                         const Unit* t=unit(held);
                         if (t && sweepKeepsTarget(*u,s,*t)) continue;
                         // 51a9a0 retires a dead or invalid target.
                         if (!t || !t->alive() || t->hp<=Fixed()) dropSlotTarget(*u,s);
                     }
-                    int found=retailSelectTarget(*u,s,true);
-                    // Engine deviation: a computer's switcher whose selected
-                    // weapon finds nothing looks with its others and takes
-                    // the first that does (a Fallen Angel holding its Death
-                    // Sword never saw a ship its Fire Bomb could burn).
-                    if (!found && aiOwner && u->type->weaponSwitching)
-                        for (int o=0;o<int(std::min<size_t>(3,u->type->weapons.size())) && !found;++o) {
-                            if (o==s || !(u->slotAuto>>o&1)) continue;
-                            const Weapon& ow=u->type->weapons[size_t(o)];
-                            if (ow.cursorAirstrike || ow.commandFire) continue;
-                            if (const int other=retailSelectTarget(*u,o,true)) {
-                                dropSlotTarget(*u,s);
-                                switchWeaponSlot(*u,o,false);
-                                setSlotTarget(*u,o,other);
-                                found=-1;
-                            }
-                        }
+                    const int found=retailSelectTarget(*u,s,true);
                     if (found>0) setSlotTarget(*u,s,found);
                     else if (!found) dropSlotTarget(*u,s);
                 }
@@ -8856,15 +8420,14 @@ void World::tickSlotWeapons(Unit& u) {
     bool aiming=false;
     for (int s=0;s<int(std::min<size_t>(3,u.type->weapons.size()));++s) {
         if (!(u.slotAuto>>s&1) || !u.slotTarget[size_t(s)]) continue;
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
         Unit* t=unit(u.slotTarget[size_t(s)]);
         if (!t || !t->alive() || t->hp<=Fixed() || !t->type) { dropSlotTarget(u,s);continue; }
         // 52fe30 refuses to aim inside minrange or out of range; the target
         // is kept either way.
         if (slotInsideMinRange(u,*t,s) || !slotInRange(u,*t,s) || !slotClearShot(u,*t,s)) continue;
         aiming=true;
-        // The request points where the slot aims: the led SweetSpot, or a
-        // melee target's origin (retailSlotFacing).
+        // The request points where the slot aims: the led SweetSpot
+        // (retailSlotFacing).
         const auto solution=queryWeaponAim(u.id,t->id,s);
         const Bam desired=solution ? retailHeadingToPort(solution->facing) : retailDirection(t->x-u.x,t->z-u.z);
         const bool facing=slotNeedsFacing(*u.type);
@@ -8898,7 +8461,6 @@ void World::slotHitResponse(Unit& victim,const Unit& attacker) {
     for (int s=0;s<int(std::min<size_t>(3,victim.type->weapons.size()));++s) {
         if (!(victim.slotAuto>>s&1)) continue;
         if (victim.type->weapons[size_t(s)].commandFire) continue;
-        if (victim.type->weaponSwitching && s!=victim.weaponSlot) continue;
         if (slotInsideMinRange(victim,attacker,s) || !slotInRange(victim,attacker,s) ||
             !slotClearShot(victim,attacker,s)) continue;
         if (const Unit* t=unit(victim.slotTarget[size_t(s)]);
@@ -8918,111 +8480,11 @@ void World::guardSlotRetarget(Unit& u,const Unit& attacker) {
     for (int s=0;s<int(std::min<size_t>(3,u.type->weapons.size()));++s) {
         if (!(u.slotAuto>>s&1)) continue;
         if (u.type->weapons[size_t(s)].commandFire) continue;
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
         if (const Unit* t=unit(u.slotTarget[size_t(s)]);
             t && t->alive() && t->hp>Fixed() && (flying || !slotInsideMinRange(u,*t,s)) &&
             slotInRange(u,*t,s) && slotClearShot(u,*t,s) && !slotBadTarget(u,s,*t)) continue;
         if (u.slotTarget[size_t(s)]!=attacker.id) setSlotTarget(u,s,attacker.id);
     }
-}
-
-// 40f411..40fb92 host: the per-slot facts, the selected slot's target (the
-// 51a9a0 lookup) and the enemy/ally counts around it, from the owner's 7-tick
-// visible lists by live centre distance (411ae0/411dd0).
-void World::retailAiWeaponSwitch(Unit& u) {
-    const int sel=u.weaponSlot;
-    const int n=int(std::min<size_t>(3,u.type->weapons.size()));
-    if (sel<0 || sel>=n) return;
-    int targetId=(u.slotAuto>>sel&1) ? u.slotTarget[size_t(sel)] : u.scriptAimTarget;
-    // Engine deviation: an ordered target counts before the selected weapon
-    // has aimed at it, which it never does when it cannot serve it.
-    if (!targetId && !(u.slotAuto>>sel&1) && !u.orders.empty()) targetId=u.orders.front().targetId;
-    Unit* target=targetId ? unit(targetId) : nullptr;
-    if (targetId && (!target || !target->alive() || !target->type)) {
-        if (u.slotAuto>>sel&1) dropSlotTarget(u,sel);   // 51a9a0 retires it
-        target=nullptr;
-    }
-    const bool live=target && target->hp>Fixed();
-    // A target the sweep handed an auto slot is fought from where the unit
-    // stands; an ordered one is closed on.
-    const bool swept=(u.slotAuto>>sel&1)!=0;
-    RetailWeaponSwitchInput in;
-    in.selected=sel;
-    in.target=live;
-    in.targetHp=live ? int32_t(int16_t(target->hp.floorInt())) : 0;
-    in.lowMonarch=u.type->commander && u.hp.floorInt()<int(unsigned(u.type->maxHp)/3u);
-    for (int s=0;s<n;++s) {
-        const Weapon& w=u.type->weapons[size_t(s)];
-        auto& slot=in.slots[size_t(s)];
-        slot.present=true;
-        slot.affordable=true;   // TA: no per-unit pool; shots are gated by stored E/M
-        slot.aoe=int32_t(uint16_t(w.aoe));
-        slot.mindControl=w.mindControl;
-        slot.damage=w.damage;
-        const bool stone=w.status==Weapon::Status::Stoned,freeze=w.status==Weapon::Status::Frozen;
-        const bool paralyzer=w.dmgType==4;
-        slot.costlyOrSpecial=stone || freeze || w.mindControl || paralyzer || slot.aoe>=200;
-        if (live) {
-            // 40f50e..40f5ea / 40f7b8..40f8ab: a stone, freeze or charm class
-            // is no use on a type immune to it or on a target with
-            // construction left (+0x108 above 0); a paralyzer on an immune or
-            // already paralyzed one.
-            const Unit& t=*target;
-            const bool unfinished=t.underConstruction;
-            slot.usable=!(stone && (t.type->cantBeStoned || unfinished)) &&
-                        !(freeze && (t.type->cantBeFrozen || unfinished)) &&
-                        !(w.mindControl && (t.type->cantBeCaptured || unfinished)) &&
-                        !(paralyzer && (t.type->immuneToParalyzer || t.paralyzedFor>0)) &&
-                        aiSlotServes(u,w,t,s,swept);
-        }
-    }
-    auto count=[&](const std::vector<int>& list,int32_t radius) {
-        const int64_t r2=int64_t(radius)*radius;
-        int found=0;
-        for (const int id:list) {
-            const Unit* o=unit(id);
-            if (o && o->alive() && o->hp>Fixed() && retailCentreDist2(*target,*o)<=r2) ++found;
-        }
-        return found;
-    };
-    const Player& owner=players_[size_t(u.player)];
-    const int choice=retailWeaponSwitchChoice(in,
-        [&](int32_t r){return count(owner.visibleEnemies,r);},
-        [&](int32_t r){return count(owner.visibleAllies,r);},
-        [&](int bound){return int(gameRand(int32_t(bound)));});
-    int pick=choice;
-    // Engine deviation: retail falls back on the primary, and keeps it when
-    // its raw damage would finish the target, whether or not it can touch
-    // it (a Fallen Angel's Death Sword at a ship). With a live target the
-    // unit keeps or takes a weapon that serves: the one chosen, else the one
-    // it holds, else the first that does.
-    if (live) {
-        auto serves=[&](int s) {
-            const Weapon& w=u.type->weapons[size_t(s)];
-            return aiSlotServes(u,w,*target,s,swept) &&
-                (s==0 || in.slots[size_t(s)].usable);
-        };
-        if (!serves(pick<0 ? sel : pick)) {
-            pick=-1;
-            if (!serves(sel)) for (int s=0;s<n;++s) if (serves(s)) { pick=s;break; }
-        }
-        if (pick==sel) pick=-1;
-    }
-    if (pick>=0) switchWeaponSlot(u,pick,false);
-}
-
-// Engine deviation, for a computer's switcher: can this weapon do anything
-// to the target (weaponServes), can a melee weapon reach it at all (not a
-// boat on water the unit cannot walk), and, for a target the sweep found,
-// is it in this weapon's range from where the unit stands (retail's choice
-// tests no range: a Sea Dragon on Hold Position took its 450 px Tsunami
-// against an enemy 472 px off and never fired)?
-bool World::aiSlotServes(const Unit& u,const Weapon& w,const Unit& t,int slot,bool fromHere) const {
-    if (!weaponServes(u,w,t)) return false;
-    if (fromHere && (!slotInRange(u,t,slot) || slotInsideMinRange(u,t,slot))) return false;
-    if (w.melee && !u.type->canFly && !t.type->canFly && !navFor(u.type).walkable(t.x.floorInt()>>4,t.z.floorInt()>>4))
-        return false;
-    return true;
 }
 
 bool World::retailIssueAutoAttack(Unit& u,int targetId,bool forceReturn,bool forced) {
@@ -9250,15 +8712,13 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     }
 
     Unit* target = unit(u.orders.front().targetId);
-    // Auto-acquisition and conversion attacks require a hostile target throughout
-    // the order, not just when it starts. A target that changed owner is gone
-    // for every order made on it before the change, an explicit attack's too
-    // (retireReferences), so no caster's charm leaves this unit attacking its
-    // own side; this guards the orders that remain. An explicit attack given
-    // on a friendly unit is still carried out: intentional friendly fire.
-    const bool requiresEnemy=u.orders.front().autoTarget ||
-        std::any_of(u.type->weapons.begin(),u.type->weapons.end(),
-                    [](const Weapon& w){return w.mindControl;});
+    // Auto-acquisition requires a hostile target throughout the order, not
+    // just when it starts. A target that changed owner is gone for every
+    // order made on it before the change, an explicit attack's too
+    // (retireReferences); this guards the orders that remain. An explicit
+    // attack given on a friendly unit is still carried out: intentional
+    // friendly fire.
+    const bool requiresEnemy=u.orders.front().autoTarget;
     if (!target || !target->alive() || (requiresEnemy && allied(u.player,target->player)) ||
         (target->hp<=Fixed() && !(target->retailSite && target->underConstruction))) {
         // Clear both the order and script aim before a pending release can fire
@@ -9273,7 +8733,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         u.routeStamp = -1;
         return;
     }
-    // Recheck live immunity/capacity and the selected capture spell while aiming too.
+    // Recheck the target while aiming too.
     // A queued target may have become protected, embarked or otherwise unusable.
     if (!canAttackTarget(u,*target)) {
         if(u.scriptAimTarget)clearScriptWeaponTarget(u);
@@ -9320,7 +8780,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     // carried target (403c9c..403cb0: +0x114 & 4, or layer 0), so a unit that
     // boards a transport is let go instead of chased.
     if (sel && u.type->canMove && !u.type->canFly && !u.type->isStructure() &&
-        ((sel->melee && target->flightGroundMode==2) || target->embarked())) {
+        target->embarked()) {
         if(u.scriptAimTarget)clearScriptWeaponTarget(u);
         dropLeg(u);
         cancelPath(u);
@@ -9365,11 +8825,9 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     //     AA/ground turret really does work both barrels at once.
     // (`fireatwillrandom` is unrelated to this -- it scatters auto-acquired TARGET
     // choice; see UnitType::fireAtWillRandom.)
-    // The reach it fights at (combatReach): the selected
-    // weapon's range for a switcher, the longest when they all fire, padded for
-    // a structure target only for a melee weapon (Weapon::centreReach); the
-    // arc for a ballistic weapon.
-    const bool allWeapons = !u.type->weaponSwitching && u.type->weapons.size() > 1;
+    // The reach it fights at (combatReach): the longest weapon's range when
+    // they all fire; the arc for a ballistic weapon.
+    const bool allWeapons = u.type->weapons.size() > 1;
     const CombatReach cr = combatReach(u,*target,dist);
     const int arcSlot = cr.slot;
     const Weapon* approach = cr.weapon;
@@ -9390,9 +8848,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         const auto aim = queryWeaponAim(u.id,target->id,arcSlot);
         return aim && aim->unreachable;
     };
-    // Melee: retail closes to footprint adjacency (see meleeInRange above);
-    // `range` and LoS play no part.
-    bool adj = sel && sel->melee && target->type && meleeInRange(u, *target);
+
     // Ranged units whose shot flies the line need a clear line to shoot; a
     // wall between them means close in / reposition rather than firing through
     // it (melee & flyers are exempt). Ballistic shots use retail's pitched 3D
@@ -9461,7 +8917,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     // so did we for an ordered attack and for Hold Position (a ship shooting
     // into the bank under a unit on the shore); now each gives the target up,
     // and Hold Position does so without looking for a spot.
-    if (!airRun && !hovering && sel && !sel->melee && inReach && u.type->canMove &&
+    if (!airRun && !hovering && sel && inReach && u.type->canMove &&
         !u.type->canFly && !u.type->isStructure() && shotBlockedHere(u,*target)) {
         const bool onTheWay = u.orders.front().autoTarget && movementQueued(u);
         const bool ordered = !u.orders.front().autoTarget;
@@ -9475,24 +8931,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
             return;
         }
     }
-    // Engine deviation (owner's call 2026-11-15): a hovering status caster
-    // (a Harpy, the Creon dragon's Freezing Breath) whose shots keep striking
-    // a body they cannot take (statusShotRefused) writes the target off and
-    // lets it go, as a ground attacker with no clear spot left does: retail
-    // hovers on, spending a charm
-    // on the Barracks each reload. The scans and the sweep do not take the
-    // target again until the write-off lapses (the target moves, or the
-    // caster comes round to another side of it). Only the status weapon's
-    // shots: TotalA.exe's hover (0x4139ad) steps 45 degrees either side of
-    // its bearing on every arrival, so other shots find a clear line by
-    // themselves.
-    if (hovering && sel && statusWeapon(*sel) && u.type->canFly && shotBlockedHere(u,*target)) {
-        if(u.scriptAimTarget)clearScriptWeaponTarget(u);
-        dropLeg(u);
-        cancelPath(u);
-        u.routeStamp = -1;
-        return;
-    }
+
     // A unit that may not move (a building, Hold Position on an auto target)
     // whose aimed shell has no arc from here (noteNoArc wrote the target
     // off) drops it; the scans and the sweep do not pick it up again from
@@ -9504,37 +8943,17 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         u.routeStamp = -1;
         return;
     }
-    // Attack_Chase (403bb0): the attack mission of a body that walks, its
-    // selected weapon not melee (Attack_Melee, 404690, closes to contact).
-    const bool chaseMission = !u.type->canFly && !u.type->isStructure() && u.type->canMove &&
-                              !(sel && sel->melee);
+    // Attack_Chase (403bb0): the attack mission of a body that walks.
+    const bool chaseMission = !u.type->canFly && !u.type->isStructure() && u.type->canMove;
     // An attack run, a hover or a dogfight flies in and out of range: its
     // weapons fire (below) when a slot has the target in range, and the
     // mission flies on regardless.
-    if (!airRun && !airToAir && !hovering && !strike && ((sel && sel->melee) ? !adj
-                            : (!inReach || (approachNeedsLine && !los && mayChase) || (mayChase && arcShort())))) {
+    if (!airRun && !airToAir && !hovering && !strike &&
+        (!inReach || (approachNeedsLine && !los && mayChase) || (mayChase && arcShort()))) {
         if (chaseMission) u.orders.front().attackChased = true;
-        if (sel && sel->melee && retailMeleeRetarget(u)) return;
-        // Attack_Melee (404690) stage 0: a melee weapon's target with no
-        // mover (a structure) is approached on 4d4e80's rectangle round its
-        // footprint, not at its centre: each attacker walks to its own
-        // nearest perimeter origin and any perimeter origin is arrival.
-        if (sel && sel->melee && !u.type->canFly && !u.type->isStructure() && target->type->isStructure()) {
-            installMeleeApproach(u,*target);
-            return;
-        }
         // Advance toward the target, steering around impassable terrain.
         if (u.repathLeft > 0) --u.repathLeft;
         Order& o = u.orders[currentLeg(u.orders)];
-        // A selected weapon that is no longer melee hands the target to
-        // Attack_Chase (Attack_Melee's head, 4d4bf0/4d4ef0): the melee
-        // rectangle goes, and the chase steers at the target again.
-        if (o.buildRectangle) {
-            o.buildRectangle.reset();
-            o.controller=0;
-            o.navigationExhausted=o.navigationConsumed=false;
-            cancelPath(u);
-        }
         o.x = target->x;
         o.z = target->z;
         // Refresh the leg's destination, preserving its intermediate waypoints.
@@ -9545,16 +8964,14 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     // aimtolerance, with a clear shot, and (unless noairweapon) legal against air.
     // Each weapon is gated on its own terms, because a non-switching unit runs all
     // of them at once and they rarely share a range band. A structure gets no
-    // footprint pad here (Weapon::centreReach; combatReach's pad is the melee
-    // approach's).
+    // footprint pad here.
     auto slotAims = [&](int sl) {
         const Weapon& sw = u.type->weapons[size_t(sl)];
-        if (sw.mindControl && !canCaptureTarget(u.player,*target)) return false;
         if (sw.noAir && target->flightGroundMode==2) return false;
         if (sw.toAir && target->flightGroundMode!=2) return false;
         if (aimPointSubmerged(sw,*target)) return false;   // engine deviation
         if (groundPair && sw.needsClearLine() && !los) return false;
-        if (sw.melee ? !adj : sw.ballisticClass() ? !ballisticInRange(u,*target,sw) : dist > sw.range)
+        if (sw.ballisticClass() ? !ballisticInRange(u,*target,sw) : dist > sw.range)
             return false;
         return dist >= sw.minRange;
     };
@@ -9599,7 +9016,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     // clear shot (repositionForShot, the blocked-shot search, whose band
     // starts 16 px past the minimum range); with no spot, its walks used up
     // or on Hold Position, it gives the target up.
-    if (!airRun && !hovering && sel && !sel->melee && u.type->canMove && !u.type->canFly &&
+    if (!airRun && !hovering && sel && u.type->canMove && !u.type->canFly &&
         !u.type->isStructure() && sel->minRange>0 && dist<float(sel->minRange)) {
         bool aims=false;
         forEachSlot([&](int sl) { aims=aims || slotAims(sl); });
@@ -9709,23 +9126,6 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         u.routeStamp = -1;
         return;
     }
-    // A weapon switch may have changed the slot: the
-    // missions' heads read 519ac0 on this dispatch.
-    if (u.type->weaponSwitching && slot!=u.weaponSlot && u.weaponSlot<int(u.type->weapons.size())) {
-        slot=u.weaponSlot;
-        sel=&u.type->weapons[size_t(slot)];
-        // E (probe_attack_chase_stop.py --switch-tick): the switch's 0x40
-        // (51a8b0) wakes Attack_Chase, waiting in its fire stage on
-        // 0x1f40068 (404493), in this same dispatch, and the stage gives the
-        // new selected slot the target at once (51a700, 40448e) when it is
-        // in reach (52adf0, 52ad60); without the bit it would wait for the
-        // stage's own wake, rand(6) + 3 ticks on. World's aim start on that
-        // tick is the stage-1 aim's (above): it reaches the script at the
-        // next COB pass, as 52ae90's does in retail. A melee slot's hand
-        // over to Attack_Melee (403c17) still waits for the next tick.
-        if (chaseMission && !sel->melee && !(u.slotAuto>>slot&1) && slotAims(slot))
-            tickScriptWeapon(u,*target,slot);
-    }
     if (airRun && !u.orders.empty() && u.orders.front().targetId==target->id) {
         tickTaAirAttack(u,target,false);
         groundMovementHandled=true;
@@ -9782,16 +9182,6 @@ bool World::slotPointInsideMinRange(const Unit& u,const std::array<int32_t,3>& a
 
 bool World::slotReachesPoint(const Unit& u,const std::array<int32_t,3>& aim,int slot) const {
     const Weapon& w=u.type->weapons[size_t(slot)];
-    if (w.melee) {
-        // 52b8a0: the point's 16 px cell against the unit's footprint box, as
-        // meleeInRange boxes a 1x1 target.
-        auto axis=[](Fixed pa,int fa,int32_t point) {
-            const int64_t ca=int64_t(footprintOrigin(pa,fa))*16+fa*8;
-            const int64_t cp=int64_t(int16_t(point>>20))*16+8;
-            return std::abs(ca-cp)-8*int64_t(fa)-8<8;
-        };
-        return axis(u.x,u.type->footX,aim[0]) && axis(u.z,u.type->footZ,aim[2]);
-    }
     auto delta=[](int32_t to,int32_t from) { return satSub32(to,from); };
     if (w.taAim!=Weapon::TaAim::None) return taRangeGate(u,aim,w);   // TotalA.exe 0x49aa80
     if (w.ballisticClass())   // 52bbb0: the arc from the origin first, then 530500
@@ -9815,7 +9205,6 @@ void World::tickPointWeapons(Unit& u) {
     const bool facing=slotNeedsFacing(*u.type);
     for (int s=0;s<int(std::min<size_t>(3,u.type->weapons.size()));++s) {
         if (!(u.slotPoint>>s&1)) continue;
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
         const WeaponTarget t{nullptr,pointAimPoint(u.slotPointAt[size_t(s)])};
         if (slotPointInsideMinRange(u,t.point,s) || !slotReachesPoint(u,t.point,s)) {
             u.missionEvents|=0x100000u;
@@ -9846,9 +9235,7 @@ void World::tickAttackWalkWeapons(Unit& u,Unit& target) {
     for (int s=0;s<int(std::min<size_t>(3,u.type->weapons.size()));++s) {
         // Only a slot the attack aimed at the target (51a700) holds it.
         if ((u.slotAuto>>s&1) || u.slotTarget[size_t(s)]!=target.id) continue;
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
         const Weapon& w=u.type->weapons[size_t(s)];
-        if (w.mindControl && !canCaptureTarget(u.player,target)) continue;
         if ((w.noAir && target.flightGroundMode==2) || (w.toAir && target.flightGroundMode!=2)) continue;
         if (slotInsideMinRange(u,target,s) || !slotInRange(u,target,s) || !slotClearShot(u,target,s)) continue;
         const auto solution=queryWeaponAim(u.id,target.id,s);
@@ -10168,7 +9555,7 @@ void World::scenarioDestroy(int unitId,uint8_t deathType) {
     cancelBuilds(unitId);stop(unitId);
     auto& u=*unit(unitId);
     const int owner=u.player;
-    u.hp=Fixed();u.deathType=deathType;u.severity=0;u.corpseStatue=-1;
+    u.hp=Fixed();u.deathType=deathType;u.severity=0;
     u.retailSite.reset();u.beingBuilt=false;
     beginUnitDeath(u);
     if (u.type->isStructure()) blockFoot(*u.type,u.x.toFloat(),u.z.toFloat(),false);
@@ -10315,7 +9702,7 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     legionFormationSlots_.erase(unitId);   // no squad, so no Legion formation slot
     u.selfDestructT = -1;
     u.scenarioName.clear();   // 511990 zeroes the name pointer +4 (51f4c0's)
-    u.frozenFor = u.stonedFor = u.paralyzedFor = 0;
+    u.paralyzedFor = 0;
     u.cloakOn = u.type->initCloaked; u.cloakBlockedUntil = 0;   // 511c77
     u.selectable = true;   // 511b21: a new object is selectable, whatever its script did
     u.hpPct1s = u.hpPctCur = 0;
@@ -10436,21 +9823,19 @@ void World::startObjectOrders(Unit& u) {
 // change of owner (514da0) makes such an object, so a captured or given unit
 // drops its placement's own percentages (matchsetup) and takes the type's.
 void World::startObjectStats(Unit& u) {
-    u.xp = 0;u.vetOverride = 0.0f;
+    u.rank = 0;u.vetOverride = 0.0f;
     u.scenarioArmor = 1.0f; u.scenarioWeapon = 1.0f;
     if (u.type) if (auto it = scenarioTypeStats_.find(u.type->id); it != scenarioTypeStats_.end()) {
         u.scenarioArmor = float(it->second[0]) * 0.01f;
         u.scenarioWeapon = float(it->second[1]) * 0.01f;
-        u.xp = retailExperienceForLevel(u.xp, std::clamp(it->second[2], 0, 10), u.type->experiencePoints,
-                                        u.type->noVeteran, u.vetOverride);
+        u.rank = std::clamp(it->second[2], 0, 10);
     }
     u.veteran = u.veteranLevel();
 }
 
 void World::setVeteranLevel(Unit& u, int level) {
     if (!u.type) return;
-    u.xp = retailExperienceForLevel(u.xp, std::clamp(level, 0, 10), u.type->experiencePoints,
-                                    u.type->noVeteran, u.vetOverride);
+    u.rank = std::clamp(level, 0, 10);
     u.veteran = u.veteranLevel();
 }
 
@@ -10530,7 +9915,7 @@ void World::missionKillAll() {
         u.deathAnimationTicks = u.deadFor;
         updateCorpseWindow(u);
         retireDeath(u);
-        if (u.corpseStatue<0 && u.deadFor<u.corpseUntil && !placeCorpse(u,corpseTypeOf(u.type))) retireCorpse(u);
+        if (u.deadFor<u.corpseUntil && !placeCorpse(u,corpseTypeOf(u.type))) retireCorpse(u);
     }
     std::erase_if(projectiles_, [&](const Projectile& p) { return killed.contains(p.fromId); });
     std::erase_if(bursts_, [&](const BurstEmitter& b) { return killed.contains(b.fromId); });
@@ -11775,49 +11160,6 @@ void World::verifyNear(float x, float z, float radius, uint64_t players) const {
 
 #endif
 
-std::string World::lodestoneUpgradeBase(const UnitType& type) {
-    if (!type.onMana || !type.isStructure()) return {};
-    // Explicit retail pairs: do not treat arbitrary modded mana buildings as upgrades.
-    static constexpr const char* factions[]={"ara","tar","ver","zon","cre"};
-    for (const char* faction:factions)
-        if (type.id==std::string(faction)+"mana") return std::string(faction)+"lode";
-    return {};
-}
-
-const Unit* World::lodestoneUpgradeSource(const UnitType* type,float x,float z,int player) const {
-    if (!type || player<0 || manaSpots_.empty()) return nullptr;
-    const std::string base=lodestoneUpgradeBase(*type);
-    if (base.empty()) return nullptr;
-    const std::pair<float,float>* spot=nullptr;
-    float best=24.0f*24.0f;
-    for (const auto& candidate:manaSpots_) {
-        const float dx=candidate.first-x,dz=candidate.second-z;
-        if (dx*dx+dz*dz<best) {best=dx*dx+dz*dz;spot=&candidate;}
-    }
-    if (!spot) return nullptr;
-    for (const auto& u:units_) {
-        if (!u.alive() || u.hp<=Fixed() || u.underConstruction || u.player!=player ||
-            !u.type || u.type->id!=base || u.type->side!=type->side) continue;
-        const float dx=u.x.toFloat()-spot->first,dz=u.z.toFloat()-spot->second;
-        if (dx*dx+dz*dz<24.0f*24.0f) return &u;
-    }
-    return nullptr;
-}
-
-bool World::removableBlockerAt(int gx,int gz) const {
-    for (const auto& f:features_) {
-        if (!f.alive || !f.blocks) continue;
-        const int ox=footprintOrigin(f.x,f.fx),oz=footprintOrigin(f.z,f.fz);
-        if (gx>=ox && gz>=oz && gx<ox+f.fx && gz<oz+f.fz) return true;
-    }
-    for (const auto& [id,footprint]:corpseFootprints_) {
-        const auto& type=featTypes_.at(size_t(footprint.type));
-        if (type.blocking && gx>=footprint.x && gz>=footprint.z &&
-            gx<footprint.x+type.fx && gz<footprint.z+type.fz) return true;
-    }
-    return false;
-}
-
 bool World::fixedBlockerAt(int gx,int gz) const {
     // A world without the map's placement cells (synthetic fixtures) knows no
     // better than the overlay it recorded.
@@ -11905,11 +11247,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
                            std::vector<int>* clearFeatures,const std::vector<int>* candidates,int ignoreId,
                            bool ignoreMobile,int yieldPlayer,bool site) const {
     if (!type) return false;
-    const Unit* replacing=lodestoneUpgradeSource(type,x,z,player);
-    // Lodestones must sit on a mana deposit — but only on maps that have any
-    // (deposit-less maps let them build on open ground). And only ONE lodestone
-    // per deposit: reject if another already occupies the target deposit.
-    // (Kingdoms' lodestone-on-deposit rule removed: TA extractors build anywhere.)
+    (void)player;
     // Check the domain-appropriate grid so water units (Kraken) require water
     // and land units require land, rather than always testing the ground grid.
     const NavGrid& grid = navFor(type);
@@ -11936,36 +11274,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
     const auto walkable=[&](const NavGrid& target,int gx,int gz) {
         if (target.walkable(gx,gz)) return true;
         if (!target.terrainWalkable(gx,gz)) return false;
-        if (replacing) {
-            const int ox=footprintOrigin(replacing->x,replacing->type->footX);
-            const int oz=footprintOrigin(replacing->z,replacing->type->footZ);
-            if (gx>=ox && gz>=oz && gx<ox+replacing->type->footX && gz<oz+replacing->type->footZ) {
-                const auto& yard=replacing->type->yardMap;
-                const char cell=yard.empty() ? 'o' : yard[size_t(gz-oz)*replacing->type->footX+gx-ox];
-                if (retailYardAlwaysBlocks(cell) || cell=='O') return true;
-            }
-        }
         return clearObstacle(gx,gz);
-    };
-    // Retail decodes a yard S as mask 0x8f (4c0fe3; a one-character "S", every
-    // lodestone's yardmap, fills the footprint, 4c0f59..4c101f): sacred-site
-    // coverage, the footprint's height range, water depth and occupancy, but
-    // none of the feature bits (0x20/0x40). So 507400 admits a footprint over
-    // the Standing Stones beside a sacred site, which on Inner Circle refused
-    // two of the four sites' covering positions here. Ours tests terrain, not
-    // the overlay, and leaves occupancy to the body test below. A blocker the
-    // sim can still remove (a registered feature, a wreck) keeps the old rule
-    // -- a build order reclaims it first -- because its removal would clear the
-    // building's own overlay cells. The rule rides on the coverage test above:
-    // on a map without sacred sites (where a lodestone may stand on open
-    // ground, an engine extension) nothing ties the footprint to a site, so its
-    // cells keep the overlay test and never land on a wall or a rock.
-    const bool sacredRule=false;   // Kingdoms sacred-site yards: none in TA
-    const bool sacredYard=sacredRule && type->yardMap.empty();
-    const auto sacredCell=[&](int gx,int gz) {
-        if (!grid.terrainWalkable(gx,gz)) return false;
-        if (grid.walkable(gx,gz) || !removableBlockerAt(gx,gz)) return true;
-        return walkable(grid,gx,gz);
     };
     int cx = footprintOrigin(x, type->footX), cz = footprintOrigin(z, type->footZ);
     // A TA yard map (every character one TotalA.exe decodes, docs/retail-data.md
@@ -12024,17 +11333,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
                 if (water) wHi = std::max(wHi, cellHi);
                 const size_t at = size_t(gz) * terW_ + gx;
                 if (obst_.empty() || !obst_[at]) continue;
-                bool open = false;
-                if (replacing) {
-                    const int ox=footprintOrigin(replacing->x,replacing->type->footX);
-                    const int oz=footprintOrigin(replacing->z,replacing->type->footZ);
-                    if (gx>=ox && gz>=oz && gx<ox+replacing->type->footX && gz<oz+replacing->type->footZ) {
-                        const auto& yard=replacing->type->yardMap;
-                        const char c=yard.empty() ? 'o' : yard[size_t(gz-oz)*replacing->type->footX+gx-ox];
-                        open = retailYardAlwaysBlocks(c) || c=='O';
-                    }
-                }
-                if (!open && !clearObstacle(gx,gz)) return false;
+                if (!clearObstacle(gx,gz)) return false;
             }
         int base;
         if (hi < lo) base = uint8_t(sea - type->waterline);
@@ -12098,13 +11397,12 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
             for (int i = 0; i < type->footX; ++i) {
                 char c = type->yardMap[size_t(j) * type->footX + i];
                 if (c == '.' || c == ' ') continue;
-                if (c == 'S' && sacredRule ? !sacredCell(cx + i, cz + j)
-                                           : !walkable(grid,cx + i, cz + j)) return false;
+                if (!walkable(grid,cx + i, cz + j)) return false;
             }
     } else {
         for (int j = 0; j < type->footZ; ++j)
             for (int i = 0; i < type->footX; ++i)
-                if (sacredYard ? !sacredCell(cx + i, cz + j) : !walkable(grid,cx + i, cz + j)) return false;
+                if (!walkable(grid,cx + i, cz + j)) return false;
     }
     if (type->isStructure() || site) {
         // Retail's building branch (507400) checks occupied footprint cells.
@@ -12131,7 +11429,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
             // as searchBodyRect does, but not the player's own that step aside
             // nor (`ignoreId`) the conjurer the order is for.
             for (const auto& u:units_) {
-                if ((replacing && u.id==replacing->id) || u.id==ignoreId || !u.alive() || u.embarked() || !u.type) continue;
+                if (u.id==ignoreId || !u.alive() || u.embarked() || !u.type) continue;
                 const bool mobile=!u.type->isStructure();
                 if (mobile && (ignoreMobile || (u.type->canFly && u.flightGroundMode!=1) ||
                                yieldsToSite(u,yieldPlayer))) continue;
@@ -12152,7 +11450,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
             }
             return true;
         }
-        const auto bodies=searchBodyRect(cx,cz,type->footX,type->footZ,replacing ? replacing->id : 0);
+        const auto bodies=searchBodyRect(cx,cz,type->footX,type->footZ,0);
         for (size_t i=0;i<bodies.cells.size();++i)
             if (tested(i) && bodies.cells[i]) return false;
         return true;
@@ -12206,15 +11504,14 @@ int World::startBuild(int builderId, const UnitType* type, float x, float z,
     if (!b || !b->alive() || !b->type || !b->type->isBuilder || b->type->isStructure() ||
         b->underConstruction)
         return 0;
-    const Unit* replacing=lodestoneUpgradeSource(type,x,z,b->player);
-    if (!replacing && atUnitCap(b->player)) return 0;
+    if (atUnitCap(b->player)) return 0;
     if (atTypeCap(b->player, type)) return 0;   // totalallowed: already fielding one
     if (!canPlaceSite(type, x, z, b->player)) {
         if (mobileBlocked)
             *mobileBlocked=placementCheck(type,x,z,b->player,nullptr,nullptr,0,true,-1,true);
         return 0;
     }
-    if (replacing) return 0;   // TA has no in-place building upgrades
+
     // Preserve retail birth orientation. Factory scripts query this heading to
     // counter-rotate their build pads into the fixed yard where appropriate.
     int id = spawn(type, x, z, std::nullopt, b->player, false);
@@ -13002,7 +12299,7 @@ void World::reclaim(int builderId, int featureId, bool queue) {
         // (the walk takes longer than the death anim anyway).
         if (!c || c->id == builderId || !c->type || (c->alive() && c->hp > Fixed()) || c->corpseFading)
             return;
-        int ct = c->corpseStatue >= 0 ? c->corpseStatue : corpseTypeOf(c->type);
+        int ct = corpseTypeOf(c->type);
         if (ct < 0 || !featTypes_[size_t(ct)].reclaimable) return;
         tx = c->x.toFloat(); tz = c->z.toFloat();
         static const bool kRcLog = ta::devEnv("TA_BURNLOG") != nullptr;
@@ -13078,7 +12375,7 @@ uint8_t World::reviveKind(int casterId, int corpseId) const {
     if (!c || c->id == casterId || !c->type || c->corpseFading || (c->alive() && c->hp > Fixed()) ||
         (!c->alive() && c->deadFor >= c->corpseUntil))
         return 0;
-    const int ct = c->corpseStatue >= 0 ? c->corpseStatue : corpseTypeOf(c->type);
+    const int ct = corpseTypeOf(c->type);
     if (ct < 0 || size_t(ct) >= featTypes_.size()) return 0;
     return reviveKindFor(*b->type, featTypes_[size_t(ct)]);
 }
@@ -13284,17 +12581,6 @@ void World::tickFeatureFades() {
     });
 }
 
-// Retail's revive work counter (icd 0x406c2e, 0x4201e9): 65536 x buildtime /
-// (workertime x 0.03333333), times 0.3 for a resurrect, through _ftol (5d3d54),
-// which keeps the LOW word of a 64-bit fistp: past 2^31 it wraps (araking
-// resurrecting a buildtime-100000 vermage starts at 1603273293, not 5.9e9),
-// and a caster with no workertime (infinity: the indefinite, low word 0)
-// finishes on its first tick.
-static int32_t retailReviveWork(float buildTime, float workerTime, bool resurrect) {
-    double work = double(buildTime);
-    if (resurrect) work *= 0.3;
-    return int32_t(retailFtol(work / (double(workerTime) * 0.03333333) * 65536.0));
-}
 
 // TotalA.exe RESURRECT stage 3 (0x404f92..0x404fee): the timer is
 // ftol(buildtime x 0.3 / (workertime / 30)), the caster's workertime divided
@@ -13408,17 +12694,14 @@ void World::tickReclaim(Unit& b) {
         // ended (stage 5: raised, refused or abandoned), the task ends.
         if (work.mission.stage>=5 || !reclaimTargetValid(target,true)) { quit(); return; }
         if (work.mission.stage==3) {
-            // 0x406c2e: the output -- the caster's animatetype for an
-            // animate, the body's own unit for a resurrect -- sets the work
+            // 0x404f92: the output -- the body's own unit -- sets the work
             // counter; stage 4 runs in the same wake (tickAbilities, later
             // this tick).
-            const bool animate=work.reviveKind==2;
-            const UnitType* out=animate ? b.type->animateType : raisedType(target);
+            const UnitType* out=raisedType(target);
             // 0x404f6f: no unit by that name, "Ressurection failed" (8).
             if (!out) { quit(); return; }
             b.reviveMode=int8_t(work.reviveKind);
-            b.reviveWork=animate ? retailReviveWork(out->buildTime,b.type->workerTime,false)
-                                 : retailResurrectTicks(out->buildTime,b.type->workerTime);
+            b.reviveWork=retailResurrectTicks(out->buildTime,b.type->workerTime);
             work.mission.stage=4;
         }
         // Stage 4: the channel (re)attaches -- after a leg pushed ahead of
@@ -13712,7 +12995,7 @@ void World::tickGuardHelp(Unit& u) {
         bool formation=false;
         const int result=retailGuardGroupCheck(u.orders[end].mission.flags,retailAttackOutOfSlot(u,4),
             [&](int n) { return int(pathRand(uint32_t(n))); },
-            [&] { leaveRetailGroupCentre(u);cancelPath(u);u.orders.clear();u.routeStamp=-1; },
+            [&] { cancelPath(u);u.orders.clear();u.routeStamp=-1; },
             [&] { return formation=true; });
         if (result==2) return;                    // the guard has gone with the orders
         if (result>=0) {
@@ -14694,35 +13977,6 @@ void World::installRepairApproach(Unit& u, Order& goal, const Unit& t) {
     requestPath(u,goal.x.toFloat(),goal.z.toFloat());
 }
 
-// Attack_Melee (404690) stage 0 on a target with no mover: 4d4e80 with the
-// target's footprint-origin cell (+0x74) and footprint (+0x78), the
-// rectangle RECLAIM, HelpBuild and RepairUnit walk to. Stage 1 installs
-// again only when the target's cell changes, which a structure's never does,
-// so the controller stays until it accepts. Legion does not route a leg with
-// a rectangle it does not own (LegionNavigator::routedLeg): the native
-// navigator takes it, whose search accepts every perimeter origin.
-void World::installMeleeApproach(Unit& u, const Unit& t) {
-    Order& goal=u.orders[currentLeg(u.orders)];
-    const RetailRectGoal rect=retailReclaimRectangle(footprintOrigin(t.x,t.type->footX),footprintOrigin(t.z,t.type->footZ),
-                                                     t.type->footX,t.type->footZ,u.type->footX,u.type->footZ);
-    if (goal.buildRectangle && *goal.buildRectangle==rect) return;
-    goal.buildRectangle=rect;
-    const auto [x,z]=rect.navigationCell(footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
-    goal.x=Fixed::fromInt(x*16+u.type->footX*8);
-    goal.z=Fixed::fromInt(z*16+u.type->footZ*8);
-    goal.segmentX=Fixed::fromInt(u.x.floorInt());
-    goal.segmentZ=Fixed::fromInt(u.z.floorInt());
-    goal.hasSegment=true;
-    goal.controller=++nextMovementController_;
-    goal.navigationExhausted=goal.navigationConsumed=false;
-    goal.mission.pending&=~0x3700u;
-    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
-    cancelPath(u);
-    requestPath(u,goal.x.toFloat(),goal.z.toFloat());
-}
-
-// RepairUnit stage 0 (0x407289) once the leg is current: the give-up count
-// starts at 0, and stage 1 installs the approach on the same dispatch. A
 // flyer's VTOL_RepairUnit stage 0 takes a landed repairer off here, before
 // the mover as the dispatch is (0x414fe1, flyerTakeOff); tickFlyingRepair
 // does the rest.
@@ -15358,7 +14612,7 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
             if (padTo) u.orders.front().flightGoal.reset();
             return padTo!=0;
         }
-        int slot() const { return u.type->weaponSwitching ? std::clamp(u.weaponSlot,0,2) : 0; }
+        int slot() const { return 0; }
         void beginFlight() {
             // TotalA.exe AirStrike stage 0 (0x412114..0x4121b7): every slot
             // manual, off any carrier, Activate, and a landed bomber's
@@ -16290,7 +15544,6 @@ void World::decayConstruction(Unit& u) {
     // the site unconjures 0.5 / buildtime of its build a tick and its owner gets
     // float(that * buildcost) back, credited like income; once no work would be
     // left it is removed instead, with no refund. Our sites keep their progress
-    // in the replacement's completedWork (a lodestone upgrade) or, otherwise,
     // in hp itself (5% of maxdamage for no work, as placed, plus 95% of it for
     // the whole build), so each gives back the same fraction there and loses
     // the matching hp. A producer's output never gets here while its producer
@@ -16630,13 +15883,12 @@ void World::tickAbilities(float) {
     // A corpse is a dead unit whose body still lies on the field: the death
     // anim has finished (4s) and decomposetime hasn't expired.
     auto isCorpse = [](const Unit& c) {
-        // Statues stand from the instant of death (retail: severity 0, no Dying
-        // anim); ordinary bodies appear after the 4s death animation.
+        // Bodies appear after the death animation.
         const int from = c.corpseAnimationTicks();
         return c.type && !c.alive() && !c.corpseFading && c.deadFor >= from && c.deadFor < c.corpseUntil;
     };
     auto retire = [&](Unit& c) { retireCorpse(c); };
-    struct Revive { const UnitType* type; float x, z; int player; bool animate; int caster; int leg; };
+    struct Revive { const UnitType* type; float x, z; int player; int caster; int leg; };
     std::vector<Revive> revives;
     // Revives finished this tick, per player: they spawn after the loop, so
     // the limits below count them in.
@@ -16740,7 +15992,7 @@ void World::tickAbilities(float) {
             ++pendingRevives[size_t(u.player)];
             const float x = body ? body->x.toFloat() : f->x.toFloat();
             const float z = body ? body->z.toFloat() : f->z.toFloat();
-            revives.push_back({out, x, z, u.player, false, u.id, leg});
+            revives.push_back({out, x, z, u.player, u.id, leg});
             if (body) retire(*body);
             else if (auto it = featureIdx_.find(featureId); it != featureIdx_.end())
                 swapFeature(features_[it->second], -1);
@@ -16748,8 +16000,7 @@ void World::tickAbilities(float) {
         }
         Unit* c = unit(u.reviveTarget);
         if (!c || !isCorpse(*c)) { ended(); continue; }
-        const bool animate = u.reviveMode == 2;
-        const UnitType* out = animate ? u.type->animateType : c->type;
+        const UnitType* out = c->type;
         const float allocation = players_[size_t(u.player)].allocation();
         // 32-bit sub, signed test, as retail: a counter ftol wrapped negative
         // finishes at once, and nothing here is C++ signed overflow.
@@ -16764,18 +16015,17 @@ void World::tickAbilities(float) {
         // stays. Earlier revives this tick count as raised (`pending`).
         if (reviveRefused(u.player, out)) continue;
         ++pendingRevives[size_t(u.player)];
-        revives.push_back({out, c->x.toFloat(), c->z.toFloat(), u.player, animate, 0, 0});
+        revives.push_back({out, c->x.toFloat(), c->z.toFloat(), u.player, 0, 0});
         retire(*c);
     }
     for (const auto& r : revives) {
         int id = spawn(r.type, r.x, r.z, 3.14159f, r.player);
-        // An animated creature rises at FULL health (icd 0x420666-0x4206ba).
         // TotalA.exe's resurrected unit is finished with 1 HP (0x405215:
         // +0x104 = 0, +0x108 = 1), and stage 6 (0x405243..0x40529f) puts the
         // order a click on it resolves to (0x43f0e0 code 8: REPAIRUNIT on a
         // finished unit, 0x43f4ab) at the head of the caster's queue
         // (0x43acb0); the RESURRECT then ends (5).
-        if (Unit* nu = unit(id); nu && !r.animate) {
+        if (Unit* nu = unit(id)) {
             nu->hp = Fixed::fromInt(1);
             Unit* caster = unit(r.caster);
             if (caster && caster->alive() && !caster->orders.empty() &&
@@ -16794,8 +16044,7 @@ void World::tickAbilities(float) {
         }
         static const bool kRevLog = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kRevLog)
-            std::fprintf(stderr, "%s: %s for p%d at %.0f,%.0f\n",
-                         r.animate ? "animate" : "resurrect",
+            std::fprintf(stderr, "resurrect: %s for p%d at %.0f,%.0f\n",
                          r.type->id.c_str(), r.player, r.x, r.z);
     }
 }
@@ -17069,16 +16318,7 @@ void World::updateViewCounts() {
             // the sight objects).
             if (u.viewSight.active && (u.viewPlayer!=u.player || u.viewPlanes!=mask)) {
                 if (size_t(u.viewPlayer)<planes) change(u.viewSight,u.viewPlanes,u.viewPlayer,false,shared);
-                const bool locked=u.stonedFor>0 || u.frozenFor>0;
-                if (locked && mask && u.player>=0 && size_t(u.player)<planes && !isNeutralPlayer(u.player) &&
-                    u.viewSight.distance==int16_t(sightDistance(*u.type)) && u.viewSight.sightHeight==u.type->sightHeight) {
-                    // A status-locked unit's footprint stays where it stands
-                    // (4f6a40 skips it), so it moves to the new planes there.
-                    change(u.viewSight,mask,u.player,true,shared);
-                    u.viewPlayer=int8_t(u.player);u.viewPlanes=mask;
-                } else {
-                    u.viewSight.active=false;u.viewSight.x=-1;u.viewPlayer=-1;u.viewPlanes=0;
-                }
+                u.viewSight.active=false;u.viewSight.x=-1;u.viewPlayer=-1;u.viewPlanes=0;
             }
             const int16_t distance=int16_t(sightDistance(*u.type));
             if (u.viewSight.distance!=distance || u.viewSight.sightHeight!=u.type->sightHeight) {
@@ -17087,9 +16327,6 @@ void World::updateViewCounts() {
                 u.viewPlayer=-1;u.viewPlanes=0;
             }
             if (u.player<0 || size_t(u.player)>=planes || isNeutralPlayer(u.player) || !mask) continue;
-            // 4f6a40 skips a status-locked unit (+0x108: stone, freeze): its
-            // footprint is frozen where it stands, not removed.
-            if (u.stonedFor>0 || u.frozenFor>0) continue;
             const Fixed y=u.type->canFly?u.flightY:u.groundY;
             const RetailSightFootprint before=u.viewSight;
             auto count=[&](int x,int z,int delta,uint16_t) { addTo(mask,x,z,delta,shared); };
@@ -18952,10 +18189,10 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(int unitId,int tar
     result.heading=uint16_t(retailDirection(target->x-u->x,target->z-u->z).v-heading);
     const bool aimed=weapon.ballistic || weapon.beam || weapon.kind==Weapon::Kind::Guided;
     if(aimed)result.source=queryUnitScriptPoint(unitId,false,slot);
-    // 52fe30 turns the body toward the point the slot aims at: a melee
-    // target's origin, every other class's led SweetSpot (51aa50).
-    const auto led=weapon.melee ? result.target : retailLeadPoint(*u,*target,&weapon);
-    result.facing=retailSlotFacing(origin,result.target,led,weapon.melee);
+    // 52fe30 turns the body toward the point the slot aims at: the led
+    // SweetSpot (51aa50).
+    const auto led=retailLeadPoint(*u,*target,&weapon);
+    result.facing=retailSlotFacing(origin,led);
     if(aimed) {
         const auto source=result.source;
         const int32_t speed=ta::retailAimSpeed(weapon.projVel);
@@ -18998,7 +18235,7 @@ std::array<int32_t,3> World::pointAimPoint(RetailGroundPoint p) const {
 
 // queryWeaponAim for a unit or a point target. A point is aimed at as it
 // stands: no SweetSpot and no lead (51aa50's point branch), and every class
-// faces it (a melee slot faces a unit target's origin, which a point is).
+// faces it.
 std::optional<World::WeaponAimSolution> World::queryWeaponAim(Unit& u,const WeaponTarget& t,int slot) {
     if(t.unit)return queryWeaponAim(u.id,t.unit->id,slot);
     if(!u.type || slot<0 || size_t(slot)>=u.type->weapons.size())return {};
@@ -19011,7 +18248,7 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(Unit& u,const Weap
     result.heading=uint16_t(retailDirection(Fixed::raw(t.point[0])-u.x,Fixed::raw(t.point[2])-u.z).v-heading);
     const bool aimed=weapon.ballistic || weapon.beam || weapon.kind==Weapon::Kind::Guided;
     if(aimed)result.source=queryUnitScriptPoint(u.id,false,slot);
-    result.facing=retailSlotFacing(origin,t.point,t.point,weapon.melee);
+    result.facing=retailSlotFacing(origin,t.point);
     if(aimed) {
         const auto source=result.source;
         const int32_t speed=ta::retailAimSpeed(weapon.projVel);
@@ -19041,9 +18278,7 @@ void World::clearScriptWeaponTarget(Unit& u,bool fromCommand) {
     if(it) {
         const auto& file=*u.type->script();
         for(size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot) {
-            // 51a7f0 retires all targets, but only the selected callback can
-            // acknowledge/reset a switcher's weapon state.
-            if(u.type->weaponSwitching && int(slot)!=u.weaponSlot)continue;
+            // 51a7f0 retires all targets.
             // AirToGround's and AirToAir's unselected slots are auto: the
             // order's end (4d6da0's 519b10(3)) leaves them and their targets
             // alone.
@@ -19666,7 +18901,7 @@ void World::updateCorpseWindow(Unit& u) {
     const int starts=u.corpseAnimationTicks();
     u.corpseUntil=starts;
     if (!u.deathHasCorpse || starts==INT32_MAX) return;
-    const int ct=u.corpseStatue>=0 ? u.corpseStatue : corpseTypeOf(u.type);
+    const int ct=corpseTypeOf(u.type);
     if (ct<0) return;
     // The type's decomposition runs, then the 60-update sink into the ground
     // (retailCorpseDecayLife). Retail loads it only on land (513027..513034):
@@ -19776,16 +19011,6 @@ void World::sweepDeath(Unit& u, int taKind) {
         // runs no Killed.
         u.severity = kind==tadeath::kNone ? 0
             : retailTaDeathSeverity(kind, retailHpWord(-u.overkill.floorInt()), u.maximumHp(), u.hpPct1s);
-        // Dying while petrified/frozen leaves the FBI stone=/frozen=
-        // STATUE feature instead of the corpse (retail deathType 0xE/0xF
-        // path, 0x512d2a) -- blocking, permanent, and resurrectable
-        // (raising a statue un-petrifies the unit).
-        u.corpseStatue = u.stonedFor > 0 ? statueTypeOf(u.type, false)
-                      : u.frozenFor > 0 ? statueTypeOf(u.type, true) : -1;
-        static const bool kStatLog2 = ta::devEnv("TA_BURNLOG") != nullptr;
-        if (kStatLog2 && (u.stonedFor > 0 || u.frozenFor > 0))
-            std::fprintf(stderr, "statue edge: %s statue=%d stoned=%d\n",
-                         u.type->id.c_str(), u.corpseStatue, u.stonedFor);
         beginUnitDeath(u);
         u.deathPending=true;
         if (u.type->isStructure())
@@ -19805,10 +19030,9 @@ void World::sweepDeath(Unit& u, int taKind) {
             footprintOrigin(u.z,u.type->footZ),u.type->footX,u.type->footZ);
     // No Dying to run: 512610 retires the unit at once (512ac8).
     if (u.corpseAnimationTicks()==0) retireDeath(u);
-    // Frozen/stone deaths bypass the ordinary death animation.
     if (u.corpseAnimationTicks()==0 && u.deadFor<u.corpseUntil) {
-        const int corpse=u.corpseStatue>=0 ? u.corpseStatue : corpseTypeOf(u.type);
-        if (corpse>=0 && (u.corpseStatue>=0 || !u.underConstruction) && !placeCorpse(u,corpse)) retireCorpse(u);
+        const int corpse=corpseTypeOf(u.type);
+        if (corpse>=0 && !u.underConstruction && !placeCorpse(u,corpse)) retireCorpse(u);
     }
     // TotalA.exe's commander rule (0x48667e..0x4866b3): with "commander dies:
     // game ends" on (our Monarch Expendable off) outside a campaign mission,
@@ -19823,9 +19047,9 @@ void World::sweepDeath(Unit& u, int taKind) {
 
 void World::beginUnitDeath(Unit& u) {
     u.deathAnimationTicks=0;
-    u.deathHasCorpse=u.corpseStatue>=0;
+    u.deathHasCorpse=false;
     auto* script=unitScript(u.id);
-    if (u.corpseStatue<0 && script) {
+    if (script) {
         const auto& file=*u.type->script();
         ScriptHost host{*this,u,*script};
         script->dying=true;script->deathStopValue=0;
@@ -20821,8 +20045,8 @@ void World::tick(float dt) {
     // state the walk does not write (buildCache, retailResources).
     auto economyOf = [&](Unit& u, auto&& emit, auto&& listSite) {
         if (!u.alive()) return;
-        // A unit under construction contributes no economy until it finishes -- a
-        // half-built lodestone must not add its mana income or storage capacity yet.
+        // A unit under construction contributes no economy until it finishes: a
+        // half-built one must not add its income or storage capacity yet.
         if (u.underConstruction) {
             u.beingBuilt = u.siteWorkLate;   // last tick's later-slot work (noteSiteWork)
             u.siteWorkLate = false;
@@ -20832,16 +20056,13 @@ void World::tick(float dt) {
         if (u.type) {
             const auto& tm = players_[size_t(u.player)];
             float income=u.type->income,storage=u.type->storage;
-            bool sacred=u.type->sacredIncome;
             if (tm.buildCache) {
                 const auto& entries=tm.buildCache->entries;
                 auto entry=std::find_if(entries.begin(),entries.end(),[&](const auto& e){return e.type==u.type;});
                 if (entry!=entries.end() && entry->hasEconomy) {
                     income=entry->income;storage=entry->storage;
-                    sacred=(entry->inputs.secondaryFlags&0x80000000u)!=0;
                 }
             }
-            (void)sacred;   // Kingdoms sacred-site income: none in TA
             emit(EconomyKind::Income,u.player,income,0.0);
             emit(EconomyKind::Storage,u.player,storage,0.0);
         }
@@ -20868,7 +20089,7 @@ void World::tick(float dt) {
         auto& tm = players_[size_t(player)];
         switch (kind) {
         case EconomyKind::Income: tm.income += f; break;
-        case EconomyKind::SacredIncome: tm.income=float(double(tm.income)+d); break;
+
         case EconomyKind::Storage: tm.storage += f; break;
         case EconomyKind::Demand: {
             float& demand=retailDemand_[size_t(player)];
@@ -20885,7 +20106,7 @@ void World::tick(float dt) {
     // exactly the serial order. A contribution of zero is left out of the
     // list: every sum starts at +0, a sum of finite floats starting at +0 is
     // never -0, and x + 0 is then exactly x (also through the double round
-    // trip of the sacred and demand sums), so the totals are unchanged.
+    // trip of the demand sum), so the totals are unchanged.
     const bool prologuePool = units_.size() >= kPrologueMinParallel && simPool().workers();
     if (!prologuePool) {
         TA_PASS();
@@ -21247,9 +20468,8 @@ void World::tick(float dt) {
         const Projectile bp = projectiles_[bi];
         if (bp.spent || bp.life > 0 || !bp.wsrc) continue;
         bool dropped = bp.wsrc->kind == Weapon::Kind::Dropped;
-        // Ballistic = the plain arcing shot: not guided, not a hitscan beam, not melee.
-        bool ballistic = bp.wsrc->kind == Weapon::Kind::Normal &&
-                         !bp.wsrc->beam && !bp.wsrc->melee;
+        // Ballistic = the plain arcing shot: not guided, not a hitscan beam.
+        bool ballistic = bp.wsrc->kind == Weapon::Kind::Normal && !bp.wsrc->beam;
         // Splash weapons only. Retail also strikes whatever feature sits in the
         // impact cell even for a shot with no areaofeffect, but our applyHit damages
         // that centre cell unconditionally -- so porting it literally would have
@@ -21563,7 +20783,7 @@ void World::tick(float dt) {
             ++u.deadFor;
             // Its Dying is over: retirement (512ae0), with the corpse below.
             if (u.deathPending && u.deadFor>=u.corpseAnimationTicks()) retireDeath(u);
-            if (u.corpseStatue<0 && u.deadFor==u.corpseAnimationTicks() && u.deadFor<u.corpseUntil) {
+            if (u.deadFor==u.corpseAnimationTicks() && u.deadFor<u.corpseUntil) {
                 if (!placeCorpse(u,corpseTypeOf(u.type))) retireCorpse(u);
             }
             if (u.deadFor>=u.corpseUntil &&
@@ -21585,9 +20805,7 @@ void World::tick(float dt) {
             sweepDeath(u);
             continue;
         }
-        // Status timers count down; HP regenerates (healtime); mana recharges.
-        if (u.frozenFor > 0) --u.frozenFor;
-        if (u.stonedFor > 0) --u.stonedFor;
+        // The paralysis timer counts down; HP regenerates (healtime).
         if (u.paralyzedFor > 0) --u.paralyzedFor;
         // Deadly water (.ota waterdoesdamage, retailDeadlyWaterDamage): once a
         // second, whole hit points off anything at or below sea level that is
@@ -21832,9 +21050,8 @@ void World::tick(float dt) {
         // and the countdown no longer depends on dt at all -- which is both retail's
         // representation and one less float in the checksum.
         // 52ae90 skips unselected and absent slots before updating their reload.
-        // Independent multi-weapon units select all slots; switchers freeze the
-        // inactive timers until the player selects those weapons again.
-        const bool reloadAll=!u.type->weaponSwitching && u.type->weapons.size()>1;
+        // Multi-weapon units count every slot's timer down.
+        const bool reloadAll=u.type->weapons.size()>1;
         for(size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
             if((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0)--u.reloads[slot];
         if (u.embarked() && u.padPiece>=0 && onAirPad(u)) {
@@ -21941,30 +21158,18 @@ void World::tick(float dt) {
                 Unit* t = unit(u.orders.front().targetId);
                 if (!t) return false;
                 float dx = (t->x - u.x).toFloat(), dz = (t->z - u.z).toFloat();
-                // Melee holds at footprint adjacency (must agree with tickCombat's
-                // gates, else a unit standing at contact is dragged back into
-                // walking by the radial test below).
-                int slot = u.type->weapons.empty()
-                               ? 0 : std::clamp(u.weaponSlot, 0, int(u.type->weapons.size()) - 1);
-                const Weapon* sel =
-                    slot < int(u.type->weapons.size()) ? &u.type->weapons[slot] : nullptr;
-                if (sel && sel->melee && t->type)
-                    return meleeInRange(u, *t);
                 // Pad by a structure target's footprint half-extent so "holding in
                 // range" agrees with tickCombat's fire gate (else a unit stopped at a
                 // building's edge gets dragged back into moving) -- and, as there,
-                // only when the reach weapon is melee (Weapon::centreReach).
+                // only for a unit with no reach weapon (every TA class is centre to centre).
                 const int reachSlot = approachSlot(u);
-                const bool centreReach =
-                    reachSlot >= 0 && u.type->weapons[size_t(reachSlot)].centreReach();
-                float pad = t->type->maxVel <= Fixed() && !centreReach
+                float pad = t->type->maxVel <= Fixed() && reachSlot < 0
                     ? 8.0f * float(std::max(t->type->footX, t->type->footZ)) + 24.0f : 0.0f;
-                // Weapon switchers approach using the selected weapon, just as
-                // tickCombat does. A longer secondary spell must not stop a
-                // dragon outside its selected breath weapon's range.
-                const bool allWeapons=!u.type->weaponSwitching && u.type->weapons.size()>1;
+                // The longest weapon when they all fire, just as tickCombat does.
+                const bool allWeapons=u.type->weapons.size()>1;
                 // A walker chases on its order slot (Attack_Chase 0x4034a0, approachSlot).
-                const Weapon* reach = chasesOnOrderSlot(u) && reachSlot>=0 ? &u.type->weapons[size_t(reachSlot)] : sel;
+                const Weapon* reach = chasesOnOrderSlot(u) && reachSlot>=0 ? &u.type->weapons[size_t(reachSlot)]
+                    : (u.type->weapons.empty() ? nullptr : &u.type->weapons[0]);
                 const float range=allWeapons && !chasesOnOrderSlot(u) ? u.type->maxRange()
                     : (reach ? float(reach->range) : u.type->maxRange());
                 if (std::sqrt(dx * dx + dz * dz) > (range + pad) * 0.95f) return false;
@@ -22002,7 +21207,7 @@ void World::tick(float dt) {
                 if (uToGoal <= cToGoal + kFormBehind) target = fxMin(target, f->slowest);
             }
         }
-        if (pathfindingMode_==PathfindingMode::Retail) retailGroupMaximum_=retailGroupLimit(u);
+
         // The pace it may walk at this tick, for its headway window (updateLegionStill).
         if (size_t(u.id)>=legionPace_.size()) legionPace_.resize(size_t(u.id)+1);
         legionPace_[size_t(u.id)]={tickCounter_,target.v};
@@ -22010,7 +21215,6 @@ void World::tick(float dt) {
             PhaseSpan span(g_moveMs,probe::kMovement);
             tickNavigationMovement(u,target);
         } else tickNavigationMovement(u,target);
-        retailGroupMaximum_=Fixed();
 
     }
 
@@ -22490,7 +21694,7 @@ void World::hashTrace() const {
         }
         hUnitMisc = fnv(fnv(hUnitMisc, u.id), uint64_t(u.alive() ? 1 : 0));
         hUnitMisc = fnv(hUnitMisc, uint64_t(u.veteran));
-        if (u.xp) hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(u.xp)));
+        if (u.rank) hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(u.rank)));
         if (u.scenarioArmor != 1.0f || u.scenarioWeapon != 1.0f) {
             hUnitMisc = fnv(hUnitMisc, std::bit_cast<uint32_t>(u.scenarioArmor));
             hUnitMisc = fnv(hUnitMisc, std::bit_cast<uint32_t>(u.scenarioWeapon));
@@ -23059,7 +22263,7 @@ uint64_t World::stateHash() const {
         mix(u.viewSight.sightHeight);mix(u.viewSight.active);mix(uint8_t(u.viewPlayer));mix(u.viewPlanes);
         mix(u.groundGradeTick);
         mix(uint64_t(u.veteran));
-        if (u.xp) { mix(0x5645545845504552ull); mix(uint32_t(u.xp)); }
+        if (u.rank) { mix(0x5645545845504552ull); mix(uint32_t(u.rank)); }
         if (u.vetOverride != 0.0f) { mix(0x5645544f56524445ull); mixf(u.vetOverride); }
         if (!u.selectable) mix(0x554e53454c454354ull);
         if (u.lastHitKind) mix(0x4c41535448495400ull|u.lastHitKind);
@@ -23352,7 +22556,8 @@ uint64_t World::stateHash() const {
     for (const auto& corpse:units_) if (!corpse.alive() &&
         (corpse.deadFor<kRetiredTicks || corpseFootprints_.contains(corpse.id))) {
         mix(uint32_t(corpse.id));mix(uint32_t(corpse.deadFor));mix(uint32_t(corpse.corpseUntil));
-        mix(uint32_t(corpse.corpseStatue));mix(corpse.corpseFading);mix(corpse.corpseBlocks);
+        // Kingdoms' statue override is gone: its fold (always -1) keeps the shape.
+        mix(uint32_t(-1));mix(corpse.corpseFading);mix(corpse.corpseBlocks);
         mix(uint32_t(corpse.deathAnimationTicks));mix(corpse.deathHasCorpse);
     }
     // Folded only when a grave sinks, so a game without one hashes as before.
@@ -23565,7 +22770,7 @@ void World::removeScenarioUnits(int player, uint8_t taKind) {
             u.deathAnimationTicks = u.deadFor;
             updateCorpseWindow(u);
             retireDeath(u);
-            if (u.corpseStatue<0 && u.deadFor<u.corpseUntil && !placeCorpse(u,corpseTypeOf(u.type))) retireCorpse(u);
+            if (u.deadFor<u.corpseUntil && !placeCorpse(u,corpseTypeOf(u.type))) retireCorpse(u);
             continue;
         }
         stop(u.id);
@@ -23580,7 +22785,7 @@ void World::removeScenarioUnits(int player, uint8_t taKind) {
         // lives and its player either way, so a CRT game's killed tally
         // credits that player (E: check_kill_credit.py cargo).
         if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy = 0;
-        u.deathType = 10; u.severity = 0; u.corpseStatue = -1;
+        u.deathType = 10; u.severity = 0;
         // TotalA.exe's commander rule (0x486f10) hands each unit a 30000 damage
         // record of kind 3 from itself (0x486f94), so each one's death is a
         // loss (0x4869f5) and never a kill; a CRT removal (taKind 0) is neither.

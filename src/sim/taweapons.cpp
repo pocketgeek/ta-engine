@@ -104,7 +104,7 @@ Weapon parseTaWeapon(const tdf::Node& w, const std::string& sectionName) {
 
     // Engine-side views of the record (the sim's shared weapon model).
     wp.reload = float(wp.reloadTicks) / 30.0f;
-    wp.switchReloadTicks = wp.reloadTicks;
+
     wp.projVel = float(getDbl(w, "weaponvelocity", 0));
     wp.subSteps = wp.projVel > 0.0f ? int((wp.projVel + 479.0f) / 480.0f) : 1;
     wp.ballistic = wp.hasTaFlag(kWBallistic);

@@ -23,18 +23,9 @@ constexpr std::optional<RetailDeathSfxFamily> retailDeathSfxFamily(int32_t code)
 
 // Unit-owned effect lists remain associated with the rendered unit through its
 // death animation. Each snapshot carries its handoff tick; constant building
-// deaths and statues retire immediately (statues never run Killed/Dying).
-constexpr bool retailAttachedSfxOwnerRemoved(bool alive,int deadForTicks,
-                                              int corpseStatue,int deathAnimTicks) {
-    return !alive && (corpseStatue>=0 || deadForTicks>=deathAnimTicks);
-}
-
-// RenderFrame stores only the already-resolved statue bit, not the simulation's
-// -1-or-feature-id field. Keep that representation boundary explicit so false
-// cannot be mistaken for feature id 0.
-constexpr bool retailAttachedSfxOwnerRemovedSnapshot(bool alive,int deadForTicks,
-                                                       bool corpseStatue,int deathAnimTicks) {
-    return !alive && (corpseStatue || deadForTicks>=deathAnimTicks);
+// deaths retire immediately.
+constexpr bool retailAttachedSfxOwnerRemoved(bool alive,int deadForTicks,int deathAnimTicks) {
+    return !alive && deadForTicks>=deathAnimTicks;
 }
 
 constexpr uint32_t retailAttachedSfxRetirementTick(uint32_t eventTick,

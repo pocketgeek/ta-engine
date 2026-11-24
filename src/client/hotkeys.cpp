@@ -20,7 +20,7 @@ const std::vector<HotkeyDef>& hotkeyDefs() {
         {Act::Load,           "order.load",         "LOAD",            "ORDERS",    {SDLK_l, 0}},
         {Act::Unload,         "order.unload",       "UNLOAD",          "ORDERS",    {SDLK_u, 0}},
         {Act::ClearOrders,    "order.clear",        "CLEAR ORDERS",    "ORDERS",    {SDLK_c, 0}},
-        {Act::CycleWeapon,    "order.cycleweapon",  "CYCLE WEAPON",    "ORDERS",    {SDLK_w, 0}},
+
         {Act::NextUnit,       "order.nextunit",     "NEXT UNIT",       "ORDERS",    {SDLK_n, 0}},
         {Act::TrackSelection, "view.track",         "TRACK SELECTION", "ORDERS",    {SDLK_t, 0}},
         {Act::ToggleCloak,    "unit.togglecloak",   "TOGGLE CLOAK",    "ORDERS",    {SDLK_k, 0}},
@@ -32,8 +32,7 @@ const std::vector<HotkeyDef>& hotkeyDefs() {
         {Act::SelectMonarch,  "select.monarch",     "SELECT MONARCH",  "SELECTION", {SDLK_m, HK_CTRL}},
         {Act::SelectBuilders, "select.builders",    "SELECT BUILDERS", "SELECTION", {SDLK_b, HK_CTRL}},
         {Act::SelectFactory,  "select.factories",   "SELECT FACTORIES","SELECTION", {SDLK_f, HK_CTRL}},
-        {Act::SelectMelee,    "select.melee",       "SELECT MELEE",    "SELECTION", {SDLK_e, HK_CTRL}},
-        {Act::SelectMagic,    "select.magic",       "SELECT MAGIC",    "SELECTION", {SDLK_g, HK_CTRL}},
+
         {Act::SelectBoats,    "select.boats",       "SELECT BOATS",    "SELECTION", {SDLK_n, HK_CTRL}},
         {Act::SelectBallistic,"select.ballistic",   "SELECT BALLISTIC","SELECTION", {SDLK_r, HK_CTRL}},
         {Act::SelectTroops,   "select.troops",      "SELECT TROOPS",   "SELECTION", {SDLK_t, HK_CTRL}},
