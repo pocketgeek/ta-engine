@@ -343,6 +343,15 @@ int retailAirToGroundHover(RetailMissionState& m,int32_t& count,RetailFlightVect
     }
 }
 
+// TA: TotalA.exe's AirStrike is handler 0x411f50 (mission table 0x4fcc..,
+// status "Airstrike"), the attack every shipped bomber's `dropped` weapon
+// gets. It is the Kingdoms mission below with these differences, which
+// retailAirStrike follows: no group check and no stage-4 air-traffic
+// step-out; the leash is the _hypot of whole pixels; the release ring's
+// gravity is the OTA's integer and its speed the mover's scalar speed
+// (retailStrikeRelease); zero gravity ends the list at stage 4; stage 6 sends
+// a bomber under 3/4 health to a repair pad (not ported). The Kingdoms
+// notes, for reference:
 // AirStrike (registry row 5ebd69, class 2, flags 0x1000600; handler 41b5e0):
 // the attack 4de530 picks for a flyer whose selected weapon has the `dropped`
 // key (WeaponType +0xc8 bit 0x20) -- mods only, no shipped weapon sets it --
@@ -405,8 +414,8 @@ struct RetailAirStrike {
     RetailGroundPoint origin;      // mission +0x2e / +0x30
     uint16_t runLength=0;          // UnitType +0x234, attackrunlength
     int16_t cruiseAlt=0;           // UnitType +0x23a
-    int32_t gravity=0;             // game +0x19ecc
-    int16_t speed=0;               // the mover's +0x22
+    int32_t gravity=0;             // TA: the OTA gravity integer (map info +0xd3c)
+    int16_t speed=0;               // the mover's +0x22, its whole-pixel speed
     int8_t traffic=0;              // unit +0x12a, the air-traffic counter
     int16_t footX=1;               // unit +0x78
 };
@@ -426,9 +435,13 @@ inline uint16_t retailStrikeHeading(RetailFlightVector unit,RetailFlightVector p
 }
 } // namespace detail
 
-// 41bc03..41bc42: the release ring's radius.
+// TotalA.exe 0x4123a8..0x412409: the release ring's radius, the bomb's
+// forward carry: the fall time from cruisealt, sqrt(2 cruisealt / gravity) x
+// 30 ticks with gravity the OTA's integer (map info +0xd3c, 0x43654d), times
+// the mover's whole-pixel speed (mover +0x22: the high word of its 16.16 speed
+// +0x20, 0x43cc2d), _ftol'd, plus attackrunlength + 1.
 inline int32_t retailStrikeRelease(const RetailAirStrike& in) {
-    const double fall=std::sqrt(double(int32_t(in.cruiseAlt)*2)/(double(in.gravity)*double(1.0f/65536.0f)));
+    const double fall=std::sqrt(double(int32_t(in.cruiseAlt))*2.0/double(in.gravity));
     return std::bit_cast<int32_t>(retailFtol(fall*double(30.0f)*double(in.speed))+uint32_t(in.runLength)+1u);
 }
 
@@ -446,30 +459,33 @@ inline int32_t retailStrikeRelease(const RetailAirStrike& in) {
 template<class Host>
 int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tick,uint32_t events,
                     const RetailAirStrike& in,Host& host) {
-    if (!in.armed) return 7;                                             // 41b5ec
+    if (!in.armed) return 7;
+    // TotalA.exe AirStrike 0x411f50: its head takes the lost-target exit on
+    // events 0x1000a (World's 0x2a: the target's death or change of owner).
     const bool lost=(events&0x2a) || (in.target && (!in.targetLive || in.targetCarried || !in.targetPlaced)) ||
-                    !in.dropped;                                         // 41b635..41b684
-    if (lost) {                                                          // 41be1b
-        if (in.unitLive && in.last && !in.holdFire) host.seek(in.target && in.targetLive,point);
+                    !in.dropped;
+    if (lost) {                                                          // 0x411f6b
+        if (in.last && !in.holdFire) host.seek(in.target && in.targetLive,point);
         return 5;
     }
-    if (!in.target && (m.flags&0x200u)) {                                // 41b68a
+    if (!in.target && (m.flags&0x200u)) {                                // 0x411ff5
         if (in.last) host.seek(false,in.position);
         return 5;
     }
-    if (events&0x40) { m.sleep(tick,1); return 0; }                      // 41b728
-    if (in.target) point=in.targetPoint;                                 // 41b741
-    if (in.leash) {                                                      // 41b75b
-        const RetailGroundPoint here{int16_t(uint32_t(in.position.x)>>16),int16_t(uint32_t(in.position.z)>>16)};
-        if (int32_t(retailGroundDistance(here,in.origin))>=in.leash) return 5;
+    if (in.target) point=in.targetPoint;                                 // 0x41206e
+    if (in.leash) {                                                      // 0x412084: _hypot of whole px
+        const double dx=double(int16_t(uint32_t(in.position.x)>>16)-in.origin.x);
+        const double dz=double(int16_t(uint32_t(in.position.z)>>16)-in.origin.z);
+        if (std::bit_cast<int32_t>(retailFtol(std::sqrt(dz*dz+dx*dx)))>=in.leash) return 5;
     }
-    if (const int result=retailAirGroupCheck(m,host);result>=0) return result;   // 41b7a4..41b8d4
+    // No air-traffic step-out and no group check: TA's head goes straight on
+    // to its stages (0x4120e1).
     switch (m.stage) {
-    case 0:                                                              // 41b8d4
+    case 0:                                                              // 0x4120f6
         if (!in.flies) return 7;
         host.beginFlight();
         return 1;
-    case 1:                                                              // 41b90d
+    case 1:                                                              // 0x4121ba
         host.slotsAuto();
         host.slotManual();
         if (detail::retailStrikeDistance(in.position,point)<0x1e00000) {
@@ -478,7 +494,7 @@ int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tic
             m.waitMask|=0x742;
         }
         return 1;
-    case 2: {                                                            // 41b9e9
+    case 2: {                                                            // 0x4122a5
         const int32_t distance=detail::retailStrikeDistance(in.position,point);
         const uint16_t heading=detail::retailStrikeHeading(in.position,point);
         const int32_t half=distance/2;
@@ -491,20 +507,11 @@ int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tic
         m.waitMask=0x768;
         return 1;
     }
-    case 3:                                                              // 41b8ff
+    case 3:                                                              // 0x41252d
         return 1;
-    case 4:                                                              // 41bac9
-        if (in.traffic>=5) {
-            if (in.automatic && in.target && host.random(2)==0 && host.retarget()) return 5;
-            const int32_t distance=(int32_t(host.random(10))+int32_t(host.random(10))+int32_t(host.random(10))+
-                                    in.footX)*16;
-            if (!host.stepOut(distance)) return 8;
-            m.waitMask=0;
-            m.stage=1;
-            m.sleep(tick,1);
-            return 4;
-        }
-        if (events&0x700) return 1;                                      // 41bbde
+    case 4:                                                              // 0x412394
+        if (events&0x700) return 1;
+        if (!in.gravity) return 7;                                       // 0x4123d0
         {
             const int32_t radius=retailStrikeRelease(in);
             if (in.target) host.follow(radius);
@@ -513,14 +520,16 @@ int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tic
         m.sleep(tick,1);
         m.waitMask|=0x768;
         return 2;
-    case 5:                                                              // 41bcb9
+    case 5:                                                              // 0x41247f
         host.slotManual();
         host.aimGround(point);
         host.install(RetailFlightGoal{retailAirRunPoint(in.position,in.position.y,
             detail::retailStrikeHeading(in.position,point),uint32_t(in.runLength)+0x3c0),0x30,0,960});
         m.waitMask=0x742;
         return 1;
-    case 6:                                                              // 41bd7f
+    case 6:                                                              // 0x41253c
+        // (0x4125c2..0x4126b4: under 3/4 health a repair pad within 3840 px
+        // takes it to VTOL_LANDING instead; not ported.)
         host.clearSlot();
         host.install(RetailFlightGoal{retailAirRunPoint(in.position,in.position.y,in.heading,1440),0x30,0,128});
         m.waitMask=0x742;

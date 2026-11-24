@@ -318,8 +318,14 @@ void selectionCase(const TypeRegistry& reg,PathfindingMode mode,const std::vecto
     check(!anyoneNames(w,v),tag+": nobody holds an order, rally step or slot on the unit once it has changed owner");
     bool seek=false,fired=false,held=false,hurt=false;
     Fixed last=w.unit(v)->hp;
+    // How near each holder came to its queued move: a flyer reaches the
+    // point, then its VTOL_LandIfCan may set it down up to 240 px off a side
+    // when the ground there is taken (retailLandingCandidates).
+    std::vector<float> nearest(ids.size(),1e9f);
     for (int t=0;t<900;++t) {
         f.run(1);
+        for (size_t i=0;i<ids.size();++i)
+            if (const Unit* u=w.unit(ids[i]);u && u->alive()) nearest[i]=std::min(nearest[i],distance(*u,restX,restZ));
         const Unit* victim=w.unit(v);
         if (!victim || !victim->alive()) break;
         held|=anyoneNames(w,v);
@@ -339,7 +345,8 @@ void selectionCase(const TypeRegistry& reg,PathfindingMode mode,const std::vecto
     bool arrived=true;
     for (size_t i=0;i<ids.size();++i) {
         const Unit* u=w.unit(ids[i]);
-        const bool there=u && u->alive() && !targeted(*u) && distance(*u,restX,restZ)<160;
+        const bool there=u && u->alive() && !targeted(*u) &&
+            (u->type->canFly ? nearest[i]<160 : distance(*u,restX,restZ)<160);
         if (!there) std::printf("       %s: %zu orders, %.0f px from its queued move\n",holders[i],
                                 u ? u->orders.size() : size_t(0),u ? double(distance(*u,restX,restZ)) : -1.0);
         arrived&=there;

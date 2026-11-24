@@ -840,6 +840,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     }
     world.setWindRange(windMin, windMax);
     world.setBallisticGravityRaw(retailBallisticGravityRaw(mapGravity));
+    world.setMapGravity(int32_t(mapGravity));
     std::vector<std::pair<float, float>> genStarts;
     ta::tnt::Map map;
     if (generated) {
@@ -1514,6 +1515,7 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
     }
     if (!schema) { std::fprintf(stderr, "setupTaMission: %s has no schema\n", base.c_str()); return false; }
     world.setBallisticGravityRaw(retailBallisticGravityRaw(gh->numberOr("gravity", 112.0)));
+    world.setMapGravity(int32_t(gh->numberOr("gravity", 112.0)));
     world.setPowerCodes(false);
     {
         const bool fullVision = gh->numberOr("lineofsight", 1) == 0;
@@ -1655,6 +1657,7 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     const tdf::Node* gh = root.child("globalheader");
     if (!gh) { std::fprintf(stderr, "setupMission: %s no [GlobalHeader]\n", stem.c_str()); return false; }
     world.setBallisticGravityRaw(retailBallisticGravityRaw(gh->numberOr("gravity",112.0)));
+    world.setMapGravity(int32_t(gh->numberOr("gravity",112.0)));
     world.setPowerCodes(false);   // retail 0x499610: never in a campaign
     // The mission's own vision: lineofsight=0 plays with LosOn off and the map
     // revealed, mapping=1 starts with the terrain explored (area clear's fog test).

@@ -90,7 +90,22 @@ Run run(const TypeRegistry& registry,const UnitType& attacker,const UnitType& vi
     std::set<uint16_t> angles;
     std::set<std::pair<int32_t,int32_t>> points;
     for (int tick=0;tick<after;++tick) {
-        if (tick==spawnAt) fresh=w.spawn(&bystander,lastX+40,lastZ,0.f,1);
+        if (tick==spawnAt) {
+            // TotalA.exe's VTOL_SeekAttack (0x4103e0) orbits at slot 0's range
+            // + 160 (0x41063e..0x410651) but scans, at each wake, only within
+            // its own sightdistance (0x4105fa -> 0x43b700 -> 0x40b7b0, arg 3
+            // zero: type +0x202). A bomber's orbit (range 1280) never comes
+            // near the point, so its new enemy waits at the orbit point it is
+            // flying to, where the controller's arrival wakes the scan.
+            float sx=lastX+40,sz=lastZ;
+            const Unit* u=w.unit(me);
+            if (r.radius>float(attacker.sight) && u && !u->orders.empty() && u->orders.front().seekAttack &&
+                u->orders.front().flightGoal) {
+                sx=u->orders.front().flightGoal->point.x/65536.f+40;
+                sz=u->orders.front().flightGoal->point.z/65536.f;
+            }
+            fresh=w.spawn(&bystander,sx,sz,0.f,1);
+        }
         w.tick(kTick);
         const Unit* u=w.unit(me);
         if (!u || u->orders.empty()) { if (r.seek) r.leftSeek=true; continue; }

@@ -112,20 +112,28 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   the sea) walks the shore for ever instead of failing (0x200) and dropping the
   order, which also stalls the AI's shipyard (naval_reach, naval_ai); a
   battleship stopped just inside its ballistic weapon's origin reach (corbats,
-  COR_BATS at ~1092 px) never fires (naval_combat); transports have no TA capacity/distance
-  (transportcapacity/transportsize unread); air plants never start a unit;
+  COR_BATS at ~1092 px) never fires (naval_combat);
   a PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
   units in the field) can still circle in the ring's acceptance gap -- the
   octile distance (0x44d840) is 0 a cell inside the squared inner test
   (0x44d800) -- when parked outputs wall the band; client watch/spectator
   harness checks (gameview_devharness.cpp) still spawn Kingdoms units.
+- Transports read TA's keys (TotalA.exe 0x489a90: passenger footprint x <=
+  transportsize, count < transportcapacity; an air carrier holds one, 0x41121a).
+  TA's transfer reach is scripted (TransportPickup/TransportDrop, BoomCalc), read
+  from the COB for surface carriers (cob::transportBoomReach); the air reach is an
+  engine stand-in (TA transfers at the exact point). The unload/pickup missions are
+  still Kingdoms-shaped: TA's GROUND_UNLOAD (0x406900) tests no drop placement, ours
+  does, so a hover that coasts onto its drop point retries (transport_post_unload
+  armthovr x5 far); porting that breaks the synthetic crowd-retry cases.
 - Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
-  `sim/retailtashot.h`, `World::tickTaSelfProp`). Still open: the bomber's
-  AIRSTRIKE run is the Kingdoms port (retailAirStrike): it drops on take-off and
-  its release ring does not lead the bomb's forward carry, so a real falling bomb
-  lands ~300 px past the point (suppress "it strikes the point"); TA's own bomber
-  release logic is not yet traced. Ballistic shells still use the release solve
+  `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run
+  follows TotalA.exe's 0x411f50 (retailAirStrike): its slot holds the target only
+  from the release stage to the turn after it, and the release ring leads the
+  bomb's carry (sqrt(2 cruisealt / OTA gravity) x 30 x speed + attackrunlength + 1);
+  no group check or air-traffic step-out; the stage-6 repair-pad detour is not
+  ported, nor the stage-0 wait for take-off altitude. Ballistic shells still use the release solve
   and Kingdoms' gravity-before-move order (TotalA.exe 0x49cde0 launches on the
   slot's AimX angles + spread and moves before gravity, 0x49bce3); beams
   (lineofsight + beamweapon) still hit instantly; burst clones still re-aim at

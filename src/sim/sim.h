@@ -2801,6 +2801,9 @@ public:
         windEnabled_ = true;
     }
     void setBallisticGravityRaw(int32_t gravity) { ballisticGravityRaw_=gravity; }
+    // The OTA's gravity as TotalA.exe keeps it (GetInt, 0x43654d -> map info
+    // +0xd3c): AirStrike's release ring reads this integer (0x4123c0).
+    void setMapGravity(int32_t gravity) { mapGravity_=gravity; }
     int32_t ballisticGravityRaw() const { return ballisticGravityRaw_; }
     const RetailWind& wind() const { return wind_; }
     float windFactor() const { return taWindFactor(wind_); }
@@ -4601,6 +4604,7 @@ private:
     ShakeReq shakeReq_;
     bool noSeaLevelTrigger_ = false; // OTA: projectile/effect sea-surface bypass.
     int32_t ballisticGravityRaw_ = 8155; // retail default OTA gravity 112, in native 16.16/tick².
+    int32_t mapGravity_ = 112;           // the OTA gravity integer (setMapGravity)
     int32_t waterDamage_ = 0;   // .ota waterdamage when waterdoesdamage=1
     SoundReq soundReq_;
     std::vector<SoundReq> pendingSounds_;
