@@ -1176,7 +1176,7 @@
         if (s.scenarioName != u.scenarioName) s.scenarioName = u.scenarioName;
         s.hp = u.hp.toFloat(); s.mana = 0; s.veteran = u.veteran; s.kills = u.kills;
         s.deadFor = u.deadFor < 0 ? -1.0f : float(u.deadFor) / 30.0f;   // ticks -> seconds
-        s.inTransport = u.inTransport; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
+        s.inTransport = u.inTransport; s.padPiece = u.padPiece; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
         s.standingOrder = u.standingOrder;
         s.weaponSlot = u.weaponSlot;
         for(size_t w=0;w<s.weaponReloads.size();++w)

@@ -212,7 +212,6 @@ void airHeads() {
         bool evade() { return false; }
         bool attack() { return false; }
         bool stepOut(int32_t) { return true; }
-        bool stepOut(RetailStepOut,int32_t) { return true; }
         void stopBuilding() {}
         bool found() { return false; }
         bool guard() { return false; }

@@ -1562,6 +1562,8 @@ add_executable(air_to_air_test tools/air_to_air_test.cpp)
 target_link_libraries(air_to_air_test PRIVATE ta-formats)
 add_executable(air_seek_attack_test tools/air_seek_attack_test.cpp)
 target_link_libraries(air_seek_attack_test PRIVATE ta-formats)
+add_executable(air_pad_test tools/air_pad_test.cpp)
+target_link_libraries(air_pad_test PRIVATE ta-formats)
 # Nothing leaves the coordinate range on the largest maps: a 2048-cell map's east and south edges are the top
 # of the 16.16 range, where sums of positions saturate (sim/fixed.h). Constructed 2048-cell worlds on synthetic
 # units here; the Gryphons' attack runs at those edges are data-gated below.
@@ -1633,6 +1635,7 @@ if(TA_TEST_DATA)
     add_test(NAME featdie COMMAND featdie_test "${TA_TEST_DATA}")
     add_test(NAME air_to_air COMMAND air_to_air_test "${TA_TEST_DATA}")
     add_test(NAME air_seek_attack COMMAND air_seek_attack_test "${TA_TEST_DATA}")
+    add_test(NAME air_pad COMMAND air_pad_test "${TA_TEST_DATA}")
     add_test(NAME map_edge_gryphons COMMAND map_edge_test "${TA_TEST_DATA}")
     add_test(NAME owner_orders_roster COMMAND owner_orders_test "${TA_TEST_DATA}")
     add_test(NAME air_traffic COMMAND air_traffic_test "${TA_TEST_DATA}" "${CMAKE_SOURCE_DIR}/tools/scenarios")

@@ -20,9 +20,9 @@
 #include "sim/retailexploration.h"
 #include "sim/retailweaponswitch.h"
 #include "sim/retailflight.h"
+#include "sim/retailairpad.h"
 #include "sim/retailairseek.h"
 #include "sim/retailairtoair.h"
-#include "sim/retailairtraffic.h"
 #include "sim/retailballistic.h"
 #include "sim/retailwind.h"
 #include "sim/taeconomy.h"
@@ -913,21 +913,26 @@ struct alignas(64) Order {
     // leg keeps where its target stood when the approach was installed
     // (mission +0x22), for the look that re-aims it once that cell changes.
     Fixed buildX, buildZ;
-    // A step-out (VTOL_StepOut, VTOL_StepOutStandby or
-    // VTOL_StepOutNoFormation: RetailStepOut, 4214b0) that a flyer mission
-    // pushed ahead of itself when the air-traffic counter told it it was in a
-    // stack (retailVtolStepOut, World::tickStepOutMission). It runs on
-    // `mission`, its distance D (mission +0x4e) in airRunCount, its point in
-    // x/z and its controller in flightGoal. 0 on every other order. Hashed
-    // with a tag when set.
-    uint8_t stepOut = 0;
+    // A repair-pad mission a flyer put ahead of its own (TotalA.exe pushes
+    // "VTOL_LANDING" with the pad as its target, 0x43acb0, from VTOL_Patrol
+    // 0x410f3e and its kin under 3/4 health): kAirPadLanding is VTOL_Landing
+    // (0x4118e0, retailVtolLanding), kAirPadRepair SelfRepair (0x402430,
+    // retailPadRepair), which the landing pushes once the flyer sits on the
+    // pad (0x411ecf, "SELFREPAIR"). Both run on `mission` (World::tickAirPad);
+    // the pad is airPadId (mission +0x16), the landing's circle angle and then
+    // its pad piece (both mission +0x36) guardOrbitAngle and airRunCount, its
+    // controller flightGoal (followed when transportTicks is set). 0 on every
+    // other order. In the byte the Kingdoms step-out kept. Hashed with a tag
+    // when set.
+    static constexpr uint8_t kAirPadLanding = 1, kAirPadRepair = 2;
+    uint8_t airPad = 0;
     // VTOL_SeekGuard (TotalA.exe 0x410850, tickSeekGuard): what a flyer's guard
     // becomes when its guarded unit is lost and the guard was its last order
     // (VTOL_Follow's 0x410341, seekLostWard). It circles x/z, the guarded unit's
     // position at the guard's last look (mission +0x22, kept in attackPointX/Z
     // on the guard), on `mission`, its orbit angle in guardOrbitAngle (+0x36), and
     // guards the first allied ground unit it finds. targetId stays 0. In the
-    // pad after stepOut. Hashed with a tag.
+    // pad after airPad. Hashed with a tag.
     bool seekGuard = false;
     // AirStrike's stage-4 controller (4e3f70, tickAirStrike) follows the
     // attack's target: flightGoal's point is the target's, every tick. In the
@@ -1090,6 +1095,9 @@ struct alignas(64) Order {
     // offset from the carrier at that call; the link carries it with the hull
     // (retailHullPoint). Hashed with the transport fields.
     uint16_t transportHeading = 0;
+    // A repair-pad mission's pad (Order::airPad; VTOL_Landing / SelfRepair
+    // mission +0x16). Hashed with airPad.
+    int airPadId = 0;
 };
 // Which line each field sits on (WE D2). Moving a field across a line, or
 // growing line 0/1 past 64 bytes, is a compile error here. (offsetof on a type
@@ -1124,7 +1132,7 @@ static_assert(offsetof(Order, mission) == 128, "line 1 ends at byte 127; line 2 
 TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(suppressFeature, 5); TA_ORDER_LINE(suppressSlot, 5);
 TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(suppressInner, 5);
 TA_ORDER_LINE(airPoint, 5); TA_ORDER_LINE(attackFormation, 5); TA_ORDER_LINE(resumeSite, 5);
-TA_ORDER_LINE(transportHeading, 5);
+TA_ORDER_LINE(transportHeading, 5); TA_ORDER_LINE(airPadId, 5);
 static_assert(offsetof(Order, suppress) == 320, "lines 0-4 are full; line 5 starts with SUPPRESS");
 static_assert(sizeof(Order) == 384, "Order is six cache lines (line 5 has room left); a new field names its line above");
 #undef TA_ORDER_LINE
@@ -1483,20 +1491,6 @@ struct alignas(64) Unit {
     // Observation only (never hashed, never read by a decision): the tick the
     // flyer handed its last episode over to landing (the relift counter).
     uint32_t legionLiftEnded=0;
-    // Engine deviation (owner, 2026-11-12): a landed flyer on Hold Position
-    // whose auto slot has a target takes off and hovers over the spot it
-    // left, facing the target, without chasing (World::tickHoldLift); it lands
-    // again holdLiftQuiet ticks after its last target in range. Some flyers'
-    // scripts (the Thirsha's) release a shot only in flight. Hashed.
-    bool holdLift=false;
-    uint32_t holdLiftUntil=0;
-    Fixed holdLiftX,holdLiftZ;
-    // A flyer's FireWeapon starts that its script never released (no SET 23
-    // before the next start): the Thirsha's on the ground. Counted for flyers
-    // only; hashed when set.
-    bool fireStartPending=false;
-    uint8_t unreleasedFires=0;
-    uint32_t fireStartTick=0;   // the tick of the pending start
     std::array<ta::TaAimState,3> weaponAim{};   // TotalA.exe slot aim record (tickScriptWeapon)
     std::array<std::array<int32_t,3>,3> weaponMuzzlePoints{}; // display-only captured QueryWeapon geometry
     std::array<std::array<int32_t,3>,3> weaponAimPoints{}; // display-only captured aim geometry
@@ -1729,6 +1723,11 @@ struct alignas(64) Unit {
     // 0x40f9ed..0x40f9fc): the integer position a passenger-carrying flyer
     // loiters round (0x40f839..0x40f853). Hashed while it carries one.
     int16_t standbyPostX = 0, standbyPostZ = 0;
+    // The pad piece a flyer sits on (unit +0xf9, 0x48ab70 writes it on every
+    // attach): set while it rides an air base (inTransport names one, its
+    // type isairbase), -1 otherwise. VTOL_Landing's free-pad test (0x47e570)
+    // reads it on the pad's other passengers. Hashed while it rides one.
+    int8_t padPiece = -1;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -4246,12 +4245,22 @@ private:
     int seekGuardFind(const Unit& u) const;
     void restartFlyingHelp(Unit& b, const Unit& site);
     void flyMissionGoal(Unit& u, Order& order);
-    // Retail's air traffic (retailairtraffic.h): a step-out order pushed ahead
-    // of the unit's mission (4d7750), and its mission (4214b0) at the head.
-    static bool stepOutFront(const Unit& u) { return !u.orders.empty() && u.orders.front().stepOut; }
-    void pushStepOut(Unit& u, RetailStepOut kind, int32_t distance);
-    void tickStepOutMission(Unit& u);
-    void fireBehindStepOut(Unit& u);
+    bool flyerTakeOff(Unit& u, Order& o, bool wait = true);
+    // The repair pads (TotalA.exe VTOL_Landing 0x4118e0, SelfRepair 0x402430):
+    // a pad mission at the head (Order::airPad), the detour that pushes one
+    // (0x40b530's pads under 3/4 health), and the pad's attach list.
+    static bool airPadFront(const Unit& u) { return !u.orders.empty() && u.orders.front().airPad; }
+    bool airPadDamaged(const Unit& u) const;
+    int airPadPick(Unit& u);
+    int airPadDetour(Unit& u);
+    void pushAirPadLanding(Unit& u, int padId);
+    void tickAirPad(Unit& u);
+    void flyAirPadGoal(Unit& u, Order& order);
+    std::array<int32_t,4> queryLandingPads(Unit& pad);
+    bool padPieceFree(const Unit& pad, int piece) const;
+    void attachToPad(Unit& pad, Unit& u, int piece);
+    void detachFromPad(Unit& u);
+    bool onAirPad(const Unit& u) const;
     void tickFlightPatrol(Unit& u);
     int flightGround(const Unit& u) const;
     bool flightLandingFree(const Unit& u, Fixed x, Fixed z) const;
@@ -4356,7 +4365,7 @@ private:
     std::vector<int> pickCandidates_;          // retailSelectTarget's candidate list; scratch, not state
 public:
     // Why a unit's slots are manual (Unit::slotManual).
-    enum : uint8_t { kSlotsAuto=0, kSlotsAttack=1, kSlotsWork=2, kSlotsStatus=3 };
+    enum : uint8_t { kSlotsAuto=0, kSlotsAttack=1, kSlotsWork=2, kSlotsStatus=3, kSlotsStandby=4 };
     // Port of 412620: one weapon slot's target, by retail's 50-draw sampled
     // score. sweep=true is the fire-at-will radius (the weapon's range).
     int retailSelectTarget(Unit& u,int slot,bool sweep);
@@ -4924,9 +4933,6 @@ private:
     // Returns whether the request started or extended the episode.
     bool requestLegionLift(Unit& flyer, bool blocked);
     bool tickLegionLift(Unit& u);
-    bool tickHoldLift(Unit& u);
-    static constexpr uint32_t kHoldLiftQuiet=90;     // ticks hovering after its last target in range
-    static constexpr uint32_t kHoldLiftNoRelease=45; // ticks a started shot may go unreleased before a lift
     void leaveRetailGroupCentre(const Unit& u);
     Fixed retailGroupLimit(const Unit& u) const;
     // A finished output joins its maker's group (human owners): a factory's

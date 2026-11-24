@@ -481,7 +481,9 @@ how far it **follows** a target it already engaged (one that walks out of range)
 chases until it is `maneuverleashlength` px from where it stood, then walks back and
 resumes Standby. Same situation:
 - **Hold Position (0)**: 0x43b1f0 refuses; no order ever, the unit never moves. Its
-  automatic slots still fire at anything in range (sweep 0x4089a0).
+  automatic slots still fire at anything in range (sweep 0x4089a0). An idle *flyer*
+  has none: VTOL_Standby's stage 0 makes every slot manual (0x40f9d3, 0x4898b0(3)),
+  so a landed flyer on Hold Position fires nothing.
 - **Roam (2)**: the same in-range-only pick; the chase has no leash and no return
   move, so it follows the target anywhere; Standby restarts wherever the chase ended.
 - Being hit (0x406f80, owner type 1/2, armed, finished, head order absent or with mission

@@ -2,7 +2,6 @@
 
 #include "sim/retailairattack.h"
 #include "sim/retailairtoair.h"
-#include "sim/retailairtraffic.h"
 #include "sim/retailflight.h"
 #include "sim/retailmission.h"
 #include <cstdint>
@@ -69,8 +68,9 @@ inline RetailSeekPush retailAirLostTarget(const RetailAirLoss& in) {
 //            take-off (0x4107a6..0x41080d).
 //   stage 1: (0x41050f) every slot automatic (0x489800(3)); below 3/4 of its
 //            maxdamage, VTOL_LANDING on a random activated repair pad of its
-//            owner within 3840 px (0x410518..0x4105ee, not ported: World has
-//            no pad landing); the target scan (0x43b700, only on Fire At
+//            owner within 3840 px goes ahead, the wait mask cleared, and the
+//            seek starts again at stage 0 behind it (0x410518..0x4105ee, 0;
+//            retailairpad.h); the target scan (0x43b700, only on Fire At
 //            Will) and 0x43b1f0(unit, found, 0): an attack put in ends the
 //            seek (5). Otherwise, woken by its controller (0xe0), the angle
 //            steps back by 0x5555 + rand(0x2000) (120 to 165 degrees); a point
@@ -93,7 +93,9 @@ struct RetailAirSeek {
 // and take-off); slotsAuto() (0x489800(3)); retarget() (0x43b700 then
 // 0x43b1f0(unit, found, 0): true when it put an attack in); install(point
 // goal) (0x4388d0, which also clears the mission's pending controller
-// events). `point` is mission +0x22, `angle` the low word of +0x36.
+// events); padDetour() (the repair pad's VTOL_LANDING pushed ahead: true
+// when it went; a host without one has no pads). `point` is mission +0x22,
+// `angle` the low word of +0x36.
 template<class Host>
 int retailVtolSeekAttack(RetailMissionState& m,RetailFlightVector& point,uint16_t& angle,uint32_t tick,
                          uint32_t events,const RetailAirSeek& in,Host& host) {
@@ -113,6 +115,8 @@ int retailVtolSeekAttack(RetailMissionState& m,RetailFlightVector& point,uint16_
         return 1;
     case 1: {                                                        // 0x41050f
         host.slotsAuto();
+        if constexpr (requires { host.padDetour(); })
+            if (host.padDetour()) { m.waitMask=0; return 0; }        // 0x410518..0x4105ee
         if (host.retarget()) return 5;                               // 0x4105fa
         if (events&0x700) angle=uint16_t(angle-0x5555u-host.random(0x2000));   // 0x410620
         host.install(RetailFlightGoal{retailAirRunPoint(point,point.y,angle,uint32_t(in.range+0xa0)),0x30,0,128});
@@ -160,10 +164,10 @@ inline RetailFlightGoal retailTaAirReturnToCentre(RetailFlightVector position,in
 //            point becomes the flyer's own (0x410c11); the orbit angle
 //            (+0x36) is rand(0x10000) (+0x3a its low bit, which no stage
 //            reads); on to stage 1 (0x410c3a).
-//   stage 1: (0x410972..0x410a4b, not ported: under 3/4 of maxdamage --
-//            unit +0x108 < (type +0x1fa >> 2) x 3 -- a repair pad within
-//            0xf00 px (0x40b530), a random one, takes it to VTOL_LANDING
-//            pushed ahead and the stage back to 0.) The units 0x47e890 finds
+//   stage 1: (0x410972..0x410a4b: under 3/4 of maxdamage -- unit +0x108 <
+//            (type +0x1fa >> 2) x 3 -- a repair pad within 0xf00 px
+//            (0x40b530), a random one, takes it to VTOL_LANDING pushed ahead,
+//            the wait mask cleared and the stage back to 0.) The units 0x47e890 finds
 //            within the type's sightdistance (+0x202) of the flyer that
 //            0x410c70 keeps (allied to the flyer's owner, not canfly, not
 //            itself), in its 128 px sector walk's order. Any found: the
@@ -193,8 +197,9 @@ struct RetailAirSeekGuard {
 // controller events 0x3700 cleared); guard() (0x43f0e0 action 7 on the first
 // found, then the mission built and pushed ahead: false when there was no
 // mission for the pair, see World::tickSeekGuard); install(point goal)
-// (0x4388d0, which also clears the pending controller events). `point` is
-// mission +0x22, `angle` the low word of +0x36.
+// (0x4388d0, which also clears the pending controller events); padDetour()
+// (as VTOL_SeekAttack's). `point` is mission +0x22, `angle` the low word of
+// +0x36.
 template<class Host>
 int retailVtolSeekGuard(RetailMissionState& m,RetailFlightVector& point,uint16_t& angle,uint32_t tick,
                         uint32_t events,const RetailAirSeekGuard& in,Host& host) {
@@ -211,6 +216,8 @@ int retailVtolSeekGuard(RetailMissionState& m,RetailFlightVector& point,uint16_t
         angle=uint16_t(host.random(0x10000));                        // 0x410c3a
         return 1;
     case 1:                                                          // 0x410972
+        if constexpr (requires { host.padDetour(); })
+            if (host.padDetour()) { m.waitMask=0; return 0; }        // 0x410972..0x410a48
         if (host.found()) {                                          // 0x410a9a
             host.release();                                          // 0x410ac3
             if (!host.guard()) return 8;                             // 0x410ad9

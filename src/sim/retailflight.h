@@ -189,13 +189,18 @@ struct RetailLandingState {
 //            third of a turn when a controller event woke it (flags 0x30,
 //            radius 64, 0x40f5b4..0x40f631); both stay at stage 1 (2).
 //   stage 2: arrived (0x40f3e4): landed (finish), done (5); otherwise 8.
-// Not ported: the off-map return (0x40f2e3..0x40f3c9: 800 px toward the map
-// centre, radius 128), which World never needs (flyers stay on the map).
+//   off the map (0x40f2e3..0x40f3c9, after the head's exits, before any
+//            stage): offMap() (unit +0x82 the off-map sector, game +0x142b7)
+//            has the host install returnToMap() (800 px toward the playable
+//            map's centre, radius 128: retailTaAirReturnToCentre), waiting
+//            on 0xe0; 2. A host without them is never off the map.
 template<class Host>
 int retailLanding(RetailLandingState& state,uint32_t events,RetailFlightVector position,
         int16_t footX,int16_t footZ,bool hasMover,bool canFly,bool landed,int16_t cruiseAlt,Host& host) {
     auto& m=state.mission;
     if (state.canceled || (events&0x200)) return 5;
+    if constexpr (requires { host.offMap(); host.returnToMap(); })
+        if (host.offMap()) { host.returnToMap(); m.waitMask|=0x700; return 2; }   // 0x40f2e3
     switch (m.stage) {
     case 0:
         if (!hasMover || !canFly) return 7;

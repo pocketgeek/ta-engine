@@ -349,8 +349,9 @@ int retailAirToGroundHover(RetailMissionState& m,int32_t& count,RetailFlightVect
 // retailAirStrike follows: no group check and no stage-4 air-traffic
 // step-out; the leash is the _hypot of whole pixels; the release ring's
 // gravity is the OTA's integer and its speed the mover's scalar speed
-// (retailStrikeRelease); zero gravity ends the list at stage 4; stage 6 sends
-// a bomber under 3/4 health to a repair pad (not ported). The Kingdoms
+// (retailStrikeRelease); zero gravity ends the list at stage 4; stage 6
+// starts a bomber under 3/4 health again from stage 0, a repair pad's
+// VTOL_LANDING ahead of it when it has one (0x4125c2..0x4126b4). The Kingdoms
 // notes, for reference:
 // AirStrike (registry row 5ebd69, class 2, flags 0x1000600; handler 41b5e0):
 // the attack 4de530 picks for a flyer whose selected weapon has the `dropped`
@@ -454,7 +455,9 @@ inline int32_t retailStrikeRelease(const RetailAirStrike& in) {
 // that is not the target: true when it put an attack ahead); stepOut(D)
 // (VTOL_StepOut built and pushed ahead, 4d7750: false when it could not be);
 // seek(target, point) (VTOL_SEEKATTACK inserted behind the strike, 4d77b0);
-// the group check's outOfSlot(), nextFlags(), leave() and formation().
+// the group check's outOfSlot(), nextFlags(), leave() and formation();
+// padDamaged() and padDetour() (TotalA.exe's stage-6 pad test and the pad's
+// VTOL_LANDING pushed ahead; a host without them has no pads).
 // `point` is mission +0x22.
 template<class Host>
 int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tick,uint32_t events,
@@ -528,12 +531,18 @@ int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tic
         m.waitMask=0x742;
         return 1;
     case 6:                                                              // 0x41253c
-        // (0x4125c2..0x4126b4: under 3/4 health a repair pad within 3840 px
-        // takes it to VTOL_LANDING instead; not ported.)
         host.clearSlot();
         host.install(RetailFlightGoal{retailAirRunPoint(in.position,in.position.y,in.heading,1440),0x30,0,128});
         m.waitMask=0x742;
-        m.stage=3;
+        // 0x4125c2..0x4126b4: under 3/4 health a repair pad within 3840 px
+        // takes it to VTOL_LANDING (the wait mask cleared); pad or not, the
+        // strike goes back to stage 0.
+        if constexpr (requires { host.padDamaged(); host.padDetour(); })
+            if (host.padDamaged()) {
+                if (host.padDetour()) m.waitMask=0;                      // 0x412697
+                return 0;                                                // 0x4126ab / 0x4126c0
+            }
+        m.stage=3;                                                       // 0x4126cc
         return 2;
     default:
         return 7;
