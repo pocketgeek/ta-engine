@@ -1653,7 +1653,7 @@ if(TA_TEST_DATA)
     add_test(NAME transport_post_unload COMMAND transport_test --post-unload "${TA_TEST_DATA}")
     add_test(NAME transport_map_roundtrip COMMAND transport_test
         --surface-transport-map-roundtrip-type "${TA_TEST_DATA}"
-        "Lake Lokken" vertrans araarch 240 120 240 350)
+        "Lake Shore" cortship armpw 115 100 115 30)
     add_test(NAME animation_roster COMMAND animation_roster_test "${TA_TEST_DATA}")
     add_test(NAME production_exit COMMAND production_exit_test "${TA_TEST_DATA}")
     add_test(NAME doorway COMMAND doorway_test "${TA_TEST_DATA}")

@@ -51,11 +51,12 @@ int main(int argc,char** argv) {
                 expectedCorpse=ct>=0 && vm.lastLocals().size()>1 && (vm.lastLocals()[1]&15)==1;
             }
             if(checkQuery)check(u->deathHasCorpse==expectedCorpse,"corpse agrees with independent Killed output");
-            const bool checkBlocking=type.id=="araat" && death==1 && !unfinished && ct>=0
+            const bool checkBlocking=type.id=="armsolar" && death==1 && !unfinished && ct>=0
                 && w.featureTypes()[size_t(ct)].blocking;
             const int cx=sim::footprintOrigin(u->x,type.footX)+type.corpseAdjX;
             const int cz=sim::footprintOrigin(u->z,type.footZ)+type.corpseAdjZ;
-            if(checkBlocking)check(w.nav().walkable(cx,cz),"ruin does not block before authored handoff");
+            // A Killed that retires at once (handoff 0) hands the wreck over this tick.
+            if(checkBlocking && u->corpseAnimationTicks()>0)check(w.nav().walkable(cx,cz),"ruin does not block before authored handoff");
             for(int elapsed=0;elapsed<1500 && u->deadFor<u->corpseAnimationTicks();++elapsed) {
                 w.tick(1.f/30);u=w.unit(id);
                 if(checkBlocking && u->deadFor<u->corpseAnimationTicks())
@@ -73,19 +74,23 @@ int main(int argc,char** argv) {
             if(!type.script())continue;
             for(int death:{1,3})run(type,death,false,false);
         }
-        for(const auto* name:{"arafly","aragren","crefire","npcflag","npcthesh","zonamoe","zonbasil"}) {
+        // A warm death (the unit ticked once) of a kbot, the Commander, a
+        // flyer, a ship and a tower. TA's Killed scripts explode their pieces
+        // and return the corpse type without sleeping, so no native retirement
+        // tick is asserted here (the Kingdoms values, taken from KINGDOMS.icd
+        // 512610/512860/51d3e0, are not checked against TotalA.exe).
+        for(const auto* name:{"armpw","armcom","armfig","armsub","armllt"}) {
             const auto* type=registry.find(name);
-            if(!type){++failures;continue;}
-            const int ticks=(std::string_view(name)=="zonamoe" || std::string_view(name)=="zonbasil")?67:
-                (std::string_view(name)=="npcflag" || std::string_view(name)=="npcthesh")?35:1;
-            run(*type,1,true,false,ticks);
+            if(!type){++failures;std::fprintf(stderr,"FAIL missing type %s\n",name);continue;}
+            run(*type,1,true,false);
         }
-        // Values independently observed in native 512610/512860/51d3e0.
-        for(auto [name,ticks]:std::array<std::pair<const char*,int>,4>{{
-            {"araat",27},{"araarch",28},{"crebomb",147},{"arakeep",0}}}) {
-            const auto* type=registry.find(name);if(!type){++failures;continue;}
-            run(*type,1,true,false,ticks);
-            run(*type,sim::Unit::kDeathSelfDestruct,true,false,ticks);
+        // A structure, a kbot, a factory and a tower: a plain death, a self
+        // destruct (no corpse query) and an unfinished site.
+        for(const char* name:{"armsolar","armpw","armvp","armllt"}) {
+            const auto* type=registry.find(name);
+            if(!type){++failures;std::fprintf(stderr,"FAIL missing type %s\n",name);continue;}
+            run(*type,1,true,false);
+            run(*type,sim::Unit::kDeathSelfDestruct,true,false);
             run(*type,1,true,true,-1);
         }
     }

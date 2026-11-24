@@ -1,15 +1,14 @@
-// Factory output release and AI Navy Yard siting, on shipped units and the map
-// from a 0.9.0 report: a Creon Normal AI put its Navy Yard (crenavy) in a
-// landlocked 111-cell pond on a generated map, at (1800,5272). The yard's exit
-// step then ordered each new Submersible (cresubm) 316 px south, into the next
-// body of water; the sub never moved, held the pad, and the yard built nothing
-// for 3m46s until it was killed.
+// Factory output release, on shipped units. The case came from a Kingdoms
+// report: a Navy Yard in a landlocked pond ordered each new Submersible 316 px
+// south, into the next body of water; the sub never moved, held the pad, and
+// the yard built nothing until it was killed. Here a Shipyard (armsy) on a
+// small landlocked pond builds Lurkers (armsub).
 //
 // Retail releases a factory's output with GetBuilt (0x402220): the factory's
 // queued QMove/QPatrol orders, else PARK in a ring around it. Our release ports
 // that, keeping the ring only when the output can reach it (see
-// World::parkProductionOutput). The AI's coastal projection must also refuse
-// the pond: its first wet ring around an enemy start is the sea, not the pond.
+// World::parkProductionOutput). (The Kingdoms heuristic AI's naval siting
+// checks are gone with that AI.)
 //
 // Flyers take the same release: the factory's rally alone, else PARK's flight
 // branch, a single flight to a random point on a circle round the factory.
@@ -17,11 +16,8 @@
 // Under Legion a run of ground outputs spreads over PARK's band (each claims
 // a spot of its own, World::legionParkSpot) instead of queueing in a column
 // out of the door; tools/legion_park_test.cpp covers it in depth.
-#include "ai/ai.h"
-#include "ai/builtinprofile.h"
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
-#include "tnt/mapgen.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -29,18 +25,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-namespace ta::ai {
-struct PlacementProbe {
-    static bool reach(const Controller& c,const sim::World& w,const sim::UnitType* ship,
-                      float fx,float fz,float tx,float tz) {
-        float x,z;return c.reachablePoint(w,ship,fx,fz,tx,tz,x,z);
-    }
-    static bool body(const Controller& c,const sim::World& w,const sim::UnitType* ship,float x,float z) {
-        return c.navalBodyAtLeast(w,ship,x,z,Controller::kMinNavalBodyCells);
-    }
-};
-}
 
 using namespace ta;
 namespace {
@@ -54,24 +38,24 @@ Rect footprint(const sim::Unit& u) {
 }
 bool intersects(const Rect& a,const Rect& b) {return a.x<b.x+b.w && b.x<a.x+a.w && a.z<b.z+b.h && b.z<a.z+a.h;}
 
-// The reported room: generated map, 8 seats; the start spots it used.
-constexpr auto kRecipe="~gen1~0a000100000000000000038001800108ffffffffff0004000000";
-const std::vector<std::pair<float,float>> kStarts{{4352,1792},{5376,3328},{4352,4352},{3328,5376},
-    {1792,4352},{768,3328},{1792,1792},{3328,768}};
-
-void setupPondMap(sim::World& w,const sim::TypeRegistry& registry,hpi::Vfs& vfs,sim::PathfindingMode mode) {
-    w.setSerialThreads(true);
-    sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath="maps/shipyard-pond.tnt";cfg.loadCrt=false;
-    cfg.pathfindingMode=mode;cfg.slots.resize(1);sim::setupMatch(w,registry,cfg);
+// Flat land with a landlocked pond: 20x20 cells of sea bed at 0 under a sea
+// level of 20, centred on (1800,1800); everything else is dry ground at 100.
+void setupPondMap(sim::World& w,const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
+    w.setSerialThreads(true);w.setPathfindingMode(mode);
+    std::vector<uint8_t> heights(256*256,100);
+    for(int z=102;z<123;++z)for(int x=102;x<123;++x)heights[size_t(z)*256+x]=0;
+    w.setTerrain(heights,256,256,20);
+    w.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
+    w.buildNavClasses(registry);w.setPathService(true);
 }
 
-// A Navy Yard on the pond, building Submersibles. Each must leave the pad and
-// the yard must go on to the next.
-void pondYard(const sim::TypeRegistry& registry,hpi::Vfs& vfs,sim::PathfindingMode mode) {
-    sim::World w;setupPondMap(w,registry,vfs,mode);
-    const auto* sub=registry.find("cresubm");
-    auto yardType=*registry.find("crenavy");yardType.workerTime*=20;yardType.storage=1000000;
-    const int yard=w.spawn(&yardType,1800,5272,0,0);
+// A Shipyard on the pond, building Lurkers. Each must leave the pad and the
+// yard must go on to the next.
+void pondYard(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
+    sim::World w;setupPondMap(w,registry,mode);
+    const auto* sub=registry.find("armsub");
+    auto yardType=*registry.find("armsy");yardType.workerTime*=20;yardType.storage=1000000;
+    const int yard=w.spawn(&yardType,1800,1800,0,0);
     w.player(0).mana=1000000;w.train(yard,sub,3);
     const Rect pad=footprint(*w.unit(yard));
     std::vector<int> subs;int firstDone=-1,firstClear=-1,tick=0;
@@ -95,31 +79,8 @@ void pondYard(const sim::TypeRegistry& registry,hpi::Vfs& vfs,sim::PathfindingMo
     }
     std::printf("pond mode=%s subs=%zu finished=%d firstClearAfter=%d onPad=%d ticks=%d hash=%016llx\n",mode==sim::PathfindingMode::Legion?"Legion":"Retail",subs.size(),finished,
         firstClear<0?-1:firstClear-firstDone,onPad,tick,(unsigned long long)w.stateHash());
-    check(firstClear>=0 && firstClear-firstDone<=600,"a Submersible built on the pond yard leaves the pad");
-    check(finished==3 && onPad==0,"the pond yard builds its next Submersibles, none left on the pad");
-}
-
-// The AI's view of the same pond: no enemy start projects onto it, it is too
-// small for a fleet, and the open sea a Creon yard used in that game still is.
-void pondSiting(const sim::TypeRegistry& registry,hpi::Vfs& vfs) {
-    sim::World w;setupPondMap(w,registry,vfs,sim::PathfindingMode::Retail);
-    const auto* sub=registry.find("cresubm");
-    const float padX=1802,padZ=5298;
-    check(!w.pathExists(sub,1872,5616,padX,padZ),"fixture: the pond is not connected to the sea south of it");
-    std::vector<std::pair<float,float>> enemies(kStarts.begin(),kStarts.end());
-    enemies.erase(enemies.begin()+4);   // seat 4 placed the yard
-    ai::Controller controller(4,registry,ai::builtinProfile(ai::Difficulty::Normal),1,ai::Difficulty::Normal,enemies);
-    int accepted=0;
-    for(const auto& [x,z]:enemies)accepted+=ai::PlacementProbe::reach(controller,w,sub,padX,padZ,x,z);
-    check(accepted==0,"no enemy start's coastal projection lands in the landlocked pond");
-    check(!ai::PlacementProbe::body(controller,w,sub,padX,padZ),"a 111-cell pond is too small a body for a Navy Yard");
-    std::vector<std::pair<float,float>> west(kStarts.begin(),kStarts.end());
-    west.erase(west.begin()+5);
-    ai::Controller seat5(5,registry,ai::builtinProfile(ai::Difficulty::Normal),1,ai::Difficulty::Normal,west);
-    int seaAccepted=0;
-    for(const auto& [x,z]:west)seaAccepted+=ai::PlacementProbe::reach(seat5,w,sub,538,2194,x,z);
-    check(seaAccepted>0 && ai::PlacementProbe::body(seat5,w,sub,538,2194),
-          "the west sea a Creon yard used in the same game is still accepted");
+    check(firstClear>=0 && firstClear-firstDone<=600,"a Lurker built on the pond yard leaves the pad");
+    check(finished==3 && onPad==0,"the pond yard builds its next Lurkers, none left on the pad");
 }
 
 // A land factory parks its output in front of it, inside PARK's ring; a rally
@@ -129,8 +90,8 @@ void landFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,boo
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto barracks=*registry.find("arakeep");barracks.workerTime*=20;barracks.storage=1000000;
-    const auto* sword=registry.find("arasword");
+    auto barracks=*registry.find("armlab");barracks.workerTime*=20;barracks.storage=1000000;
+    const auto* sword=registry.find("armpw");
     const int id=w.spawn(&barracks,1800,1800,0,0);
     if(rally)w.order(id,2600,1000,false);
     w.player(0).mana=1000000;w.train(id,sword,count);
@@ -157,7 +118,7 @@ void landFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,boo
         inYard+=intersects(footprint(*s),yard);
         const float dx=s->x.toFloat()-f->x.toFloat(),dz=s->z.toFloat()-f->z.toFloat();
         front+=dz>0 && std::abs(dx)<dz;
-        // PARK's ring: footX*16 + padding 48..160 + half the Barracks diagonal.
+        // PARK's ring: footX*16 + padding 48..160 + half the Kbot Lab diagonal.
         const int cx=sim::footprintOrigin(s->x,sword->footX)-fx,cz=sim::footprintOrigin(s->z,sword->footZ)-fz;
         const int cells2=cx*cx+cz*cz;
         const int half=int(std::sqrt(double(barracks.footX*barracks.footX+barracks.footZ*barracks.footZ))*8);
@@ -177,19 +138,19 @@ void landFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,boo
         mode==sim::PathfindingMode::Legion?"Legion":"Retail",rally,out.size(),parked,rallied,front,inRing,beyond,inside,
         left,right,out.empty()?0.f:maxAngle-minAngle,arrived,inYard,(unsigned long long)w.stateHash());
     if(rally) {
-        check(out.size()==4 && rallied && arrived==4 && inYard==0,label+"a Barracks with a rally point sends its output there, not to PARK");
+        check(out.size()==4 && rallied && arrived==4 && inYard==0,label+"a Kbot Lab with a rally point sends its output there, not to PARK");
     } else if(count==4) {
-        check(out.size()==4 && parked,label+"a Barracks without a rally point releases its output with PARK");
+        check(out.size()==4 && parked,label+"a Kbot Lab without a rally point releases its output with PARK");
         // Legion spreads the outputs round the door (some beside the
         // factory), so only the Retail navigator is held to its front.
         if(mode==sim::PathfindingMode::Legion)
-            check(inRing==4 && inYard==0,label+"the parked output stands in PARK's ring, clear of the Barracks");
-        else check(front==4 && inRing==4 && inYard==0,label+"the parked output stands in front of the Barracks, in PARK's ring");
+            check(inRing==4 && inYard==0,label+"the parked output stands in PARK's ring, clear of the Kbot Lab");
+        else check(front==4 && inRing==4 && inYard==0,label+"the parked output stands in front of the Kbot Lab, in PARK's ring");
     } else {
         // Legion spreads a run of outputs over the band, or beyond it once
         // the band is full (World::legionParkSpot); they used to queue in a
         // column out of the door, three of eight short of the inner radius.
-        check(int(out.size())==count && parked && inYard==0,label+"eight parked outputs leave the Barracks");
+        check(int(out.size())==count && parked && inYard==0,label+"eight parked outputs leave the Kbot Lab");
         check(inRing+beyond==count && inside==0,label+"all eight stand in PARK's band or beyond it, none short of its inner radius");
         check(left>0 && right>0 && maxAngle-minAngle>=1.0f,label+"the eight spread round the door, not in a column");
     }
@@ -202,8 +163,8 @@ void deadRally(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto barracks=*registry.find("arakeep");barracks.workerTime*=20;barracks.storage=1000000;
-    const auto* sword=registry.find("arasword");
+    auto barracks=*registry.find("armlab");barracks.workerTime*=20;barracks.storage=1000000;
+    const auto* sword=registry.find("armpw");
     const int id=w.spawn(&barracks,1800,1800,0,0);
     const int victim=w.spawn(sword,2600,1000,1,0);
     w.attack(id,victim,false);
@@ -311,7 +272,7 @@ void flyerFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,co
     } else {
         check(resolved==count && inRadius==count,label+"a parked flyer's point lies within PARK's flight radius");
         // Twelve random bearings: three quadrants at least (all four miss one about one game in eight; the
-        // newborns' step-outs since protocol 307 draw the shared random too, and the Spyhawks now leave one
+        // newborns' step-outs since protocol 307 draw the shared random too, and a run of Kingdoms Spyhawks left one
         // empty).
         check(std::popcount(quadrants)>=3 && behind,label+"parked flyers spread round the factory, behind it too");
         check(unparkedFlight==0,label+"a parked flyer's leg stays a PARK until it arrives");
@@ -321,8 +282,8 @@ void flyerFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,co
 // A mobile producer's flyer takes the rally as a factory's does: alone, with no
 // hop ahead of it. The producer here is a bare fixture; the flyer is shipped.
 void flyerMobileRally(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
-    const auto* shipped=registry.find("arafast");
-    const std::string label=modeLabel(mode)+"mobile producer/arafast: ";
+    const auto* shipped=registry.find("armpeep");
+    const std::string label=modeLabel(mode)+"mobile producer/armpeep: ";
     if(!shipped || !shipped->canFly) {check(false,label+"fixture: a flyer");return;}
     sim::World w;flatWorld(w,registry,mode);
     auto flyer=*shipped;flyer.buildTime=1;flyer.buildCost=0;
@@ -360,7 +321,7 @@ void flyerMobileRally(const sim::TypeRegistry& registry,sim::PathfindingMode mod
 // PARK's flight branch centred on the flyer itself, without the diagonal, once
 // its factory is gone (0x407f0a); around the live factory otherwise.
 void flyerParkFallback(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
-    const auto* flyer=registry.find("arafast");const auto* factory=registry.find("arakeep");
+    const auto* flyer=registry.find("armpeep");const auto* factory=registry.find("armap");
     for(bool dead:{false,true}) {
         sim::World w;flatWorld(w,registry,mode);
         const int f=w.spawn(factory,2000,2000,0,0);
@@ -398,7 +359,7 @@ void flyerParkFallback(const sim::TypeRegistry& registry,sim::PathfindingMode mo
 // does, as in retail. This is what the AI's site search (canPlace) sees.
 void flyerPlacement(const sim::TypeRegistry& registry) {
     sim::World w;flatWorld(w,registry,sim::PathfindingMode::Retail);
-    const auto* flyer=registry.find("arafast");const auto* keep=registry.find("arakeep");
+    const auto* flyer=registry.find("armpeep");const auto* keep=registry.find("armlab");
     constexpr float kX=2000,kZ=2000;
     check(w.canPlace(keep,kX,kZ,0),"fixture: the site is free");
     const int u=w.spawn(flyer,kX,kZ,0,0);
@@ -423,22 +384,19 @@ void flyerPlacement(const sim::TypeRegistry& registry) {
 int main(int argc,char** argv) {
     if(argc!=2)return 2;
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    auto generated=mapgen::generate(mapgen::decodeMapId(kRecipe),vfs);
-    auto files=std::make_shared<hpi::Vfs::Files>();(*files)["maps/shipyard-pond.tnt"]=generated.map.save();vfs.setMapFiles(files);
     {
         sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
-        pondSiting(registry,vfs);
         for(auto mode:{sim::PathfindingMode::Retail,sim::PathfindingMode::Legion}) {
-            pondYard(registry,vfs,mode);
+            pondYard(registry,mode);
             for(bool rally:{false,true})landFactory(registry,mode,rally);
             if(mode==sim::PathfindingMode::Legion)landFactory(registry,mode,false,8);
             deadRally(registry,mode);
             {
                 for(bool rally:{false,true}) {
-                    flyerFactory(registry,mode,"arakeep","arafast",rally);
-                    if(!rally)flyerFactory(registry,mode,"creacad","credrag",rally);
-                    if(!rally)flyerFactory(registry,mode,"tarcastl","tarship",rally);
-                    if(!rally)flyerFactory(registry,mode,"verkeep","verpar",rally);
+                    flyerFactory(registry,mode,"armap","armpeep",rally);
+                    if(!rally)flyerFactory(registry,mode,"corap","corfink",rally);
+                    if(!rally)flyerFactory(registry,mode,"armaap","armawac",rally);
+                    if(!rally)flyerFactory(registry,mode,"coraap","corawac",rally);
                 }
                 flyerMobileRally(registry,mode);
                 flyerParkFallback(registry,mode);

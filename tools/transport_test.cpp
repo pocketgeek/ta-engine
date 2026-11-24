@@ -1574,7 +1574,7 @@ static void retailRoster(const char* root) {
             w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
             auto carrier=boatType(),target=footType();carrier.canFly=air;carrier.cruiseAlt=100;
             target.maxHp=10000;
-            const auto* archer=registry.find("araarch");
+            const auto* archer=registry.find("armpw");
             if(!archer)continue;
             const int tid=w.spawn(&carrier,400,400),cid=w.spawn(archer,430,400),
                 enemy=w.spawn(&target,430,600,0,1);
@@ -1608,93 +1608,21 @@ static void retailRoster(const char* root) {
             }
             check(fired,"unloaded passenger can acquire aim and fire again");
         }
-        for(bool air:{false,true}) {
-            const auto* builder=registry.find("zonsham");
-            const auto* output=registry.find("zonter");
-            check(builder && output,"transported conjurer assets are available");
-            if(!builder || !output)continue;
-            World w;setTestPathfinding(w);
-            w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
-            auto carrier=boatType();carrier.canFly=air;carrier.cruiseAlt=100;
-            carrier.maxTransportSize=64;carrier.transportSizeCap=64;
-            UnitType product=*output;product.buildTime=100000;
-            const int tid=w.spawn(&carrier,400,400),cid=w.spawn(builder,430,400);
-            w.train(cid,&product,1);
-            for(int tick=0;tick<90 && !w.unit(cid)->productionSiteId;++tick)w.tick(1.f/30);
-            check(w.unit(cid)->productionSiteId!=0,"conjurer starts a finite production job before boarding");
-            w.loadInto(cid,tid);
-            check(w.unit(cid)->buildQueue.empty() && !w.unit(cid)->productionSiteId &&
-                  w.unit(cid)->buildProgress==0,
-                  "replacement boarding cancels the conjurer's finite production job");
-            for(int tick=0;tick<180 && !w.unit(cid)->embarked();++tick)w.tick(1.f/30);
-            check(w.unit(cid)->embarked(),"finite-production conjurer boards the carrier");
-            // Direct World callers can still supply deferred production while
-            // aboard; it must not create or advance a site until disembarking.
-            w.train(cid,&product,1);
-            const int progress=w.unit(cid)->buildProgress;
-            for(int tick=0;tick<5;++tick)w.tick(1.f/30);
-            check(w.unit(cid)->buildProgress==progress && !w.unit(cid)->productionSiteId,
-                  "embarked conjurer cannot advance production from inside cargo");
-            w.unloadAt(tid,340,400);
-            check(runUntilUnloaded(w,tid),"finite-production conjurer unloads normally");
-            const int resumed=w.unit(cid)->buildProgress;
-            for(int tick=0;tick<5;++tick)w.tick(1.f/30);
-            check(w.unit(cid)->buildProgress>resumed,
-                  "unloaded conjurer can start the new deferred production job");
-        }
-        for(bool air:{false,true}) {
-            World w;setTestPathfinding(w);
-            w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
-            auto carrier=boatType();carrier.canFly=air;carrier.cruiseAlt=100;
-            carrier.maxTransportSize=64;carrier.transportSizeCap=64;
-            const auto* builder=registry.find("zonsham");
-            UnitType product=*registry.find("zonter");product.buildTime=100000;
-            const int tid=w.spawn(&carrier,400,400),cid=w.spawn(builder,430,400);
-            w.train(cid,&product,2);
-            w.tick(1.f/30);
-            w.loadInto(cid,tid,true);
-            for(int tick=0;tick<30;++tick)w.tick(1.f/30);
-            check(!w.unit(cid)->embarked() && w.unit(cid)->buildProgress>0,
-                  "queued boarding cannot overtake earlier finite production");
-            // Ours, not retail: the idle carrier's pickup waits for the
-            // passenger's turn instead of ending at its first wake.
-            check(w.unit(tid)->orders.size()==1 && w.unit(tid)->orders.front().transportPickup &&
-                  w.unit(tid)->orders.front().targetId==cid &&
-                  w.unit(tid)->orders.front().transportMission.stage==0,
-                  "carrier's pickup waits while passenger's earlier production owns its turn");
-            w.dequeue(cid,&product,2);
-            for(int tick=0;tick<300 && !w.unit(cid)->embarked();++tick)w.tick(1.f/30);
-            check(w.unit(cid)->buildQueue.empty() && w.unit(cid)->inTransport==tid &&
-                  w.unit(tid)->orders.empty(),
-                  "canceling preceding production releases the queued boarding");
-            World done;setTestPathfinding(done);
-            done.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
-            product.buildTime=10;product.buildCost=1;
-            const int doneCarrier=done.spawn(&carrier,400,400),doneBuilder=done.spawn(builder,430,400);
-            done.train(doneBuilder,&product,1);
-            done.loadInto(doneBuilder,doneCarrier,true);
-            for(int tick=0;tick<300 && !done.unit(doneBuilder)->embarked();++tick)done.tick(1.f/30);
-            if(!done.unit(doneBuilder)->embarked() || !done.unit(doneBuilder)->buildQueue.empty())
-                std::printf("queued-production air=%d cargo=%d queue=%zu progress=%d site=%d mana=%.1f passengerOrders=%zu carrierOrders=%zu\n",
-                    air,done.unit(doneBuilder)->inTransport,done.unit(doneBuilder)->buildQueue.size(),
-                    done.unit(doneBuilder)->buildProgress,done.unit(doneBuilder)->productionSiteId,done.player(0).mana,
-                    done.unit(doneBuilder)->orders.size(),done.unit(doneCarrier)->orders.size());
-            check(done.unit(doneBuilder)->inTransport==doneCarrier && done.unit(doneBuilder)->buildQueue.empty(),
-                  "completed finite production releases queued boarding on an idle carrier");
-        }
+        // (Kingdoms' conjurers trained units while mobile and had their
+        // production cancelled on boarding; no TA mobile unit trains.)
         int carriers=0;
         for(const auto& [name,type]:registry.types()) {
             if(!type.canTransport) continue;
             ++carriers;
             std::printf("carrier=%s count=%d budget=%d maximum=%d distance=%d\n",
                 name.c_str(),type.transportCap,type.transportSizeCap,type.maxTransportSize,type.transportDist);
-            check(type.transportCap>0 && type.transportSizeCap>=type.transportCap &&
-                type.maxTransportSize>0,"retail carrier has separate nonzero capacity limits");
+            // TA's two limits (docs/retail-data.md 2.1, +0x22a/+0x22b):
+            // transportcapacity, and transportsize, the largest passenger.
+            check(type.transportCap>0 && type.maxTransportSize>0,"retail carrier has nonzero capacity limits");
             World w;setTestPathfinding(w);
             w.setTerrain(coastHeights(128,128,50),128,128,40);
             w.buildNavClasses(registry);w.setPathService(true);
-            const auto* foot=registry.find("araarch");
-            if(!foot) foot=registry.find("zonhunt");
+            const auto* foot=registry.find("armpw");
             check(foot && foot->transportSize==foot->footX*foot->footZ,
                 "passenger cost defaults to final movement footprint area");
             if(!foot) continue;
@@ -1723,7 +1651,8 @@ static void retailRoster(const char* root) {
                 }
             }
         }
-        check(carriers==13,"all retail carriers covered");
+        // Atlas, Valkyrie, both transport ships and both Core Contingency hovers.
+        check(carriers==6,"all retail carriers covered");
     }
 }
 
@@ -1732,9 +1661,9 @@ static void retailRoster(const char* root) {
 // aimed 2*(transportdistance+400)px ahead -- and retail's dispatcher gives the
 // emptied list its default mission in that same call (4d856a); VTOL_Standby
 // installs VTOL_LANDIFCAN two ticks later, whose 32px brake point replaces the
-// controller. World let the controller run on instead: the user's Roc (replay
-// game-1-1791860558, Legion) flew 1400px past its drop point, and the
-// Ghost Ship and Aerial Juggernaut did the same. Each carrier,
+// controller. World let the controller run on instead: a Kingdoms Roc (replay
+// game-1-1791860558, Legion) flew 1400px past its drop point, and other
+// carriers did the same. Each TA carrier,
 // in both pathfinding modes, with one passenger and with a full load, unloading
 // in range and after an approach: once released it comes to rest within its own
 // stopping distance of where it let go (flyers: plus the landing search's reach).
@@ -1746,7 +1675,7 @@ static void postUnloadRoster(const char* root) {
     int carriers=0,cases=0,drifted=0;
     {
         ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
-        const auto* foot=registry.find("araarch");
+        const auto* foot=registry.find("armpw");
         check(foot!=nullptr,"post-unload roster passenger type is available");
         if(!foot)return;
         for(const auto& [name,type]:registry.types()) {
@@ -1760,7 +1689,7 @@ static void postUnloadRoster(const char* root) {
                 if(pass && fits==1)continue;
                 for(bool near:{true,false}) {
                     World w;
-                    // Ships need the coast; flyers and siege towers drop on open land,
+                    // Ships need the coast; flyers and hovers drop on open land,
                     // where the landing mission need not search past the water.
                     w.setTerrain(landCarrier ? std::vector<uint8_t>(128*128,100) : coastHeights(128,128,50),128,128,40);
                     w.buildNavClasses(registry);w.setPathService(true);w.setPathfindingMode(mode);
@@ -1824,7 +1753,7 @@ static void postUnloadRoster(const char* root) {
             }
         }
     }
-    check(carriers==13,"post-unload roster covers all 13 carriers");
+    check(carriers==6,"post-unload roster covers all 6 carriers");
     std::printf("  post-unload: %d carriers, %d cases, %d drifted\n",carriers,cases,drifted);
 }
 
@@ -1836,9 +1765,9 @@ static void postUnloadQueued(const char* root) {
     auto vfs=ta::hpi::mountRetailRoot(root);
     {
         ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
-        const auto* foot=registry.find("araarch");
+        const auto* foot=registry.find("armpw");
         if(!foot)return;
-        for(const char* id:{"zonroc","tarship","creaeri"}) {
+        for(const char* id:{"armatlas","corvalk"}) {
             const auto* type=registry.find(id);
             if(!type)continue;
             for(PathfindingMode mode:{PathfindingMode::Retail,PathfindingMode::Legion})

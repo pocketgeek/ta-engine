@@ -2,8 +2,8 @@
 // after 0.9.19: "idle units at a land factory's door don't move aside; only the
 // Navy Yard got that fix").
 //
-// One factory per faction (Aramon Barracks, Veruna Keep, Taros Dungeon, Creon
-// Academy), each making six of a small and of a large output, in both
+// Two factories per side (Arm and Core Kbot Labs and Vehicle Plants), each
+// making six of a small and of a large output, in both
 // pathfinding modes, on a flat loaded map (feature plane, so movement and the
 // site test take the native rectangular footprint test). Measured per output:
 // ticks from completion until it is clear of the factory's rectangle and until
@@ -32,9 +32,10 @@
 // factory given an order after it came to rest: with the Navy Yard's first rule,
 // every own parked unit in the door's area, 127 over these 64 runs; now 26).
 //
-// Guards step aside too (owner's decision after the 0.9.19 known limit: under
-// Legion a dozen guards at a Creon Academy's door let 0 of 6 out; Retail
-// Barracks Catapults took 1455 ticks for six against 1227 with the door clear).
+// Guards step aside too (owner's decision after the 0.9.19 known limit, on the
+// Kingdoms data: under Legion a dozen guards at a Creon Academy's door let 0 of
+// 6 out; Retail Barracks Catapults took 1455 ticks for six against 1227 with
+// the door clear).
 // Each guard must end back on its guard near its ward, step aside at most once
 // for each output (counted per output finished, a refusal of the next one's
 // site since then apart), and a guard fighting must not be moved.
@@ -304,10 +305,10 @@ int main(int argc,char** argv) {
     sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     struct Case {const char* factory;const char* small;const char* large;const char* crowd;};
     const Case factories[]{
-        {"arakeep","arasword","arapult","arasword"},
-        {"verkeep","versword","verpult","versword"},
-        {"tardung","tararch","tarfire","tararch"},
-        {"creacad","creshoc","crebeas","creshoc"},
+        {"armlab","armpw","armham","armpw"},
+        {"armvp","armflash","armbull","armflash"},
+        {"corlab","corak","corthud","corak"},
+        {"corvp","corgator","correap","corgator"},
     };
     for(auto mode:{sim::PathfindingMode::Retail,sim::PathfindingMode::Legion})
         for(const auto& c:factories)
@@ -336,9 +337,9 @@ int main(int argc,char** argv) {
                 const Result guard=run(registry,mode,c.factory,output,c.crowd,Crowd::Guard);
                 check(guard.produced==kOutputs && int(guard.clear.size())==kOutputs && guard.stuck==0,
                       label+"a dozen at the door guarding one of them hold no output in");
-                // 20%, not 15%: guards stepping aside face their motion (protocol 336, 2026-11-19), and
-                // verkeep verpult's guard crowd went 1400 -> 1439 against a 1242 clear door (all 36 Legion
-                // cases together 165 ticks faster).
+                // 20%, not 15%: guards stepping aside face their motion (protocol 336, 2026-11-19); on
+                // the Kingdoms data a Veruna Keep's guard crowd went 1400 -> 1439 against a 1242 clear
+                // door.
                 check(guard.produced==kOutputs && guard.lastDone<=clear.lastDone+clear.lastDone*20/100,
                       label+"with them the factory builds near its clear-door rate ("+std::to_string(guard.lastDone)+
                       " vs "+std::to_string(clear.lastDone)+" ticks)");
@@ -356,9 +357,9 @@ int main(int argc,char** argv) {
                 check(twin.produced==kOutputs && int(twin.clear.size())==kOutputs,
                       label+"guards that made way at a twin factory's door still let all six out here ("+
                       std::to_string(twin.produced)+")");
-                // Kept, not back on it: under Legion two Creon guards end still
-                // pressing on their move aside in the lane between the two
-                // Academies (as at 39f8cfe6, the key apart).
+                // Kept, not back on it: a guard may end still pressing on its
+                // move aside in the lane between the two factories (under Legion
+                // two Kingdoms Creon guards did, as at 39f8cfe6, the key apart).
                 check(twin.kept==12,label+"after both, each guard keeps its guard ("+
                       std::to_string(twin.kept)+" of 12, "+std::to_string(twin.guarding)+" back on it)");
                 const Result stale=run(registry,mode,c.factory,output,c.crowd,Crowd::Stale);

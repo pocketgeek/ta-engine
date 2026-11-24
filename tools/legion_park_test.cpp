@@ -2,8 +2,8 @@
 // takes GetBuilt's PARK; retail steers it to the ring's mid-radius along its
 // bearing from the factory (4e33b0), and every output of one door shares that
 // bearing. Under Legion's exact solo goal they queued behind each other in a
-// column out of the door, three of eight Swordsmen short of the ring's inner
-// radius. Legion now gives each output a spot of its own over the band (or
+// column out of the door (on the Kingdoms data, three of eight Swordsmen short of the ring's inner
+// radius). Legion now gives each output a spot of its own over the band (or
 // beyond it once the band is full), never in the door lane.
 //
 // Each case trains a run of outputs with no rally and checks, every tick, that
@@ -12,8 +12,8 @@
 // none overlaps another, and the factory produced about as fast as with a
 // rally that sends every output far away (the unobstructed rate). Layouts: open
 // ground, a cliff beside the factory (an unreachable plateau), a map corner;
-// outputs: Swordsmen (both balances), Catapults (4x4, also a queue of 100),
-// Submersibles at a Navy Yard. It prints each output's time from completion to the end of its PARK
+// outputs: Peewees from a Kbot Lab, Bulldogs (3x3, the biggest TA ground
+// output) from a Vehicle Plant, also a queue of 80, Lurkers at a Shipyard. It prints each output's time from completion to the end of its PARK
 // (park mean/max) and to clearing its birth footprint (clear).
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
@@ -169,18 +169,22 @@ void parkCase(const sim::TypeRegistry& registry,const std::string& balance,Layou
     if(layout==Layout::Cliff)check(p.onPlateau==0,label+"no output is sent onto the unreachable plateau");
 }
 
-// A long queue of big, slow outputs: 100 Catapults from a Keep. Walking round
-// the Keep to a spot behind it a Catapult gains under half a body a crowd
-// window, and the held-PARK release took that for a body held up: it parked
-// them beside the Keep, they walled the door, and the factory jammed after 24.
+// A long queue of big, slow outputs: 80 Bulldogs from a Vehicle Plant. On the
+// Kingdoms data (Catapults round a Keep) an output walking round the factory to
+// a spot behind it gained under half a body a crowd window, and the held-PARK
+// release took that for a body held up: it parked them beside the factory,
+// they walled the door, and the factory jammed after 24. (Twelve times the
+// worker time: a Bulldog takes three times a Catapult's build, and the run
+// must finish its 80 inside 30000 ticks; each holds the pad for its walk off,
+// so the unobstructed rate is under 100 a run.)
 void queueCase(const sim::TypeRegistry& registry) {
-    const std::string label="Legion standard open arakeep x100 arapult (queue): ";
+    const std::string label="Legion standard open armvp x80 armbull (queue): ";
     if(!only.empty() && label.find(only)==std::string::npos)return;
-    const Result q=run(registry,sim::PathfindingMode::Legion,Layout::Open,"arakeep","arapult",100,false,4);
-    const Result ref=run(registry,sim::PathfindingMode::Legion,Layout::Open,"arakeep","arapult",100,true,4);
-    check(q.produced==100 && q.parked==100 && q.laneTicks==0 && q.inYard==0 && q.overlaps==0,
+    const Result q=run(registry,sim::PathfindingMode::Legion,Layout::Open,"armvp","armbull",80,false,12);
+    const Result ref=run(registry,sim::PathfindingMode::Legion,Layout::Open,"armvp","armbull",80,true,12);
+    check(q.produced==80 && q.parked==80 && q.laneTicks==0 && q.inYard==0 && q.overlaps==0,
           label+"every output is built and parks, none in the door lane");
-    check(q.produced==100 && q.lastDone<=ref.lastDone+ref.lastDone*15/100,
+    check(q.produced==80 && q.lastDone<=ref.lastDone+ref.lastDone*15/100,
           label+"production runs near the unobstructed rate ("+std::to_string(q.lastDone)+" vs "+std::to_string(ref.lastDone)+" ticks)");
 }
 }
@@ -192,11 +196,11 @@ int main(int argc,char** argv) {
     {
         sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         const std::string balance="standard";
-        parkCase(registry,balance,Layout::Open,"arakeep","arasword",40);
-        parkCase(registry,balance,Layout::Cliff,"arakeep","arasword",24);
-        parkCase(registry,balance,Layout::Corner,"arakeep","arasword",24);
-        parkCase(registry,balance,Layout::Open,"arakeep","arapult",8);
-        parkCase(registry,balance,Layout::Water,"crenavy","cresubm",8);
+        parkCase(registry,balance,Layout::Open,"armlab","armpw",40);
+        parkCase(registry,balance,Layout::Cliff,"armlab","armpw",24);
+        parkCase(registry,balance,Layout::Corner,"armlab","armpw",24);
+        parkCase(registry,balance,Layout::Open,"armvp","armbull",8);
+        parkCase(registry,balance,Layout::Water,"armsy","armsub",8);
         queueCase(registry);
     }
     std::printf("legion park: %d cases, %d failures\n",cases,failures);

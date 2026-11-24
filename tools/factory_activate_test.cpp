@@ -18,6 +18,7 @@
 #include "cob/cob.h"
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -112,7 +113,10 @@ int main(int argc,char** argv) {
         if(!builder || !output) {std::printf("skip %s: no builder or output\n",id.c_str());continue;}
         ++factories;
         for(int speed:{20,21,22}) {
-            const Result r=run(registry,factory,*builder,*output,speed);
+            // A Gantry's only unit is the Krogoth (buildtime 382193): capped so
+            // the unit can finish inside the case's 9000 ticks.
+            auto quick=*output;quick.buildTime=std::min(quick.buildTime,20000.0f);
+            const Result r=run(registry,factory,*builder,quick,speed);
             std::printf("%s by %s x%d -> %s: finished %d, opened %+d, produced %+d\n",id.c_str(),builder->id.c_str(),
                         speed,output->id.c_str(),r.finishTick,r.opened,r.produced);
             check(r.finishTick>=0 && r.opened>=0 && r.produced>=0,
