@@ -189,25 +189,44 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 - Nanoframe outlines are front-facing only and use painter's order (retail
   depth-tests per pixel).
 - Death accounting (countTaDeath, retailveterancy.h): World's death pipeline
-  still runs on Kingdoms death kinds (Unit::deathType: severity, Killed/Dying, the
-  death weapon), mapped onto TA's for counting only. Not yet TA-shaped: the
-  commander rule's sweep (0x486f10) is still Kingdoms' immediate removal (TA
-  sends each unit a kind-3 record, so each runs Killed and leaves its corpse /
-  explosion); a passenger still dies without Killed (TA: a 30000 kind-6/3
-  record, 0x48680b); no engine cause yet for kind 5 (ReclaimUnit 0x404730 is not
-  ported); a unit already at 0 HP but not yet swept when its commander dies
-  counts nothing (TA: its own death packet later). The kind-3 loss's statistics
-  guard (local player +0x129[owner], 0x457540) is network-only and not modelled.
-  A change of owner keeps the unit's +0xf4/+0xf5 (TA's new object starts at
-  10 / 0). The Kingdoms experience routines (xp, vetMul) are still wired but TA
-  credits no experience, so they stay at level 0 unless a placement sets one
-  (the Legion fixture fight-retarget's killers no longer reach level 1: six
-  legion keys are accepted regressions in tools/scenarios/baseline.json, and 15
-  combat fixtures' hashes were retaken for Unit::lastHitKind).
-- Under-attack: the gate is decided on weapon hits only (World::applyHit); TA
-  runs 0x406f80 for every damage record but repair and water (self-destruct,
-  change of owner, passengers too), and World's hit response before it is still
-  Kingdoms' 409a50 (TA's own response, 0x406f80..0x4071aa, is not ported). The
+  still keys most deaths on Kingdoms death kinds (Unit::deathType: severity,
+  Killed/Dying, the death weapon), mapped onto TA's for counting. TA-shaped
+  since 2026-11-24: non-weapon damage goes through taDamageRecord (TotalA.exe
+  0x489bb0 -> 0x489ce0: the damagemodifier under 30000, kill scaling, +0xf5 /
+  +0xf0 / +0xf4); the commander rule (only the commander's own death,
+  0x48667e) sweeps with commanderSweep (0x486f10: a 30000 kind-3 record from
+  itself to each unit not already dying, 0x486f6f), so each dies at its own
+  update, runs Killed, leaves its corpse and SELFDESTRUCTAS; a dying carrier
+  gives each passenger a 30000 kind-6 (3 when it died of 3) record from its
+  killer and lets it go (0x4867da..0x48681d), the passenger dying at its own
+  update through Killed; a self-destruct runs Killed too (severity from the
+  death sender 0x4864b0, retailTaDeathSeverity, for kinds 3 / 5 / 6); a change
+  of owner resets +0xf4 / +0xf5 to 10 / 0 (0x485c83). Still open: ReclaimUnit
+  (0x404730, kind 5) is not ported -- World has no unit-reclaim order (the
+  death side is ready: Unit::kDeathReclaim, severity 0, retailTaDeathCountsAsLoss);
+  the remote-owner branch of 0x486f10 (0x49b000 + 0x4864b0(3) for +0x73 3)
+  is folded into the record; the kind-3 loss's statistics guard (local
+  player +0x129[owner], 0x457540) is network-only and not modelled; the
+  other Kingdoms kinds (weapon, water, mission Kill, feature) keep 512610's
+  severity and Dying. The Kingdoms experience routines (xp, vetMul) are still
+  wired but TA credits no experience, so they stay at level 0 unless a
+  placement sets one (the Legion fixture fight-retarget's killers no longer
+  reach level 1: six legion keys are accepted regressions in
+  tools/scenarios/baseline.json, and 15 combat fixtures' hashes were retaken
+  for Unit::lastHitKind).
+- Hit response: TotalA.exe 0x406f80..0x4071aa (taHitResponse) replaces
+  Kingdoms' 409a50 for weapon hits and every taDamageRecord but water (the
+  self-destruct and commander records, passengers' records): event 0x10; a
+  cancapture type of a computer player rolls its AI's threat deadline
+  (now + 30 + rand(300)) and drops its missions (0x439eb0(0)); retaliation
+  only from no mission or a Standby (descriptor flag 0x20000; a patrol no
+  longer answers), then the auto slots. Approximations: the retaliation's
+  category / reach tests are World's retailAnswersAttacker / slotHitResponse
+  (0x49abb0's underwater tests and the +0x23d / +0x231 category sets are not
+  traced one by one); the old object of a change of owner (kind 4,
+  0x4886a4) runs no response; the weapon path still lowers the HP before the
+  response (0x489ce0 responds first). The under-attack request rides
+  World::recordHurt for records (HitFx::hurtUnits for weapon hits). The
   speech queue's global spacing (+0x9d/+0xa1, 0x47f6bb) is not modelled: one
   request per frame, text at once.
 - Air missions (ported 2026-11-24 from TotalA.exe, air table 0x4fca18):
@@ -235,8 +254,10 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
     jobs (0x414fe1, 0x41485e) and AirToAir / SeekAttack (0x4133fa, 0x4107c6)
     is not modelled; LandIfCan's off-map return (0x40f2e3) is not ported.
   - VTOL_RepairPatrol's job search runs on a 45-tick timer from
-    tickPatrolRepair, not from its stage-1 wake; the ground RepairPatrol
-    (0x405980) is still Kingdoms'. A fight-move leg (ours; TA has none) keeps
+    tickPatrolRepair, not from its stage-1 wake. The ground RepairPatrol
+    (0x405980, tickGroundPatrolLook) looks on a 60-tick timer the same way
+    (its sleep 60), keeping World's patrol navigation (its radius-16 circle
+    on the waypoint is not modelled). A fight-move leg (ours; TA has none) keeps
     a scan on VTOL_Move. The step-out mission (retailVtolStepOut,
     Order::stepOut) is now never pushed and could be deleted.
 - Nanoframe outlines are front-facing only and use painter's order (retail
@@ -248,10 +269,7 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   TA damage kinds of 0x489bb0's callers (weapon 1/2, self-destruct 3, ...) not yet
   mapped onto the engine's. The bar and well colours (game +0xdcf / +0xdd3) and
   the PlayerColor gadget's art are stand-ins.
-- Under-attack alert: 0x406f80 also skips a unit whose current order has flag
-  0x80 and fires only when the previous hit came from another player or was an
-  ordinary weapon hit (victim +0xf4 / +0xf5, read before this hit updates them);
-  neither is modelled (every damaged own unit asks). The speech line "<unit>:
+- Under-attack alert: the speech line "<unit>:
   Under Attack" (0x47ff69 -> 0x463ca0) and the speech/text level options (game
   +0x37f17 / +0x37f18) are not ported.
 - A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
@@ -281,21 +299,34 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   makes its slots automatic (BeCarried 0x402fc0); the release (releaseCargo,
   DROP_UNIT 0x4813b0) orders nothing -- Kingdoms' dispersal PARK (409154) is
   gone. GROUND_UNLOAD (0x406900) as before (retailTransportUnloadApproach /
-  retailSurfaceUnloadTransfer). Engine stand-ins: the surface carriers'
-  TransportPickup / TransportDrop scripts are not run (the sim VM has no
-  ATTACH_UNIT / DROP_UNIT host and its GET lacks PIECE_XZ / UNIT_XZ / XZ_HYPOT
-  etc. that BoomCalc reads): the boom reach is the static BoomCalc limit
-  (cob::transportBoomReach) and the animation is fifteen ticks of BUSY, then
-  the attach / drop; a pickup or unload order removed mid-animation cancels it
-  (retail's script would finish). GROUND_PICKUP's circle and GROUND_UNLOAD's
-  wait also wake 60 ticks after the hull stops (the engine's navigator never
-  fails an unreachable point, retail-pathfinding.md D16). Air cargo rides the
-  carrier's own point, not the link piece's; the BeCarried 10-tick poll after
-  the drop (the default mission comes at once here), the flag-4 missions
-  BeCarried keeps, the air base exemption (flagsA bit 9), VTOL_PICKUP's event
-  2 / 0x10000 bits and the unit-follow controllers' exact altitude rule
-  (0x44e190 / 0x44e250 are taken as the passenger's y plus the altitude) are
-  untraced or unmodelled.
+  retailSurfaceUnloadTransfer). The surface carriers' own scripts
+  run (2026-11-24): the sim VM has ATTACH_UNIT / DROP_UNIT (0x4b1b92 / 0x4b1b7d
+  -> 0x481340 / 0x4813b0) and TA's GET 6..16 (0x480770: BUSY, PIECE_XZ,
+  PIECE_Y, UNIT_XZ, UNIT_Y, UNIT_HEIGHT, XZ_ATAN, XZ_HYPOT, ATAN, HYPOT,
+  GROUND_HEIGHT; deterministic: retailDirection, isqrt64), SET 6 writes BUSY
+  and every SET posts event 4 (0x480b20). GROUND_PICKUP's call runs
+  TransportPickup(passenger) and waits BUSY; GROUND_UNLOAD's runs
+  TransportDrop(passenger, packed point), then sleeps 15, waits BUSY and
+  tests the passenger aboard (retailScriptedUnloadTransfer). The passenger
+  rides the ATTACH_UNIT piece (Unit::attachPiece, +0xf9; cargoAttachPoint,
+  4dd250) and DROP_UNIT puts it down at the link after 0x47db70 on its
+  footprint cell. A cancelled order no longer stops the animation. A
+  script-less (test) carrier keeps the old stand-in (fifteen ticks of BUSY,
+  the static BoomCalc reach cob::transportBoomReach, still the engine's
+  pre-call brake test). An unload given while TransportPickup still swings
+  the boom home races it for the same pieces, as in retail. A hover pinned
+  by a cliff with its crane astern can stand out of reach (the roster fixture
+  moved hovers to open land). GET ids above 20 (Kingdoms' 27..46: heading,
+  terrain, animation speeds) still answer Kingdoms values. GROUND_PICKUP's
+  circle and GROUND_UNLOAD's wait also wake 60 ticks after the hull stops
+  (the engine's navigator never fails an unreachable point,
+  retail-pathfinding.md D16). Air cargo rides the carrier's own point, not
+  the link piece's (VTOL_PICKUP's engine attach passes piece -1); the
+  BeCarried 10-tick poll after the drop (the default mission comes at once
+  here), the flag-4 missions BeCarried keeps, the air base exemption (flagsA
+  bit 9), VTOL_PICKUP's event 2 / 0x10000 bits and the unit-follow
+  controllers' exact altitude rule (0x44e190 / 0x44e250 are taken as the
+  passenger's y plus the altitude) are untraced or unmodelled.
 - Mission dispatcher (0x43b7c0, retailDispatchMissions): code 3 sleeps
   30 + rand(15) (0x43b890) and code 9 sets mission flag 0x800000 and, alone,
   sleeps 30 + rand(30) (0x43b8e5..0x43b973); the rest matched already. Not
