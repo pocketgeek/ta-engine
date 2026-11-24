@@ -26,7 +26,6 @@ const char* name(ClickOrder o) {
         case ClickOrder::Patrol: return "Patrol";
         case ClickOrder::Assist: return "Assist";
         case ClickOrder::Repair: return "Repair";
-        case ClickOrder::Board: return "Board";
         case ClickOrder::Pickup: return "Pickup";
         case ClickOrder::Guard: return "Guard";
         case ClickOrder::Resurrect: return "Resurrect";
@@ -91,12 +90,11 @@ void rightClickRows() {
     ClickUnit self = soldier(); self.self = true;
     expect(rightClick(own, self, false), ClickOrder::None, "2.1 the hovered unit is left out (0x521562)");
 
-    // C4c: passengers that fit board, the rest guard the transport.
-    ClickUnit fits = soldier(); fits.board = true;
-    expect(rightClick(own, fits, false), ClickOrder::Board, "C4 a passenger that fits boards the transport");
-    expect(rightClick(own, soldier(), false), ClickOrder::Guard, "C4 a passenger that does not fit guards it");
-    ClickUnit fitsDamaged = builder(); fitsDamaged.board = true; fitsDamaged.friendly = FriendlyOrder::Repair;
-    expect(rightClick(own, fitsDamaged, false), ClickOrder::Board, "C4 a builder that fits boards rather than repairs");
+    // TotalA.exe has no boarding order (only the carrier's LOAD, 0x43f701): a
+    // unit clicked onto its transport guards it, a damaged one's builder repairs.
+    expect(rightClick(own, soldier(), false), ClickOrder::Guard, "a passenger guards the transport it fits in");
+    ClickUnit fixer = builder(); fixer.friendly = FriendlyOrder::Repair;
+    expect(rightClick(own, fixer, false), ClickOrder::Repair, "a builder repairs a damaged transport");
 
     // Ground, bodies and features.
     expect(rightClick(ground, soldier(), false), ClickOrder::Move, "2.1 ground: Move");
@@ -373,7 +371,7 @@ bool cursorNames(CursorId c, ClickOrder o) {
         case ClickOrder::AttackMove: return c == CursorId::Attack || c == CursorId::Airstrike || c == CursorId::Move;
         case ClickOrder::Reclaim: case ClickOrder::ReclaimArea: return c == CursorId::Reclaim;
         case ClickOrder::Resurrect: return c == CursorId::Revive;
-        case ClickOrder::Board: case ClickOrder::Pickup: return c == CursorId::Load;
+        case ClickOrder::Pickup: return c == CursorId::Load;
         case ClickOrder::Assist: case ClickOrder::Repair: return c == CursorId::Repair;
         case ClickOrder::Guard: return c == CursorId::Defend;
         case ClickOrder::Move: return c == CursorId::Move;
@@ -392,7 +390,7 @@ void parity() {
         u.self = false;
         u.mobile = bits & 1; u.rallyHolder = bits & 2; u.attacker = bits & 4; u.airstrike = (bits & 8) && u.attacker;
         u.canHit = bits & 16; u.canPatrol = bits & 32; u.canGuard = bits & 64; u.transport = bits & 128;
-        u.loaded = u.transport && (bits & 256); u.assist = bits & 512; u.board = bits & 1024;
+        u.loaded = u.transport && (bits & 256); u.assist = bits & 512;
         u.pickup = bits & 2048; u.loadTarget = u.transport && (bits & 2048); u.raise = bits & 4096;
         u.reclaim = bits & 8192; u.friendly = friendlies[(bits >> 14) & 3];
         for (bool pointFire : {false, true}) {

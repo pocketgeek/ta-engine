@@ -80,5 +80,9 @@ std::vector<uint8_t> gaitCode(const File& f);
 // gates it in BoomCalc: boom_len = HYPOT(..) - off; boom_ok = boom_len < limit.
 // The reach is limit + off: the largest distance from the boom piece that loads.
 int32_t transportBoomReach(const File& f);
+// The piece an air carrier's QueryTransport names (TotalA.exe VTOL_PICKUP
+// 0x41138a reads its local 0 through 0x4b0bc0): every shipped one (armatlas,
+// corvalk) is `PUSH_CONST piece; POP_LOCAL 0`. -1 without such a store.
+int queryTransportPiece(const File& f);
 
 } // namespace ta::cob

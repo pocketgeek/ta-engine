@@ -1,28 +1,13 @@
-// queued_load_test -- a Load that waits its turn in the passenger's queue starts
-// when that turn comes.
+// queued_load_test -- TotalA.exe's LOAD and the queue modifiers on it.
 //
-// World::loadInto gives the carrier its reciprocal pickup when the Load is
-// issued. Retail's carrier handlers (GROUND_PICKUP 408860, VTOL_PICKUP 41a680)
-// end the pickup at any wake where the passenger's head mission is not the
-// Move_Seek_Pickup on this carrier, and retail can afford that: its order call
-// (4d7a30) always gives the passenger's Move_Seek_Pickup as a replacement, so it
-// leads from the start. Ours also lets the passenger queue the Load (Shift) or
-// put an order ahead of it (Ctrl), and the carrier dropped its pickup while the
-// Load was still waiting; when the Load's turn came it found no pickup on the
-// carrier and ended at once.
-//
-// Each case here runs with a ground and a flying carrier, in Retail and Legion
-// pathfinding: a Load queued behind a Move, an Attack and another Load, a Move
-// put ahead of a running Load, a carrier with several pickups (the ready
-// passengers board first), the pickup ending when the passenger's queue is
-// replaced or the passenger dies, and the mirror cases (an Unload queued behind
-// a Move, and behind a pickup that is waiting for its passenger).
-//
-// Without the fix 34 of the 44 checks fail in each mode. The other ten hold
-// either way and guard what must not change: a plain Load boards, a pickup ends
-// with the boarding (and with the passenger aboard another carrier), a pickup
-// behind the carrier's own Move ends when it leads, and an Unload queued behind
-// a Move lands its passenger.
+// LOAD is the carrier's order (0x43f701 -> 0x43fb61: GROUND_PICKUP or
+// VTOL_PICKUP); TA has no passenger mission, so Cmd::Load (unitId the
+// passenger, targetId the carrier) puts a pickup in the CARRIER's list and
+// leaves the passenger's alone. Shift appends it there, Ctrl puts it at the
+// head, and the player's own Shift Load on a queued one takes it back. The
+// passenger's orders run on until the carrier's script attaches it (BeCarried
+// then clears them, 0x4384a0). Each case runs with a ground and a flying
+// carrier, in Retail and Legion pathfinding.
 
 #include "sim/sim.h"
 #include "sim/matchsetup.h"
@@ -128,248 +113,104 @@ Walk track(Rig& r, int p, int c, int ticks, const std::function<void(int)>& each
     return out;
 }
 
-void behindMove() {
-    Rig ref;
-    const int rp = ref.w.spawn(&ref.t.foot, px, pz + 300, 0, 0), rc = ref.w.spawn(&ref.t.carrier, cx, cz, 0, 0);
-    ref.send(net::Cmd::Load, rp, net::kQueueReplace, rc);
-    const Walk direct = track(ref, rp, rc, 1500);
-
+// A plain Load: the carrier's pickup; the passenger is never given an order.
+void plainLoad() {
     Rig r;
-    const int p = r.w.spawn(&r.t.foot, px, pz, 0, 0), c = r.w.spawn(&r.t.carrier, cx, cz, 0, 0);
-    r.send(net::Cmd::Move, p, net::kQueueReplace, 0, px, pz + 300);
-    r.send(net::Cmd::Load, p, net::kQueueAppend, c);
-    bool held = true, early = false;
-    float reached = 1e9f, strayed = 0;
-    const Walk q = track(r, p, c, 1500, [&](int) {
-        const Unit* u = r.w.unit(p);
-        const bool moving = !u->orders.empty() && !u->orders[World::currentLeg(u->orders)].load;
-        if (moving) {
-            held = held && r.pickup(c, p);
-            reached = std::min(reached, r.dist(p, px, pz + 300));
-            strayed = std::max(strayed, r.dist(c, cx, cz));
-        } else early = early || reached > 40;
-    });
-    std::printf("  direct: boarded at tick %d after %.0f px; behind a Move: at tick %d after %.0f px, %.0f px from "
-                "the Move's point, the waiting carrier strayed %.0f px\n", direct.boarded, direct.walked, q.boarded,
-                q.walked, reached, strayed);
-    check(direct.boarded >= 0, "a plain Load boards");
-    check(held && strayed < 8, "the carrier keeps its pickup, and its place, while the Load waits behind a Move");
-    check(q.boarded >= 0 && !early, "a Load queued behind a Move boards once the Move has arrived");
-    check(q.boarded >= 0 && q.walked <= 300 + direct.walked * 1.1f + 40,
-          "the queued Load walks no farther than the Move and the plain Load together");
-    check(!r.pickup(c), "the carrier's pickup ends with the boarding");
+    const int p = r.w.spawn(&r.t.foot, px, pz), c = r.w.spawn(&r.t.carrier, cx, cz);
+    r.send(net::Cmd::Load, p, net::kQueueReplace, c);
+    check(r.pickup(c, p) && r.w.unit(p)->orders.empty(), "a Load is the carrier's pickup; the passenger gets nothing");
+    bool ordered = false;
+    const Walk w = track(r, p, c, 3000, [&](int) { ordered |= !r.w.unit(p)->orders.empty(); });
+    check(w.boarded >= 0 && w.walked < 1.f, "the carrier fetches a standing passenger, which never moves");
+    check(!ordered, "the passenger stays without an order until it is aboard");
+    // VTOL_PICKUP climbs back to cruisealt first (stage 4 -> 5, 0x4114c3).
+    for (int i = 0; i < 600 && r.pickup(c); ++i) r.w.tick(1.f / 30);
+    check(!r.pickup(c), "the carrier's pickup ends with the passenger aboard");
 }
 
-void behindAttack() {
-    Rig ref;
-    const int rp = ref.w.spawn(&ref.t.archer, px, pz, 0, 0), rc = ref.w.spawn(&ref.t.carrier, cx, cz, 0, 0);
-    ref.send(net::Cmd::Load, rp, net::kQueueReplace, rc);
-    const Walk direct = track(ref, rp, rc, 1500);
-
-    Rig r;
-    const int p = r.w.spawn(&r.t.archer, px, pz, 0, 0), c = r.w.spawn(&r.t.carrier, cx, cz, 0, 0);
-    const int e = r.w.spawn(&r.t.weak, px, pz + 150, 0, 1);
-    r.send(net::Cmd::Attack, p, net::kQueueReplace, e);
-    r.send(net::Cmd::Load, p, net::kQueueAppend, c);
-    int died = -1;
-    const Walk q = track(r, p, c, 1500, [&](int i) {
-        const Unit* enemy = r.w.unit(e);
-        if (died < 0 && (!enemy || !enemy->alive())) died = i;
-    });
-    std::printf("  direct: boarded at tick %d after %.0f px; behind an Attack: enemy dead at tick %d, boarded at "
-                "tick %d after %.0f px, min x %.0f z %.0f\n", direct.boarded, direct.walked, died, q.boarded, q.walked,
-                q.minX, q.minZ);
-    check(died >= 0 && q.boarded > died, "a Load queued behind an Attack boards once the enemy is dead");
-    check(q.boarded >= 0 && q.minX > px - 60 && q.minZ > pz - 60 && q.walked <= direct.walked * 1.1f + 60,
-          "the queued Load goes straight for its carrier");
-}
-
-// A Load on one carrier, a second queued on another. The first carrier dies:
-// the second Load's turn comes. The first boards: the second carrier is left
-// without its pickup.
-void behindLoad() {
-    for (bool firstDies : {true, false}) {
+// Shift: the Load queues behind the carrier's own Move; Ctrl puts it ahead.
+void carrierQueue() {
+    for (bool front : {false, true}) {
         Rig r;
-        const int p = r.w.spawn(&r.t.foot, px, pz, 0, 0);
-        const int c1 = r.w.spawn(&r.t.carrier, px, pz + 500, 0, 0), c2 = r.w.spawn(&r.t.carrier, cx, cz, 0, 0);
-        r.send(net::Cmd::Load, p, net::kQueueReplace, c1);
-        r.send(net::Cmd::Load, p, net::kQueueAppend, c2);
-        bool boarded = false, held = true;
-        int cleared = -1;
-        for (int i = 0; i < 1500; ++i) {
-            if (firstDies && i == 20) r.w.unit(c1)->hp = Fixed();
-            r.w.tick(1.f / 30);
-            if (firstDies) {
-                const Unit* first = r.w.unit(c1);
-                if (first && first->alive()) held = held && r.pickup(c2, p);
-                if (r.aboard(p, c2)) { boarded = true; break; }
-            } else if (r.aboard(p, c1)) {
-                boarded = true;
-                if (!r.pickup(c2)) { cleared = i; break; }
-            } else held = held && r.pickup(c2, p);
-        }
-        if (firstDies) {
-            check(held, "the second carrier keeps its pickup while the first Load runs");
-            check(boarded, "a Load queued behind a Load boards its carrier when the first carrier dies");
-        } else {
-            check(held && boarded, "a Load with a second Load queued behind it boards its own carrier");
-            check(cleared >= 0 && r.w.unit(c2)->orders.empty(),
-                  "the second carrier's pickup ends once the passenger is aboard the first");
-        }
-    }
-}
-
-// Ctrl puts a Move ahead of a Load that is under way, while the passenger
-// walks to its carrier or while the transfer runs: the Load starts again when
-// the Move ends.
-void moveAhead() {
-    for (bool transfer : {false, true}) {
-        Rig r;
-        const int p = r.w.spawn(&r.t.foot, px, pz, 0, 0);
-        const int c = r.w.spawn(&r.t.carrier, transfer ? px + 100 : cx + 300, cz, 0, 0);
-        r.send(net::Cmd::Load, p, net::kQueueReplace, c);
-        bool sent = false, shape = false;
-        float reached = 1e9f;
-        const Walk q = track(r, p, c, 3000, [&](int i) {
-            const Unit* carrier = r.w.unit(c);
-            const bool now = transfer ? !carrier->orders.empty() && carrier->orders.front().transportMission.stage == 2 &&
-                                        carrier->orders.front().transportTicks >= 5
-                                      : i == 40;
-            if (!sent && now) {
-                r.send(net::Cmd::Move, p, net::kQueueFront, 0, px, pz + 700);
-                const Unit* u = r.w.unit(p);
-                shape = u->orders.size() == 2 && !u->orders.front().load && u->orders.back().load;
-                sent = true;
-            }
-            if (sent) reached = std::min(reached, r.dist(p, px, pz + 700));
-        });
-        check(sent && shape && reached < 40 && q.boarded >= 0,
-              transfer ? "a Load boards after a Move put ahead of it during the transfer (Ctrl)"
-                       : "a Load boards after a Move put ahead of it on the way to the carrier (Ctrl)");
-    }
-}
-
-// One carrier, four Loads: two passengers still have a Move to finish, two
-// are free. The free ones board while the others walk, although the walkers'
-// pickups lead the carrier's list; the walkers board when their Moves end.
-void pickupQueue() {
-    Rig r;
-    const int c = r.w.spawn(&r.t.carrier, cx, cz, 0, 0);
-    const int far = r.w.spawn(&r.t.foot, px, pz, 0, 0), near = r.w.spawn(&r.t.foot, px, pz + 80, 0, 0);
-    const int free1 = r.w.spawn(&r.t.foot, cx - 200, cz + 80, 0, 0), free2 = r.w.spawn(&r.t.foot, cx - 200, cz - 80, 0, 0);
-    r.send(net::Cmd::Move, far, net::kQueueReplace, 0, px - 800, pz);
-    r.send(net::Cmd::Move, near, net::kQueueReplace, 0, px, pz + 600);
-    r.send(net::Cmd::Load, far, net::kQueueAppend, c);
-    r.send(net::Cmd::Load, near, net::kQueueAppend, c);
-    r.send(net::Cmd::Load, free1, net::kQueueAppend, c);
-    r.send(net::Cmd::Load, free2, net::kQueueAppend, c);
-    int at[4] = {-1, -1, -1, -1}, turn[2] = {-1, -1};
-    const int ids[4] = {far, near, free1, free2};
-    for (int i = 0; i < 4000; ++i) {
-        r.w.tick(1.f / 30);
-        bool all = true;
-        for (int k = 0; k < 4; ++k) {
-            const Unit* u = r.w.unit(ids[k]);
-            if (k < 2 && turn[k] < 0 && !u->orders.empty() && u->orders.front().load) turn[k] = i;
-            if (at[k] < 0 && r.aboard(ids[k], c)) at[k] = i;
-            all = all && at[k] >= 0;
-        }
-        if (all) break;
-    }
-    std::printf("  boarded at ticks: far %d (its Move ended at %d), near %d (at %d), free %d and %d\n", at[0], turn[0],
-                at[1], turn[1], at[2], at[3]);
-    if (air) {
-        // TotalA.exe 0x41121a..0x411226: VTOL_PICKUP fails while the carrier
-        // holds anyone, so a flying carrier takes the first free passenger and
-        // every other pickup ends.
-        const int aboard = int(at[0] >= 0) + int(at[1] >= 0) + int(at[2] >= 0) + int(at[3] >= 0);
-        check(aboard == 1 && (at[2] >= 0 || at[3] >= 0), "a flying carrier takes one free passenger");
-        check(!r.pickup(c) && r.w.unit(c)->cargo.size() == 1, "the flying carrier ends with one passenger and no pickup");
-        return;
-    }
-    check(at[0] >= 0 && at[1] >= 0 && at[2] >= 0 && at[3] >= 0, "every queued passenger boards");
-    check(at[2] >= 0 && at[3] >= 0 && turn[0] >= 0 && turn[1] >= 0 && std::max(at[2], at[3]) < std::min(turn[0], turn[1]),
-          "the passengers that are free board while the others still walk");
-    check(!r.pickup(c) && r.w.unit(c)->cargo.size() == 4, "the carrier ends with its four passengers and no pickup");
-}
-
-// The passenger's queue is replaced, or the passenger dies, before the Load's
-// turn: the carrier's pickup goes. A pickup that is itself still queued behind
-// the carrier's Move goes when it leads, and the carrier does not wait for it.
-void pickupEnds() {
-    for (int how = 0; how < 4; ++how) {
-        Rig r;
-        const int p = r.w.spawn(&r.t.foot, px, pz, 0, 0), c = r.w.spawn(&r.t.carrier, cx, cz, 0, 0);
-        const bool busy = how == 3;
-        if (busy) r.send(net::Cmd::Move, c, net::kQueueReplace, 0, cx, cz + 200);
-        r.send(net::Cmd::Move, p, net::kQueueReplace, 0, px - 600, pz);
-        r.send(net::Cmd::Load, p, net::kQueueAppend, c);
-        for (int i = 0; i < 40; ++i) r.w.tick(1.f / 30);
-        const bool held = r.pickup(c, p);
-        if (how == 0) r.send(net::Cmd::Move, p, net::kQueueReplace, 0, px - 600, pz + 100);
-        else if (how == 2) r.w.unit(p)->hp = Fixed();
-        else r.send(net::Cmd::Stop, p, net::kQueueReplace, 0);
-        int gone = -1;
-        float reached = 1e9f;
-        for (int i = 0; i < (busy ? 600 : 60) && gone < 0; ++i) {
-            r.w.tick(1.f / 30);
-            reached = std::min(reached, r.dist(c, cx, cz + 200));
-            if (!r.pickup(c)) gone = i;
-        }
+        const int p = r.w.spawn(&r.t.foot, px, pz), c = r.w.spawn(&r.t.carrier, cx, cz);
+        r.w.order(c, cx + 300, cz + 300, false);
+        r.send(net::Cmd::Load, p, front ? net::kQueueFront : net::kQueueAppend, c);
         const Unit* carrier = r.w.unit(c);
-        // (A flyer's Move with an order behind it hands over inside its arrival circle.)
-        check(held && gone >= 0 && carrier->orders.empty() && carrier->cargo.empty() && (!busy || reached < 160),
-              how == 0 ? "the pickup ends when the passenger's queue is replaced by a Move"
-            : how == 1 ? "the pickup ends when the passenger is stopped"
-            : how == 2 ? "the pickup ends when the passenger dies before its turn"
-                       : "a pickup queued behind the carrier's Move ends when it leads, its passenger stopped");
+        check(carrier->orders.size() >= 2, front ? "Ctrl puts the pickup in the carrier's list" :
+                                                   "Shift appends the pickup to the carrier's list");
+        check(front == carrier->orders.front().transportPickup,
+              front ? "Ctrl puts the pickup at the head" : "Shift leaves the carrier's Move first");
+        float nearest = 1e9f;
+        const Walk w = track(r, p, c, 6000, [&](int) { nearest = std::min(nearest, r.dist(c, cx + 300, cz + 300)); });
+        check(w.boarded >= 0, "the queued pickup boards its passenger");
+        check(front ? nearest > 100.f : nearest < (air ? 96.f : 40.f),
+              front ? "the pickup ahead runs before the Move" : "the carrier finishes its Move before the pickup");
+        if (front) {
+            for (int i = 0; i < 600 && r.pickup(c); ++i) r.w.tick(1.f / 30);
+            const Unit* after = r.w.unit(c);
+            check(!after->orders.empty() && !after->orders.front().transportPickup,
+                  "the Move goes on after the pickup put ahead of it");
+        }
     }
 }
 
-// The mirror: an Unload queued behind a Move, and behind a pickup that is
-// still waiting for its passenger.
-void queuedUnload() {
-    {
-        Rig r;
-        const int c = r.w.spawn(&r.t.carrier, cx, cz, 0, 0), p = r.w.spawn(&r.t.foot, cx, cz, 0, 0);
-        r.w.unit(p)->inTransport = c; r.w.unit(c)->cargo.push_back(p);
-        r.send(net::Cmd::Move, c, net::kQueueReplace, 0, cx, cz + 400);
-        r.send(net::Cmd::Unload, c, net::kQueueAppend, 0, cx + 500, cz + 400);
-        float reached = 1e9f;
-        bool out = false;
-        for (int i = 0; i < 3000 && !out; ++i) {
-            r.w.tick(1.f / 30);
-            if (r.w.unit(p)->embarked()) reached = std::min(reached, r.dist(c, cx, cz + 400));
-            else out = true;
-        }
-        check(out && reached < 200 && r.dist(p, cx + 500, cz + 400) < 200,
-              "an Unload queued behind a Move lands its passenger at the drop point after the Move");
+// The player's own Shift Load on a queued pickup takes it back (4d7a30).
+void toggle() {
+    Rig r;
+    const int p = r.w.spawn(&r.t.foot, px, pz), c = r.w.spawn(&r.t.carrier, cx, cz);
+    r.w.order(c, cx + 300, cz + 300, false);
+    r.send(net::Cmd::Load, p, net::kQueueAppend, c);
+    check(r.pickup(c, p), "the Shift Load queues a pickup");
+    r.send(net::Cmd::Load, p, net::kQueueAppend | net::kQueueToggle, c);
+    check(!r.pickup(c, p), "the player's Shift Load on it again takes it back");
+}
+
+// The passenger's own orders run on under the pickup; the attach clears them.
+void passengerKeepsOrders() {
+    Rig r;
+    const int p = r.w.spawn(&r.t.foot, px, pz), c = r.w.spawn(&r.t.carrier, cx, cz);
+    r.w.order(p, px - 200, pz, false);
+    r.send(net::Cmd::Load, p, net::kQueueReplace, c);
+    check(!r.w.unit(p)->orders.empty() && !r.w.unit(p)->orders.front().load,
+          "a Load leaves the passenger's own Move in place");
+    const Walk w = track(r, p, c, 6000);
+    check(w.boarded >= 0 && w.walked > 50.f, "the passenger walks its Move and the carrier still fetches it");
+    check(r.w.unit(p)->orders.empty(), "the attach clears the passenger's orders (BeCarried, 0x4384a0)");
+}
+
+// The passenger's death fails the pickup at its next wake.
+void passengerDies() {
+    Rig r;
+    const int p = r.w.spawn(&r.t.foot, px, pz), c = r.w.spawn(&r.t.carrier, cx, cz);
+    r.send(net::Cmd::Load, p, net::kQueueReplace, c);
+    r.w.tick(1.f / 30);
+    r.w.unit(p)->deadFor = 0;
+    for (int i = 0; i < 200 && r.pickup(c); ++i) r.w.tick(1.f / 30);
+    check(!r.pickup(c), "the pickup ends when its passenger dies");
+}
+
+// An Unload queued behind the pickup carries the passenger to the drop point.
+void unloadBehindPickup() {
+    Rig r;
+    const int p = r.w.spawn(&r.t.foot, px, pz), c = r.w.spawn(&r.t.carrier, cx, cz);
+    r.send(net::Cmd::Load, p, net::kQueueReplace, c);
+    r.send(net::Cmd::Unload, c, net::kQueueAppend, 0, px, pz + 600);
+    bool boarded = false, released = false;
+    for (int i = 0; i < 8000 && !released; ++i) {
+        r.w.tick(1.f / 30);
+        boarded |= r.aboard(p, c);
+        released = boarded && !r.aboard(p, c);
     }
-    {
-        Rig r;
-        const int p = r.w.spawn(&r.t.foot, px, pz, 0, 0), c = r.w.spawn(&r.t.carrier, cx, cz, 0, 0);
-        r.send(net::Cmd::Move, p, net::kQueueReplace, 0, px, pz + 300);
-        r.send(net::Cmd::Load, p, net::kQueueAppend, c);
-        r.send(net::Cmd::Unload, c, net::kQueueAppend, 0, cx + 600, cz);
-        bool boarded = false, out = false;
-        for (int i = 0; i < 4000 && !out; ++i) {
-            r.w.tick(1.f / 30);
-            boarded = boarded || r.aboard(p, c);
-            out = boarded && !r.w.unit(p)->embarked();
-        }
-        check(boarded && out && r.dist(p, cx + 600, cz) < 200,
-              "an Unload queued behind a waiting pickup carries the passenger to the drop point");
-    }
+    check(released && r.dist(p, px, pz + 600) < 40.f, "an Unload queued behind the pickup lands the passenger at its point");
 }
 
 void all() {
-    behindMove();
-    behindAttack();
-    behindLoad();
-    moveAhead();
-    pickupQueue();
-    pickupEnds();
-    queuedUnload();
+    plainLoad();
+    carrierQueue();
+    toggle();
+    passengerKeepsOrders();
+    passengerDies();
+    unloadBehindPickup();
 }
 } // namespace
 

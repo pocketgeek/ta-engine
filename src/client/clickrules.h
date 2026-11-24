@@ -25,11 +25,12 @@
 
 namespace ta::client {
 
-// One unit's share of a click. Load is the passenger boarding (Cmd::Load with
-// the passenger as the unit); Pickup is the same command sent for the transport
-// picking the target up, unitId the passenger.
+// One unit's share of a click. Pickup is the transport's LOAD of the target
+// (Cmd::Load, unitId the passenger, targetId the transport). TotalA.exe has no
+// boarding order for the passenger: LOAD gives the carrier GROUND_PICKUP or
+// VTOL_PICKUP (0x43f701 -> 0x43fb61) and nothing else carries a passenger.
 enum class ClickOrder : uint8_t {
-    None, Move, Attack, AttackMove, Patrol, Assist, Repair, Board, Pickup, Guard,
+    None, Move, Attack, AttackMove, Patrol, Assist, Repair, Pickup, Guard,
     Resurrect, Reclaim, ReclaimArea, Unload, AttackGround,
 };
 
@@ -59,7 +60,6 @@ struct ClickUnit {
     bool transport = false;     // canTransport
     bool loaded = false;        // a transport with cargo aboard
     bool assist = false;        // canAssistSite(this, hovered): HelpBuild
-    bool board = false;         // canLoadPassenger(this, hovered): it may board the hovered transport
     bool pickup = false;        // the selection's one weaponless transport, and the hovered unit may board it
     bool loadTarget = false;    // a transport the hovered unit may board (armed LOAD)
     FriendlyOrder friendly = FriendlyOrder::None;   // friendlyUnitOrder on the hovered unit
@@ -68,16 +68,15 @@ struct ClickUnit {
 };
 
 // The resolver's friendly branch (0x4de530 mode 1/2 over an own or allied unit,
-// S): HelpBuild, else (ours) board an own transport it fits in, else Repair,
-// else pickup by the single weaponless transport, else FOLLOW (Guard), else
-// Move. A rally holder's Move sets its output's rally (ours); a repeating
-// builder's Guard and Repair are refused by the sim, so it rallies instead.
-// Board sits ahead of Repair: a passenger that fits boards the transport (C4c),
-// the rest guard it, which is retail's action for them.
+// S): HelpBuild, else Repair, else pickup by the single weaponless transport,
+// else FOLLOW (Guard), else Move. A rally holder's Move sets its output's
+// rally (ours); a repeating builder's Guard and Repair are refused by the sim,
+// so it rallies instead. A unit clicked onto a transport does not board it:
+// TotalA.exe has no passenger mission (only the carrier's LOAD, 0x43f701), so
+// it guards or follows the transport as on any friendly unit.
 inline ClickOrder friendlyClick(const ClickUnit& u) {
     if (u.self) return ClickOrder::None;
     if (u.assist) return ClickOrder::Assist;
-    if (u.board) return ClickOrder::Board;
     if (u.friendly == FriendlyOrder::Repair) return ClickOrder::Repair;
     if (u.pickup) return ClickOrder::Pickup;
     if (u.friendly == FriendlyOrder::Guard) return ClickOrder::Guard;
@@ -135,7 +134,7 @@ struct ArmedSelection {
 inline CursorId friendlyCursor(ClickOrder o) {
     switch (o) {
         case ClickOrder::Assist: case ClickOrder::Repair: return CursorId::Repair;
-        case ClickOrder::Board: case ClickOrder::Pickup:  return CursorId::Load;
+        case ClickOrder::Pickup:                          return CursorId::Load;
         case ClickOrder::Guard:                           return CursorId::Defend;
         case ClickOrder::Move:                            return CursorId::Move;
         default:                                          return CursorId::Normal;

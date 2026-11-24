@@ -161,13 +161,19 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
             c.kind == Cmd::Assist || c.kind == Cmd::Guard || c.kind == Cmd::Load || c.kind == Cmd::Unload ||
             c.kind == Cmd::Reclaim || c.kind == Cmd::ReclaimArea || c.kind == Cmd::Resurrect || c.kind == Cmd::Repair ||
             c.kind == Cmd::AttackGround;
-        if (orderVerb && (front || toggle) && owns(c.unitId) && producer->type) {
+        // A Load is the carrier's order (TotalA.exe's LOAD gives the carrier
+        // GROUND_PICKUP / VTOL_PICKUP, 0x43f701; World::loadInto): its list is
+        // the one Shift and Ctrl work on, the passenger its target.
+        const bool load = c.kind == Cmd::Load;
+        const int holder = load ? c.targetId : c.unitId;
+        const auto* holderUnit = load ? world.unit(holder) : producer;
+        if (orderVerb && (front || toggle) && owns(c.unitId) && producer->type && holderUnit) {
             const bool rally = rallyVerb && (producer->repeatType ||
                 (c.kind == Cmd::Attack ? producer->type->producesUnits() : producer->type->isStructure()));
             if (toggle) {
                 World::QueuedMatch m;
                 m.x = Fixed::fromFloat(c.x); m.z = Fixed::fromFloat(c.z);
-                m.target = c.targetId;
+                m.target = load ? c.unitId : c.targetId;
                 switch (c.kind) {
                     case Cmd::Move:       m.kind = World::QueuedKind::Move; break;
                     case Cmd::AttackMove: m.kind = World::QueuedKind::AttackMove; break;
@@ -183,16 +189,12 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
                     case Cmd::AttackGround: m.kind = World::QueuedKind::AttackGround; break;
                     default: break;
                 }
-                if (world.removeQueuedMatch(c.unitId, rally, m)) return;
+                if (world.removeQueuedMatch(holder, rally, m)) return;
             }
             // Taking a queued order back (above) is not a new one; a new one the
             // unit cannot take stops here, before anything is rewound.
             if (!admits()) return;
-            // A Load is the passenger's and the carrier's (World::loadInto queues
-            // the carrier's pickup), so Ctrl puts it at the head of both lists.
-            const auto* carrier = c.kind == Cmd::Load ? world.unit(c.targetId) : nullptr;
-            const bool idle = (rally ? producer->rally.empty() : producer->orders.empty()) &&
-                              (!carrier || carrier->orders.empty());
+            const bool idle = rally ? producer->rally.empty() : holderUnit->orders.empty();
             // Nothing can come ahead of a front unload to fill the hold: refused,
             // as unloadAt refuses a plain one.
             if (front && c.kind == Cmd::Unload && producer->cargo.empty()) return;
@@ -200,12 +202,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
                 ta::net::Command append = c;
                 append.queue = ta::net::kQueueAppend;
                 const auto issue = [&] { applyCommand(world, reg, append); };
-                if (carrier) {
-                    const int passenger = c.unitId;
-                    world.insertOrderFront(c.targetId, false,
-                                           [&] { world.insertOrderFront(passenger, false, issue); });
-                } else
-                    world.insertOrderFront(c.unitId, rally, issue);
+                world.insertOrderFront(holder, rally, issue);
                 return;
             }
             // At the head of an empty list is the plain order, given as one (a

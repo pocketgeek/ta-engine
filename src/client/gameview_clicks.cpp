@@ -145,7 +145,6 @@ namespace {
                                                     hovered->worldPosition, hovered->flightGroundMode);
                 if (friendlyTarget && (mode == 0 || mode == 'm' || mode == 'f' || mode == 'r')) {
                     f.assist = canAssistSite(u, *hovered);
-                    f.board = canLoadPassenger(u, *hovered);
                     f.pickup = f.transport && !f.attacker && transports == 1 && canLoadPassenger(*hovered, u);
                     f.friendly = friendlyUnitOrder(t, true, u.repeatType != nullptr, false, damaged);
                 }
@@ -178,7 +177,7 @@ namespace {
         // One run per order kind, in selection order within it, so a Legion net game
         // packs each kind as one explicit order (net/orderpack.h).
         static constexpr ClickOrder kRuns[] = {
-            ClickOrder::Attack, ClickOrder::AttackGround, ClickOrder::Assist, ClickOrder::Repair, ClickOrder::Board, ClickOrder::Pickup,
+            ClickOrder::Attack, ClickOrder::AttackGround, ClickOrder::Assist, ClickOrder::Repair, ClickOrder::Pickup,
             ClickOrder::Guard, ClickOrder::Resurrect, ClickOrder::Reclaim, ClickOrder::Unload,
             ClickOrder::AttackMove, ClickOrder::Patrol, ClickOrder::Move,
         };
@@ -213,8 +212,7 @@ namespace {
                 case ClickOrder::Assist: for (int id : ids) send(ta::net::Cmd::Assist, id, plan.target); break;
                 case ClickOrder::Repair: for (int id : ids) send(ta::net::Cmd::Repair, id, plan.target); break;
                 case ClickOrder::Guard:  for (int id : ids) send(ta::net::Cmd::Guard, id, plan.target); break;
-                case ClickOrder::Board:  for (int id : ids) send(ta::net::Cmd::Load, id, plan.target); break;
-                // The hovered passenger boards the transport (the carrier fetches it).
+                // The transport picks the hovered unit up (its LOAD order).
                 case ClickOrder::Pickup: for (int id : ids) send(ta::net::Cmd::Load, plan.target, id); break;
                 case ClickOrder::Resurrect: for (int id : ids) send(ta::net::Cmd::Resurrect, id, plan.body); break;
                 case ClickOrder::Reclaim:
@@ -470,10 +468,10 @@ namespace {
     bool GameView::issueBoxPlan(const BoxPlan& plan, float x0, float z0, float x1, float z1, uint8_t queue) {
         ClickScope click(*this);
         std::vector<int> ordered, clearers;
-        // Step L: the transport fetches each passenger in turn. Every Load but the
-        // first keeps the carrier's pickup list (World::loadInto appends while a
-        // pickup leads it), so all go with the click's own queue flag. Ctrl puts
-        // each pickup at the head of the carrier's list (and the passenger's), so
+        // Step L: the transport fetches each passenger in turn. A Load is the
+        // carrier's order (World::loadInto: its GROUND_PICKUP / VTOL_PICKUP), so
+        // the first goes with the click's own queue flag and the rest queue
+        // behind it. Ctrl puts each pickup at the head of the carrier's list, so
         // they go in reverse, the first passenger ending up in front.
         const bool frontBox = (queue & ta::net::kQueuePlace) == ta::net::kQueueFront;
         for (size_t i = 0; i < plan.units.size(); ++i) {
@@ -482,7 +480,8 @@ namespace {
                 ta::net::Command c;
                 c.kind = ta::net::Cmd::Load;
                 c.unitId = plan.passengers[frontBox ? plan.passengers.size() - 1 - k : k];
-                c.targetId = plan.units[i]; c.queue = queue;
+                c.targetId = plan.units[i];
+                c.queue = k && !frontBox ? uint8_t(ta::net::kQueueAppend) : queue;
                 issue(c);
             }
             if (!plan.passengers.empty()) ordered.push_back(plan.units[i]);

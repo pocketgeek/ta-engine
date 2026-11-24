@@ -303,7 +303,7 @@ void towerFront() {
     check(targets == std::vector<int>{e2, e1}, "tower: Ctrl Attack goes ahead of the target it is on");
 }
 
-// Ctrl pickup: the carrier's pickup goes to the head of the CARRIER's list too
+// Ctrl pickup: the carrier's pickup goes to the head of the CARRIER's list
 // (the command names the passenger), not behind its queued orders.
 void transportFront() {
     Types t; Rig r;
@@ -317,8 +317,9 @@ void transportFront() {
     const auto& po = r.w.unit(p)->orders;
     check(!bo.empty() && bo.front().transportPickup && bo.front().targetId == p && goals(bo).size() == 3,
           "Ctrl pickup: the carrier fetches the passenger first, its two moves kept behind");
-    check(!po.empty() && po.front().load && po.front().targetId == boat && goals(po).size() == 2,
-          "Ctrl pickup: the passenger boards first, its move kept behind");
+    // TotalA.exe gives the passenger no mission (LOAD is the carrier's, 0x43f701).
+    check(!po.empty() && !po.front().load && goals(po).size() == 1,
+          "Ctrl pickup: the passenger keeps its own move and gets no order");
 }
 
 // Ctrl Unload on an empty transport is refused, as a plain one is: nothing can
