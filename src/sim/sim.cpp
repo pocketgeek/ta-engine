@@ -1338,7 +1338,7 @@ void World::setTerrain(const std::vector<uint8_t>& heights, int w, int h, int se
         navHover_.setObstacles(&obst_);
         navalSight_.setObstacles(&obst_);
         navClasses_.clear();
-        navIdx_.clear();
+        navIdx_.clear();navKeyIdx_.clear();
     }
     // Projected cliff faces are rendering geometry, not extra navigation walls.
     // The retail Hunter capture traverses cells the former seven-row projection
@@ -10183,46 +10183,53 @@ void World::blockFoot(const UnitType& t, float x, float z, bool blocked) {
         }
 }
 
+static NavGrid::Limits navLimitsOf(const UnitType& t) {
+    NavGrid::Limits l;
+    l.maxSlope = int(t.maxSlope);
+    l.maxWaterSlope = int(t.maxWaterSlope);
+    l.badSlope=t.badSlope;l.badWaterSlope=t.badWaterSlope;
+    l.badMaxWaterDepth=t.badMaxWaterDepth;l.badMinWaterDepth=t.badMinWaterDepth;
+    // Domain decides the sense of the water band, exactly as the three legacy
+    // grids did: a ground unit may wade only so deep, a boat needs a minimum
+    // depth to float, a hoverer ignores both.
+    if (t.domain == UnitType::Domain::Water) {
+        l.maxWaterDepth = 10000;
+        l.minWaterDepth = int(t.minWaterDepth > 0 ? t.minWaterDepth : 13);
+    } else if (t.domain == UnitType::Domain::Hover) {
+        l.maxWaterDepth = 10000;
+        l.minWaterDepth = -10000;
+    } else {
+        l.maxWaterDepth = int(t.maxWaterDepth > 0 ? t.maxWaterDepth : 20);
+        l.minWaterDepth = -10000;
+    }
+    return l;
+}
+static std::tuple<int,int,int,int,int,int,int,int> navLimitsKey(const NavGrid::Limits& l) {
+    return std::make_tuple(l.maxSlope,l.maxWaterSlope,l.maxWaterDepth,l.minWaterDepth,
+                          l.badSlope,l.badWaterSlope,l.badMaxWaterDepth,l.badMinWaterDepth);
+}
+
+int World::navClassIndex(const UnitType& t) const {
+    if (t.canFly) return -1;
+    const auto it=navKeyIdx_.find(navLimitsKey(navLimitsOf(t)));
+    return it==navKeyIdx_.end() ? -1 : it->second;
+}
+
 void World::buildNavClasses(const TypeRegistry& reg) {
     paths_.clear();legion_.reset();
     searchGrades_.clear(); activeSearchGrade_=-1;
     // Labellings are keyed by grid address: a new table could reuse an old one's.
     compCache_.clear();
     navClasses_.clear();
-    navIdx_.clear();
+    navIdx_.clear();navKeyIdx_.clear();
     if (heights_.empty() || terW_ <= 0) return;
     // Collapse the registry's types onto their distinct limit tuples. Ordered by the
     // tuple so the table is built identically on every peer regardless of map order.
-    auto tupleOf = [](const UnitType& t) {
-        NavGrid::Limits l;
-        l.maxSlope = int(t.maxSlope);
-        l.maxWaterSlope = int(t.maxWaterSlope);
-        l.badSlope=t.badSlope;l.badWaterSlope=t.badWaterSlope;
-        l.badMaxWaterDepth=t.badMaxWaterDepth;l.badMinWaterDepth=t.badMinWaterDepth;
-        // Domain decides the sense of the water band, exactly as the three legacy
-        // grids did: a ground unit may wade only so deep, a boat needs a minimum
-        // depth to float, a hoverer ignores both.
-        if (t.domain == UnitType::Domain::Water) {
-            l.maxWaterDepth = 10000;
-            l.minWaterDepth = int(t.minWaterDepth > 0 ? t.minWaterDepth : 13);
-        } else if (t.domain == UnitType::Domain::Hover) {
-            l.maxWaterDepth = 10000;
-            l.minWaterDepth = -10000;
-        } else {
-            l.maxWaterDepth = int(t.maxWaterDepth > 0 ? t.maxWaterDepth : 20);
-            l.minWaterDepth = -10000;
-        }
-        return l;
-    };
-    auto key = [](const NavGrid::Limits& l) {
-        return std::make_tuple(l.maxSlope,l.maxWaterSlope,l.maxWaterDepth,l.minWaterDepth,
-                              l.badSlope,l.badWaterSlope,l.badMaxWaterDepth,l.badMinWaterDepth);
-    };
-    std::map<std::tuple<int,int,int,int,int,int,int,int>,int> seen;
+    auto& seen=navKeyIdx_;
     for (const auto& [id, t] : reg.types()) {
         if (t.canFly) continue;             // flyers ignore the ground entirely
-        NavGrid::Limits l = tupleOf(t);
-        auto k = key(l);
+        NavGrid::Limits l = navLimitsOf(t);
+        auto k = navLimitsKey(l);
         auto it = seen.find(k);
         if (it == seen.end()) {
             it = seen.emplace(k, int(navClasses_.size())).first;
@@ -11891,6 +11898,10 @@ bool World::prepareBuildApproach(Unit& u) {
     if (!events) return false;
     // 4d8450 consumes the approach events before MobileBuild enters placement.
     u.missionEvents&=~events;goal.mission.pending&=~events;goal.mission.waitMask=0;
+    // TotalA.exe MobileBuild 0x403a20 stage 1 (0x403b45..0x403c56): a failed
+    // approach beyond builddistance says CANNOTREACHCONSTRUCTION ("I can't reach
+    // the construction site", 0x501580) and ends the order; within reach it
+    // builds. Engine event 0x200 is TA's 0x40 here.
     if (events&0x200) {
         if (!retailBuildWithinReach(u.x,u.z,goal.buildX,goal.buildZ,
                 int16_t(u.type->footX),int16_t(u.type->footZ),

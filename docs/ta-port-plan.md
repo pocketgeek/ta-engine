@@ -111,7 +111,10 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   failing): TA ships/hovers (BOATS*/BOATD*/TANKHOVER*) are not water/hover units
   (sim.cpp movement-class prefix test); transports have no TA capacity/distance
   (transportcapacity/transportsize unread); air plants never start a unit;
-  Retail-mode park orders never retire at their goal; dropped bombs (no
+  a PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
+  units in the field) can still circle in the ring's acceptance gap -- the
+  octile distance (0x44d840) is 0 a cell inside the squared inner test
+  (0x44d800) -- when parked outputs wall the band; dropped bombs (no
   weaponvelocity) hit instantly; hovering gunships' shots fly level and overshoot;
   armmav's Gauss shot flies level; v3 .sct sections do not load and the
   Cartographer still defaults to Kingdoms worlds; client watch/spectator harness

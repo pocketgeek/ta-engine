@@ -142,6 +142,10 @@ This runs when a body appears, parks or leaves.
 This is a reachability probe that decides whether A* runs. It is not budget-sliced and has
 no visit limit; it ends only on success or on a closed loop.
 - `best = h0`. If the start grade is below 1, return `best`.
+- There is no direct route: a start at distance 0 that the controller does not accept
+  (the octile distance undershoots the squared accept test by about a cell) returns 0,
+  and A* runs with goal radius 0 to the first distance-0 neighbour. The engine's
+  Kingdoms `[start, start]` route here left parked units one cell short for good.
 - **Cardinal march** toward the target cell: dx < 0 → dir 2, dx > 0 → dir 6, otherwise z ≤ 0 → dir 0, else dir 4. That is, it closes x first, then z.
   - Each passable cell gets flag 8 and a direction.
   - Entering a goal cell → return 0.
@@ -223,6 +227,14 @@ A move order uses a circle whose radius = the order radius + 4 (0x403238).
 - **What follows from this [U]:**
   - An unreachable goal ends the move order through 0x40.
   - A partial route walks to the closest point, exhausts, asks again after the 60-tick gate, and usually comes back empty, which also ends in 0x40.
+- **MobileBuild (0x403a20) [S].** Stage 0 installs the rect goal round the site (0x438ad0)
+  and waits on 0xe0. On 0x40 (failed) stage 1 measures unit to site minus both footprint
+  half-diagonals against builddistance (UnitType+0x212); beyond it the unit says "I can't
+  reach the construction site" (0x501580, via 0x47f780) and the mission ends (returns 8).
+  Within reach it places the site as on arrival. The engine's `prepareBuildApproach` does
+  this on its 0x200 (`retailBuildWithinReach`), without the chatter. Note that the search
+  reads unexplored cells as clear (§2.4), so on an unexplored map the builder first
+  scouts toward the site and fails only once the way is known.
 
 ### 3.2 Steering — mover update 0x43dd20 → ground 0x43cd20 [S]
 - **Aim point.** Read `wp0, wp1, wp2` (indices clamp to the last point). Let d = |wp1 − unit|.
