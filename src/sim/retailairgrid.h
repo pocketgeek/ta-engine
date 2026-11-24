@@ -207,6 +207,15 @@ std::vector<int> retailAirCollisionGrid(int width,int height,
 // (+0xd bit 0x10); `bool groundOther(size_t)` / `bool airOther(size_t)` -- a
 // live entity other than the lander in word +0 / +2; `int low(size_t)` /
 // `int high(size_t)` (+6 / +5); `int sea()`.
+// TotalA.exe's test is 0x47e2d0 (VTOL_LandIfCan 0x40f417 / 0x40f57c), the
+// same shape: the footprint-snapped origin and map bounds (0x47e2df..
+// 0x47e35d), the unexplored-site pass (coarse index with footprintx on both
+// axes, 0x47e363..0x47e3a8), the water limits (0x47e3ab..0x47e3f9), then per
+// 13-byte cell a blocking feature (0x47e43b..0x47e4ba), cell +0xc bit 2
+// (0x47e4c0; World's yard stand-in), word +0 and word +2 holding a unit other
+// than the lander (0x47e4ca..0x47e4f3) and the height / slope limits
+// (0x47e4f5..0x47e51b). So TA, too, refuses a site under another flyer's
+// airborne word +2: airOther stays.
 struct RetailLandingLimits {
     int16_t footX=1,footZ=1;
     int16_t maxWaterDepth=10000,minWaterDepth=-10000; // type +0x192/+0x194

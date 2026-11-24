@@ -135,11 +135,12 @@ int main(int argc, char** argv) {
             std::vector<RetailFlightGoal> goals;
             uint32_t random(int n){return retailRandom(seed,n);}
             void initialize(){++initialized;}
-            int velocityPercent(){return velocity;}
+            void activate(bool on){if(!on)++deactivated;}
+            void takeOff(){}
+            int seaLevel() const {return 0;}
             bool landable(RetailFlightVector){return probes++==accept;}
             int groundHeight(RetailFlightVector){return height;}
             void touchdown(){++touched;}
-            void deactivate(){++deactivated;}
             void finish(){++finished;}
             void install(RetailFlightGoal goal){goals.push_back(goal);}
         };
@@ -148,7 +149,8 @@ int main(int argc, char** argv) {
             Host host;
             if (!(std::cin>>host.seed>>host.velocity>>host.height>>host.accept)) return 2;
             state.mission.stage=uint8_t(stage);
-            const int result=retailLanding(state,events,position,uint16_t(heading),int16_t(fx),int16_t(fz),mover!=0,fly!=0,host);
+            (void)heading;   // TotalA.exe's VTOL_LandIfCan has no brake point
+            const int result=retailLanding(state,events,position,int16_t(fx),int16_t(fz),mover!=0,fly!=0,false,0,host);
             std::cout<<result<<' '<<unsigned(state.mission.stage)<<' '<<state.mission.waitMask<<' '
                      <<state.angle<<' '<<state.parity<<' '<<host.seed<<' '
                      <<state.anchor.x<<' '<<state.anchor.y<<' '<<state.anchor.z<<' '
@@ -163,9 +165,10 @@ int main(int argc, char** argv) {
         while (std::cin>>tick>>seed>>stage>>mask>>deadline>>pending>>flags>>mover>>fly>>air>>install>>land) {
             RetailMissionState m{uint8_t(stage),mask,deadline,pending,flags};
             unsigned initialized=0,tried=0,landed=0;
-            int result=retailVtolStandby(m,tick,mover!=0,fly!=0,air!=0,
+            // `land`: 0 a carrier's loiter, else the landing (TotalA.exe 0x40f7d0).
+            int result=retailVtolStandby(m,tick,mover!=0,fly!=0,air!=0,land==0,
                 [&](int n){return retailRandom(seed,n);},[&]{++initialized;},
-                [&]{++tried;return install!=0;},[&]{++landed;return land!=0;});
+                [&]{++tried;return install!=0;},[](uint16_t,int32_t){},[&]{++landed;});
             std::cout<<result<<' '<<unsigned(m.stage)<<' '<<m.waitMask<<' '<<m.deadline<<' '
                      <<m.pending<<' '<<m.flags<<' '<<seed<<' '<<initialized<<' '<<tried<<' '<<landed<<'\n';
         }

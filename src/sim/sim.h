@@ -1708,6 +1708,10 @@ struct alignas(64) Unit {
     econ::UnitBooks books;
     float buildRemaining = 0;
     bool buildStarted = false;
+    // TotalA.exe VTOL_Standby's post (mission +0x2e / +0x30, set at stage 0,
+    // 0x40f9ed..0x40f9fc): the integer position a passenger-carrying flyer
+    // loiters round (0x40f839..0x40f853). Hashed while it carries one.
+    int16_t standbyPostX = 0, standbyPostZ = 0;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -4211,9 +4215,10 @@ private:
     bool flightLandingFree(const Unit& u, Fixed x, Fixed z) const;
     bool flyerLandingOccupied(const Unit& self, int x0, int z0, int fx, int fz) const;
     // A flyer standing on the ground for Legion's purposes (W6, PLAN 3.6):
-    // landed (mode 1), or descending in the landing mission's stage 3.
+    // landed (mode 1), or descending in the landing mission's stage 2 (TotalA.exe
+    // VTOL_LandIfCan 0x40f3e4).
     static bool flyerGrounded(const Unit& f) {
-        return f.flightGroundMode==1 || (f.landing && f.landing->mission.stage==3);
+        return f.flightGroundMode==1 || (f.landing && f.landing->mission.stage==2);
     }
     std::pair<int,int> cellHeightRange(size_t cell) const;
     // A fight-move leg: attackMove, and off a patrol Move response mode -1
