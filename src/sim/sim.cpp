@@ -8719,6 +8719,8 @@ void World::fireBehindStepOut(Unit& u) {
     auto tryFire=[&](int sl) {
         if (u.slotAuto>>sl&1) return;
         const Weapon& sw=u.type->weapons[size_t(sl)];
+        // AirStrike's slot fires only while its release stage holds the target.
+        if (u.type->canFly && sw.cursorAirstrike && u.slotTarget[size_t(sl)]!=target->id) return;
         if (isDgunSlot(*u.type, sl) != attack.dgun) return;   // 8.2: D-gun only on a D-gun order
         if (sw.mindControl && !canCaptureTarget(u.player,*target)) return;
         // 530580 (every non-melee in-range test): the slot's air flags against
@@ -9250,6 +9252,10 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         // An auto slot (AirToGround's and AirToAir's unselected ones) fires
         // at its own target (tickSlotWeapons), not the order's.
         if (u.slotAuto>>sl&1) return;
+        // TotalA.exe's AirStrike gives its manual slot a target only at its
+        // release stage (0x41247f -> 0x48a0a0) and clears it after the run
+        // (0x41253c -> 0x48a0f0): a bomber drops nothing on the way there.
+        if (strike && u.slotTarget[size_t(sl)]!=target->id) return;
         if (!slotAims(sl)) return;
         const Weapon& sw = u.type->weapons[size_t(sl)];
         // 8.2: Attack_Chase hands the target to slot 0 and leaves slot 2 manual,
@@ -14506,17 +14512,15 @@ void World::tickAirToGround(Unit& u,const Unit* target,const Weapon* selected) {
     tickFlightBody(u); notifyFlightOccupancy(u);
 }
 
-// AirStrike (41b5e0, retailAirStrike) on a flyer's attack order when its
-// selected weapon has the `dropped` key (mods only) and the target cannot
-// fly: approach passes round a release ring, the selected slot aimed and let
-// go over the target, the air-traffic check at stage 4. World's attack always
+// AirStrike (TotalA.exe 0x411f50, retailAirStrike) on a flyer's attack order
+// when its weapon is `dropped` (every shipped bomber) and the target cannot
+// fly: approach passes round a release ring that leads the bomb's carry, the
+// slot given the target and let go over it, then cleared past it. World's attack always
 // has a unit: the lost-target exits (a dead, dying, carried target) are
 // tickCombat's (seekLostTarget) before the dispatch, so the head's own seek is
 // never reached; 51a770's ground point is the target (setSlotTarget), and
 // 4e3f70's controller follows it (flyMissionGoal re-aims a following goal at
-// the target every tick). The release ring reads the navigator's +0x22, the
-// high word of its destination's z step (flightNavigation.velocity), as retail
-// does.
+// the target every tick).
 void World::tickAirStrike(Unit& u,const Unit* target) {
     struct Host : AirAttackGroup {
         const Unit* target;
@@ -14611,8 +14615,9 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
             if (order.chaseLeashed) { in.leash=order.chaseLeash;in.origin=order.chaseOrigin; }
             in.runLength=uint16_t(u.type->attackRunLength);
             in.cruiseAlt=int16_t(u.type->cruiseAlt);
-            in.gravity=w.ballisticGravityRaw_;
-            in.speed=int16_t(uint32_t(u.flightNavigation.velocity.z)>>16);
+            in.gravity=w.mapGravity_;
+            // Mover +0x22: the whole pixels of its scalar speed (+0x20, 0x43cc2d).
+            in.speed=int16_t(uint32_t(u.speed.v)>>16);
             in.traffic=u.airTraffic;in.footX=int16_t(u.type->footX);
             RetailFlightVector point{order.attackPointX.v,0,order.attackPointZ.v};
             const int result=retailAirStrike(m,point,w.tickCounter_,events,in,*this);

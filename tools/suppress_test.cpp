@@ -665,7 +665,12 @@ void flyerGroups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::U
         const GroupRun r = flyGroup(vfs, reg, *t, 2400, building);
         std::printf("  %s outlier of an all-flyer group at a unit (%s): %s\n", name, building->id.c_str(),
                     describe(r).c_str());
-        if (mode == sim::PathfindingMode::Retail)
+        // TotalA.exe's AirStrike (0x411f50) has no group check: its head
+        // goes from the leash straight to its stages (0x4120e1).
+        if (t == &striker)
+            check(r.formations == 0 && r.orderAtEnd, std::string(name) + " at a unit: no group check in TA",
+                  describe(r));
+        else if (mode == sim::PathfindingMode::Retail)
             check(r.formations >= 1 && !r.otherLegs && r.retired && (r.orderAtEnd || r.shotsSince >= 1),
                   std::string(name) + " at a unit: out of its slot it flies back, then attacks again", describe(r));
         else
@@ -706,8 +711,10 @@ void flyerGroups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::U
         // next release, so its shots are counted from the first return, and
         // out of its slot again once flagged it may give the order up
         // (rand(2), as at a unit above).
-        if (mode == sim::PathfindingMode::Retail) {
-            check(r.formations >= 1 && !r.otherLegs && r.retired && (r.orderAtEnd || t == &striker) &&
+        if (t == &striker)
+            check(r.formations == 0 && r.orderAtEnd, std::string(name) + ": no group check in TA", describe(r));
+        else if (mode == sim::PathfindingMode::Retail) {
+            check(r.formations >= 1 && !r.otherLegs && r.retired && r.orderAtEnd &&
                       r.shotsSince >= 1,
                   std::string(name) + ": out of its slot it flies back on VTOL_Move_Formation, then attacks again",
                   describe(r) + ", " + std::to_string(r.shotsSince) + " shots since the first return");

@@ -123,11 +123,12 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   armthovr x5 far); porting that breaks the synthetic crowd-retry cases.
 - Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
-  `sim/retailtashot.h`, `World::tickTaSelfProp`). Still open: the bomber's
-  AIRSTRIKE run is the Kingdoms port (retailAirStrike): it drops on take-off and
-  its release ring does not lead the bomb's forward carry, so a real falling bomb
-  lands ~300 px past the point (suppress "it strikes the point"); TA's own bomber
-  release logic is not yet traced. Ballistic shells still use the release solve
+  `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run
+  follows TotalA.exe's 0x411f50 (retailAirStrike): its slot holds the target only
+  from the release stage to the turn after it, and the release ring leads the
+  bomb's carry (sqrt(2 cruisealt / OTA gravity) x 30 x speed + attackrunlength + 1);
+  no group check or air-traffic step-out; the stage-6 repair-pad detour is not
+  ported, nor the stage-0 wait for take-off altitude. Ballistic shells still use the release solve
   and Kingdoms' gravity-before-move order (TotalA.exe 0x49cde0 launches on the
   slot's AimX angles + spread and moves before gravity, 0x49bce3); beams
   (lineofsight + beamweapon) still hit instantly; burst clones still re-aim at

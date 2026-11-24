@@ -214,11 +214,10 @@ void guardLost(const std::string& dir,const char* data,ta::sim::PathfindingMode 
           std::to_string(guardingRing)+" of 3 fighters guard a Peewee of the ring at the end ("+std::to_string(idleAfter)+
           " idle)");
 }
-// AirStrike (41b5e0): the fighters of air-stack-barracks.scn with the `dropped`
-// key on their weapon (WeaponType +0xc8 bit 0x20; no shipped weapon has it).
-// Their attack is the strike, not the hover: it makes its passes (stage 6, the
-// turn after the release, comes round again and again), and its stage-4
-// air-traffic check steps a fighter out of the stack the three start in.
+// AirStrike (TotalA.exe 0x411f50): the fighters of air-stack-barracks.scn with
+// the `dropped` key on their weapon. Their attack is the strike, not the
+// hover: it makes its passes (stage 6, the turn after the release, comes round
+// again and again), and, unlike Kingdoms', it has no air-traffic step-out.
 void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode mode) {
     const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
     const auto s=ta::scn::load(dir+"/air-stack-barracks.scn");
@@ -257,8 +256,11 @@ void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode 
     }
     check(turns>=6,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: the fighters strike ("+
           std::to_string(turns)+" passes turned, at least 6)");
-    check(stepOuts>=1,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: "+std::to_string(stepOuts)+
-          " step-outs ahead of the strike (at least 1)");
+    // TotalA.exe's AirStrike (0x411f50) has no air-traffic check: its stage 4
+    // (0x412394) only waits for the release ring. A stacked bomber strikes
+    // from where it is.
+    check(stepOuts==0,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: "+std::to_string(stepOuts)+
+          " step-outs ahead of the strike (TA has none)");
 }
 } // namespace
 
