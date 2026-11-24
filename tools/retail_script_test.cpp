@@ -1985,13 +1985,17 @@ int main(int argc,char** argv) {
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
         auto file=std::make_shared<ta::cob::File>();
         file->numStatics=2;file->pieces={"root","emitjim"};
-        file->scripts={{"QueryWeapon",0},{"MoveRate",5}};
+        // TotalA.exe 0x43da70: StartMoving / StopMoving (+ MoveRate1..3, absent
+        // here). Static 0 counts the edges, static 1 holds "moving".
+        file->scripts={{"QueryWeapon",0},{"StartMoving",5},{"StopMoving",27}};
         file->code={0x10021001,1,0x10023002,0,0x10065000,
             0x10021004,0,0x10021001,1,0x10031000,0x10023004,0,
-            0x10021002,0,0x10023004,1,
-            // Verharp sail/endsail's query-piece offsets, observed in native COB.
+            0x10021001,1,0x10023004,1,
+            // Query-piece offsets observed in native COB.
             0x10021001,0xfff56fef,0x1000b000,1,1,
-            0x10021001,0xffdfc5d9,0x1000b000,1,2,0x10065000};
+            0x10021001,0xffdfc5d9,0x1000b000,1,2,0x10065000,
+            0x10021004,0,0x10021001,1,0x10031000,0x10023004,0,
+            0x10021001,0,0x10023004,1,0x10065000};
         UnitType type;type.simulationScript=file;type.maxHp=100;
         type.maxVel=Fixed::fromInt(4);type.accel=type.brake=Fixed::fromInt(1);
         type.turnRate=type.turnInPlaceRate=10000;
@@ -2002,7 +2006,7 @@ int main(int argc,char** argv) {
         const int id=world.spawn(&type,200,200);
         world.order(id,800,200,false);world.tick(1.f/30);
         require(RetailReplayProbe::scriptStatics(world,id)==std::vector<uint32_t>{1,1},
-            "ordinary mover immediately delivers its first MoveRate edge to simulation COB");
+            "ordinary mover immediately delivers StartMoving to simulation COB");
         const auto source=world.queryUnitScriptPoint(id,false);
         require(source[1]==world.unit(id)->groundY.v-692241,
             "movement animation updates authoritative QueryWeapon source before the next shot");
@@ -2012,7 +2016,7 @@ int main(int argc,char** argv) {
         world.stop(id);
         for(int tick=0;tick<30;++tick)world.tick(1.f/30);
         require(RetailReplayProbe::scriptStatics(world,id)==std::vector<uint32_t>{2,0},
-            "stopping emits exactly one MoveRate zero transition");
+            "stopping emits exactly one StopMoving");
         std::cout<<"PASS: authoritative movement callback updates weapon source and preserves edge delivery\n";
     }
 #if 0  // KINGDOMS weapon SET handshake (SET 21/22/23): not a TA mechanism.

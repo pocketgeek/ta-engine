@@ -7323,8 +7323,9 @@
             float t = std::clamp(p.life / std::max(p.maxLife, 1e-3f), 0.0f, 1.0f);
             sx -= terrainLiftX(p.x, p.z) * zm;
             sy -= terrainLift(p.x, p.z) * zm;
-            float r = p.size * zm * (p.kind == 1 ? (1.4f - t) : t);
-            Uint8 a = Uint8(std::clamp(t * 255.0f, 0.0f, 255.0f));
+            float r = p.size * zm * (p.kind == 1 ? (1.4f - t) : p.kind == 2 ? 0.5f : t);
+            Uint8 a = p.kind == 2 ? 255 : Uint8(std::clamp(t * 255.0f, 0.0f, 255.0f));
+            if (p.kind == 2) r = std::max(r, 0.5f);   // a nano dot stays at least a pixel
             pushQuad(partBatch_, sx - r, sy - r, 2 * r, 2 * r, SDL_Color{p.r, p.g, p.b, a});
             return;
         }
@@ -7922,6 +7923,7 @@
         for (auto& p : particles_) {
             p.life -= dt;
             p.x += p.vx * dt; p.z += p.vz * dt;
+            if (p.kind == 2) { p.alt += p.valt * dt; continue; }   // nanolathe: straight line
             if (p.kind == 1) { p.x += windDX; p.z += windDZ; }
             p.alt += p.valt * dt;
             p.valt -= (p.kind == 1 ? 6.0f : 90.0f) * dt;   // smoke floats, sparks fall

@@ -18413,14 +18413,18 @@ void World::notifyMovementRate(Unit& u) {
     }
     const auto it=unitScript(u.id);
     if (!it || it->movementRate==rate) return;
-    auto& script=*it;script.movementRate=rate;
+    auto& script=*it;
+    const uint32_t previous=script.movementRate;script.movementRate=rate;
     const auto& file=*u.type->script();
     ScriptHost host{*this,u,script};
-    // Native 4db350 executes this edge at zero elapsed time before occupancy.
-    // It can move QueryWeapon pieces (Verharp's emitjim), so it also belongs
-    // to the authoritative VM, not just the display animation.
-    if (script.state().startArguments(file,file.scriptIndex("MoveRate"),{rate,0,0,0},1))
-        script.state().tick(file,0,host);
+    // TotalA.exe 0x43da70: StopMoving / StartMoving, then MoveRate1..3, each
+    // started by name (0x4b0940) at zero elapsed time before occupancy. Scripts
+    // can move QueryWeapon pieces from these, so they belong to the
+    // authoritative VM, not just the display animation.
+    retailMovementCallins(previous,rate,[&](const char* name) {
+        if (script.state().startArguments(file,file.scriptIndex(name),{0,0,0,0},0))
+            script.state().tick(file,0,host);
+    });
 }
 
 void World::notifyFlightOccupancy(Unit& u) {

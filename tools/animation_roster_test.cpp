@@ -132,7 +132,7 @@ int main(int argc,char**argv) {
             host.phase=(tick/300)%4;
             if(tick==30){notify("Activate");notify("BeginFlight");notify("setSFXoccupy",{5});}
             if(tick==150)notify("StartBuilding");
-            if(tick==300){notify("StopBuilding");notify("MoveRate",{2});notify("TurnDirection",{5});}
+            if(tick==300){notify("StopBuilding");notify("StartMoving");notify("MoveRate2");}
             if(tick==450){notify("AimWeapon",{0,0,0,0});notify("FireWeapon",{0});}
             if(tick==600){notify("TargetCleared",{0});notify("WindChange",{10,8192});}
             if(tick==750)notify("StartCloaking");

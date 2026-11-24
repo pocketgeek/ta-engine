@@ -1882,6 +1882,7 @@
         // (No world_.clearHits() here: World::tick already clears hits_ at the start of the
         //  next tick, so the viewer-side clear was redundant -- and dropping it keeps the
         //  render path from mutating sim state, a prerequisite for the sim-thread decouple.)
+        if (!jumpPass) nanoStep();
         updateParticles(dt);
         updateEffects(dt);
         updateRings(dt);
@@ -2177,10 +2178,15 @@
             // BAM), converted with retail's truncating /182. Retail notifies only
             // when its turn state changes sign, including the stop transition.
             const int turnDegrees=u.turnReqBam/182;
+            const uint32_t previousMoveRate=a.moveRate;
             ta::updateRetailMovementAnimationCallbacks(a.hasTurnDir,turnDegrees,a.turnSign,
                 u.animationMoveRate,a.moveRate,u.animationOccupancy,a.occupancy,
                 [&](int degrees) { a.vm->start("TurnDirection",{degrees}); },
-                [&](uint32_t rate) { a.vm->start("MoveRate",{int32_t(rate)}); },
+                // TotalA.exe 0x43da70: StartMoving/StopMoving + MoveRate1..3.
+                [&](uint32_t rate) {
+                    ta::sim::retailMovementCallins(previousMoveRate,rate,
+                        [&](const char* name) { a.vm->start(name); });
+                },
                 [&](uint32_t surface) { a.vm->start("setSFXoccupy",{int32_t(surface)}); });
             // The simulation owns readiness and callback order. Do not recompute
             // aim from interpolated render poses or a separate display handshake.
@@ -2242,7 +2248,26 @@
                     [&](bool working) {
                         if (!a.flying) {
                             // Ground builder.
-                            if (working) a.vm->start("StartBuilding") || a.vm->start("startbuild");
+                            // TotalA.exe 0x4385a7: StartBuilding gets one argument, the
+                            // heading to the work target relative to the body (low 16
+                            // bits); scripts turn the torso/arms by it (armcom:
+                            // TURN torso y-axis to heading).
+                            if (working) {
+                                std::vector<int32_t> args;
+                                float tx = 0, tz = 0;
+                                bool have = false;
+                                if (const int t = u.buildSiteId ? u.buildSiteId : u.repairId; t)
+                                    if (const UnitR* target = frameUnitP(t)) { tx = target->x; tz = target->z; have = true; }
+                                if (!have && u.reclaimId)
+                                    for (const auto& f : features_)
+                                        if (f.simId == u.reclaimId) { tx = f.x; tz = f.z; have = true; break; }
+                                if (have) {
+                                    const uint16_t direction = uint16_t(ta::sim::retailDirection(
+                                        ta::sim::Fixed::fromFloat(u.x - tx), ta::sim::Fixed::fromFloat(u.z - tz)).v);
+                                    args.push_back(int32_t(uint16_t(direction - uint16_t(u.headingWord + 32768))));
+                                }
+                                a.vm->start("StartBuilding", args) || a.vm->start("startbuild");
+                            }
                             // The script's own controller restores the pose after
                             // StopBuilding. Starting restore_x here races that
                             // controller and bypasses its attack/movement guards.
@@ -2378,6 +2403,31 @@
         std::sort(explosionVmTick_.begin(),explosionVmTick_.end(),
             [](const auto& a,const auto& b){return a.first<b.first;});
         for(const auto& [id,vm]:explosionVmTick_)vm->tick(dt);
+#ifndef NDEBUG
+        // TA_PIECELOG=<unit id>: that unit's display-VM piece poses, about twice a second.
+        if (const char* logId = ta::devEnv("TA_PIECELOG")) {
+            static float logT = 0; logT += dt;
+            if (logT >= 0.5f) {
+                logT = 0;
+                if (auto it = anims_.find(std::atoi(logId)); it != anims_.end() && it->second.vm) {
+                    const auto& vm = *it->second.vm;
+                    std::string line;
+                    for (size_t p = 0; p < vm.pieces().size(); ++p) {
+                        const auto& s = vm.pieces()[p];
+                        if (!s.visible || s.rot[0] || s.rot[1] || s.rot[2] || s.move[0] || s.move[1] || s.move[2]) {
+                            char buf[160];
+                            std::snprintf(buf, sizeof buf, " %s%s[r %.2f %.2f %.2f m %.1f %.1f %.1f]",
+                                vm.file().pieces[p].c_str(), s.visible ? "" : "(hid)",
+                                s.rot[0], s.rot[1], s.rot[2], s.move[0], s.move[1], s.move[2]);
+                            line += buf;
+                        }
+                    }
+                    std::fprintf(stderr, "PIECELOG tick=%u threads=%zu%s\n", front().gameTick,
+                                 vm.threadPcs().size(), line.c_str());
+                }
+            }
+        }
+#endif
         // Drain emit-sfx the VMs stashed (fire/smoke from FireControl-style loops),
         // now serially on the main thread, into the world-space effect system.
         for (auto& [id, a] : anims_) {
@@ -3099,10 +3149,24 @@
         // Palette lighting banks (workstream M): one palette + shade table per faction
         // bank, shared by every texture of the bank.
         std::map<std::string, uint8_t> bankIndex;
-        for (const std::string& path : vfs_.list("textures")) {
+        // TotalA.exe 0x42a440 loads every textures/*.gaf EXCEPT logos.gaf into the
+        // texture table; 0x4318c0 loads textures/logos.gaf separately. The 3DO
+        // primitive lookup (0x42a182..0x42a298) searches the table first and
+        // logos.gaf only when no other bank has the name, so logos.gaf goes last
+        // here (first registration wins below).
+        std::vector<std::string> texturePaths = vfs_.list("textures");
+        const auto isLogos = [](const std::string& path) {
+            std::string stem = ta::vpath::stem(path);
+            std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
+            return stem == "logos";
+        };
+        std::stable_partition(texturePaths.begin(), texturePaths.end(),
+                              [&](const std::string& path) { return !isLogos(path); });
+        for (const std::string& path : texturePaths) {
             if (ta::vpath::extension(path) != ".gaf") continue;
             std::string stem = ta::vpath::stem(path);
             std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
+            const bool logosBank = stem == "logos";
             const auto* pal = &pals.at("ta");
             auto pit = pals.find("ta");
             try {
@@ -3158,11 +3222,15 @@
                         }
                         paletteTextureSources_.emplace(name,std::move(source));
                     }
-                    // Retail 4be8e3..4be978 retains every multi-frame sequence.
-                    // Only ten-frame names containing "logo" select player colours;
-                    // every other multi-frame model texture registers an animation.
+                    // TotalA.exe 0x42a1e7..0x42a288: a texture found in logos.gaf
+                    // with exactly 10 frames is a player-colour texture (primitive
+                    // flag 4: one frame per lobby colour, never animated) -- that is
+                    // every 10-frame sequence there (colorslt, Solid1a, ArmLogo...,
+                    // not only names containing "logo"). Any other multi-frame
+                    // texture (flag 2 without 4) joins the "Animplay Pointers" list
+                    // and animates (glow, flashing01/02, CorPlat, AlienGlo, onoff01).
                     const size_t n = seq.frames.size();
-                    const bool playerColours = n == 10 && name.find("logo") != std::string::npos;
+                    const bool playerColours = logosBank && n == 10;
                     if (n > 1 && !playerColours) {
                         animatedTex_.insert(name);
                         auto& animation = modelTextureAnimations_[name];
@@ -3173,7 +3241,7 @@
                     // Sample the actual 10 player-colour RGBs once, from a logo/
                     // insignia texture (mostly pure player colour), so the HUD and
                     // minimap can match whatever colour a player renders in.
-                    if (!sampledColors_ && n == 10 && !animatedTex_.count(name) &&
+                    if (!sampledColors_ && playerColours &&
                         name.find("logo") != std::string::npos) {
                         for (size_t i = 0; i < 10; ++i) {
                             const auto& f = seq.frames[i];
@@ -4572,6 +4640,102 @@
         if (kLog) std::fprintf(stderr, "t=%.2f effect '%s' anim '%s' (%zu frames)\n",
                                animClock_, cls.c_str(), anim.c_str(), ea->frames.size());
         return true;
+    }
+
+    // TotalA.exe's nanolathe spray. Each game tick a builder's work step succeeds
+    // (build 0x41ba60 -> 0x402a1c, repair 0x41bd10 -> 0x40252e, ...), retail asks
+    // QueryNanoPiece for the emitting piece (0x43e400: unit position + that
+    // piece's world offset) and calls 0x4720d0(point, targetBox, list 6). The
+    // target box is the target's model bounds; the particle object (vtable
+    // 0x4fd5b8, init 0x473b50) keeps only its middle: min + 4/11..7/11 of each
+    // axis. Its emit (0x473d50) makes 5 particles (i = 0..4): from a random point
+    // of the source box to a random point of the target box, travelling
+    // distance/4 ticks (4 px per tick: 0x473ebd..0x473ed5 takes the high word of
+    // (d<<16)/0x40000) in a straight line, coloured palette index 0xa1 + i%7
+    // (161..165, the nano greens). Feature reclaim (0x404cc4 -> 0x472200) runs
+    // the other way, box -> nano piece, two emits per tick.
+    void GameView::nanoStep() {
+        const uint32_t now = front().gameTick;
+        if (now < nanoTick_ || nanoTick_ == 0) nanoTick_ = now;
+        const uint32_t ticks = std::min<uint32_t>(now - nanoTick_, 4);
+        nanoTick_ = now;
+        if (!ticks) return;
+        const auto* pal = featurePalette("");
+        auto colour = [&](int i) {
+            SDL_Color c{75, 171, 43, 255};
+            if (pal) { const auto* e = pal->rgba[161 + i % 7]; c = {e[0], e[1], e[2], 255}; }
+            return c;
+        };
+        auto rnd = [&] { salt_ = salt_ * 1103515245u + 12345u; return float((salt_ >> 16) & 0x7fff) / 32768.0f; };
+        struct Box { float x, z, alt, w, d, h; };   // centre x/z, base alt (projected), extents
+        for (auto& [id, a] : anims_) {
+            const UnitR* u = frameUnitP(id);
+            if (!u || !u->type || !a.vm || !a.pieceNames || u->underConstruction || u->deadFor >= 0) continue;
+            int targetId = u->productionSiteId ? u->productionSiteId
+                         : u->buildSiteId ? u->buildSiteId : u->repairId;
+            const bool reclaim = !targetId && u->reclaimId;
+            if (!targetId && !reclaim) { a.nanoTarget = 0; a.nanoLevel = -1; continue; }
+            Box box{};
+            if (!reclaim) {
+                const UnitR* t = frameUnitP(targetId);
+                if (!t || !t->type) continue;
+                // Spray only on a tick the work advanced (retail emits after a
+                // successful build/repair step, not while stalled).
+                // A TA site gains hp as it is built (buildProgress is the
+                // Kingdoms clock and may stay 0), a repair only hp.
+                const float level = t->buildProgress * 1e6f + t->hp;
+                const bool advanced = a.nanoTarget == targetId && level > a.nanoLevel;
+                a.nanoTarget = targetId; a.nanoLevel = level;
+                if (!advanced) continue;
+                box = {t->x, t->z, unitAltById(t->id) * kProjY + terrainLift(t->x, t->z),
+                       float(t->type->footX) * 16.0f, float(t->type->footZ) * 16.0f,
+                       std::max(8.0f, float(t->type->modelTop) / 65536.0f)};
+            } else {
+                if (!a.building) continue;
+                const FeatureInst* f = nullptr;
+                for (const auto& fi : features_) if (fi.simId == u->reclaimId) { f = &fi; break; }
+                if (!f) continue;
+                box = {f->x, f->z, terrainLift(f->x, f->z), 16.0f, 16.0f, 16.0f};
+            }
+            if (!unitShownR(*u) || (!noFog_ && !cellVisibleR(u->x, u->z) && !cellVisibleR(box.x, box.z))) continue;
+            const int32_t piece = (a.vm->call("QueryNanoPiece", {0}), a.vm->lastLocals().empty()
+                                   ? -1 : a.vm->lastLocals()[0]);
+            float nx, nz, nalt;
+            scriptEffectOrigin(*u, a, piece, nx, nz, nalt);
+            nalt += terrainLift(u->x, u->z);   // absolute projected lift
+            const int emits = reclaim ? 2 : 1;
+#ifndef NDEBUG
+            if (ta::devEnv("TA_NANOLOG"))
+                std::fprintf(stderr, "NANO tick=%u unit=%d piece=%d src=%.1f,%.1f,%.1f box=%.1f,%.1f,%.1f ticks=%u live=%zu\n",
+                             now, id, piece, nx, nz, nalt, box.x, box.z, box.alt, ticks, particles_.size());
+#endif
+            for (uint32_t tick = 0; tick < ticks; ++tick)
+            for (int e = 0; e < emits; ++e)
+            for (int i = 0; i < 5; ++i) {
+                // A point in the middle 3/11 of the box on every axis.
+                const float bx = box.x + box.w * (4.0f / 11.0f - 0.5f + 3.0f / 11.0f * rnd());
+                const float bz = box.z + box.d * (4.0f / 11.0f - 0.5f + 3.0f / 11.0f * rnd());
+                const float balt = box.alt + box.h * (4.0f + 3.0f * rnd()) / 11.0f * kProjY;
+                float x0 = nx, z0 = nz, l0 = nalt, x1 = bx, z1 = bz, l1 = balt;
+                if (reclaim) { std::swap(x0, x1); std::swap(z0, z1); std::swap(l0, l1); }
+                const float dx = x1 - x0, dz = z1 - z0, dy = (l1 - l0) / kProjY;
+                const int steps = int(std::sqrt(dx * dx + dz * dz + dy * dy) / 4.0f);
+                if (steps <= 0) continue;
+                Particle p;
+                p.x = x0; p.z = z0;
+                p.alt = l0 - terrainLift(x0, z0);   // the draw adds the lift under the dot
+                const float perSec = 30.0f / float(steps);
+                p.vx = dx * perSec; p.vz = dz * perSec;
+                // Keep the drawn height on the straight line despite the terrain
+                // lift changing under the moving dot.
+                p.valt = ((l1 - terrainLift(x1, z1)) - p.alt) * perSec;
+                p.maxLife = p.life = float(steps) / 30.0f;
+                p.size = 1.0f;
+                const SDL_Color c = colour(i);
+                p.r = c.r; p.g = c.g; p.b = c.b; p.kind = 2;
+                particles_.push_back(p);
+            }
+        }
     }
 
     void GameView::spawnBurst(float x, float z, int n, Uint8 r, Uint8 g, Uint8 b,

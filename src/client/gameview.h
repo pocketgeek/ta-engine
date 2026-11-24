@@ -1397,7 +1397,16 @@ private:
         const EffectAnim* smokeFx = nullptr;
         float fireT = 1e9f, smokeT = 1e9f;
         int firePiece = -1, smokePiece = -1;   // follow the animated emitting pieces
+        // Nanolathe spray (nanoStep): the work target last seen and its progress /
+        // hp then, so a tick only sprays when the work actually advanced.
+        int nanoTarget = 0;
+        float nanoLevel = -1;
     };
+    // TotalA.exe's nanolathe spray (0x4720d0 / 0x473d50): every tick a builder's
+    // work advances, 5 particles from its QueryNanoPiece piece to the middle of
+    // the target (reclaim: the reverse). Cosmetic, client-only.
+    void nanoStep();
+    uint32_t nanoTick_ = 0;
 
     // Refresh a cosmetic flame/smoke effect attached to its animated COB piece.
     // Effect classes and lifetimes still need a full native particle comparison.
@@ -4941,7 +4950,8 @@ private:
         float x = 0, z = 0, vx = 0, vz = 0, alt = 0, valt = 0;
         float life = 0, maxLife = 1, size = 3;
         Uint8 r = 255, g = 200, b = 80;
-        int kind = 0;   // 0 spark/blood (gravity), 1 smoke (rises, fades)
+        int kind = 0;   // 0 spark/blood (gravity), 1 smoke (rises, fades),
+                        // 2 nanolathe (straight line, constant velocity, solid dot)
     };
     std::vector<Particle> particles_;
     struct DetachedPiece {

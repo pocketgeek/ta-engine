@@ -46,6 +46,20 @@ inline uint32_t retailAnimationMoveRate(int32_t speed,int16_t turn,int32_t horiz
     return horizontal<=slow ? 1u : 2u+uint32_t(horizontal>fast);
 }
 
+// TotalA.exe 0x43da70: TA reports a movement-tier change (the same 0..3 tier,
+// kept in bits 2-3 of unit+0x110) to the unit script by name, with no
+// arguments: tier 0 -> StopMoving; a tier from 0 -> StartMoving; then, for a
+// nonzero tier, MoveRate1/MoveRate2/MoveRate3. (Kingdoms' MoveRate(tier) and
+// TurnDirection do not exist in TotalA.exe.) `call(name)` runs one call-in.
+template<class Call>
+inline void retailMovementCallins(uint32_t previous,uint32_t rate,Call&& call) {
+    if (rate==previous) return;
+    if (!rate) call("StopMoving");
+    else if (!previous) call("StartMoving");
+    static constexpr const char* kRate[3]={"MoveRate1","MoveRate2","MoveRate3"};
+    if (rate>=1 && rate<=3) call(kRate[rate-1]);
+}
+
 // 4dc600: setSFXoccupy keeps the previous value in the deep, partially
 // submerged band. The tests are ordered: fully submerged overrides floating.
 inline uint32_t retailAnimationOccupancy(uint32_t previous,uint8_t mode,
