@@ -152,7 +152,16 @@ void parkCase(const sim::TypeRegistry& registry,const std::string& balance,Layou
     check(p.laneTicks==0 && p.inLane==0,label+"no parked output ever stands in the door lane");
     check(p.inYard==0 && p.overlaps==0,label+"every output leaves the factory, none overlapping another");
     check(p.insideInner==0,label+"none parks short of the ring's inner radius");
-    check(p.left>0 && p.right>0 && p.sectors>=std::min(count,4),label+"the outputs spread round the factory, not in a column");
+    // Both sides of the door, except in the corner: TA's Kbot Lab builds at
+    // its centre (armlab.cob QueryBuildInfo's pad: 0,-4 px), so the door this
+    // reads off the first output (and the sim's, centre to pad) points
+    // north, along the map's east edge. The corner leaves 160 px east of the
+    // lab's centre: beside the door lane (legionParkInLane: 48 px + the body's
+    // reach + its margin) no spot of the band fits on the map, so every output
+    // has the west side (with 64 px more room they take both: 6 and 18,
+    // measured 2026-11-24). The Kingdoms Barracks' pad lay at its south door.
+    check((layout==Layout::Corner || (p.left>0 && p.right>0)) && p.sectors>=std::min(count,4),
+          label+"the outputs spread round the factory, not in a column");
     // The factory does not wait on its door: about as fast as with a rally
     // that takes every output far away.
     const Result q=run(registry,sim::PathfindingMode::Legion,layout,factory,output,count,false,4);

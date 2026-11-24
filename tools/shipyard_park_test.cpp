@@ -83,8 +83,8 @@ void pondYard(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
     check(finished==3 && onPad==0,"the pond yard builds its next Lurkers, none left on the pad");
 }
 
-// A land factory parks its output in front of it, inside PARK's ring; a rally
-// point still wins over PARK.
+// A land factory parks its output in PARK's ring round it; a rally point
+// still wins over PARK.
 void landFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,bool rally,int count=4) {
     sim::World w;w.setSerialThreads(true);w.setPathfindingMode(mode);
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
@@ -141,11 +141,16 @@ void landFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,boo
         check(out.size()==4 && rallied && arrived==4 && inYard==0,label+"a Kbot Lab with a rally point sends its output there, not to PARK");
     } else if(count==4) {
         check(out.size()==4 && parked,label+"a Kbot Lab without a rally point releases its output with PARK");
-        // Legion spreads the outputs round the door (some beside the
-        // factory), so only the Retail navigator is held to its front.
-        if(mode==sim::PathfindingMode::Legion)
-            check(inRing==4 && inYard==0,label+"the parked output stands in PARK's ring, clear of the Kbot Lab");
-        else check(front==4 && inRing==4 && inYard==0,label+"the parked output stands in front of the Kbot Lab, in PARK's ring");
+        // In PARK's ring, on any bearing. "In front of it" was the Kingdoms
+        // Barracks', whose pad lay at its door. TA's Kbot Lab builds at its
+        // centre (armlab.cob QueryBuildInfo's pad piece: 0,-4 px off it) and
+        // its YardMap opens the middle columns end to end (yoccoy ... yoccoy,
+        // retail-data.md 2.4), while PARK's goal is the ring round the
+        // factory's centre (0x407ca0, ring controller 0x44d3b0,
+        // retail-pathfinding.md 2.6): nothing favours the front, and with
+        // the first outputs parked there the later ones take the ring beside
+        // or behind the lab, as retail's search does.
+        check(inRing==4 && inYard==0,label+"the parked output stands in PARK's ring, clear of the Kbot Lab");
     } else {
         // Legion spreads a run of outputs over the band, or beyond it once
         // the band is full (World::legionParkSpot); they used to queue in a

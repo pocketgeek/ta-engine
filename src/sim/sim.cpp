@@ -16866,15 +16866,21 @@ void World::clearYardDoor(const Unit& factory) {
     std::vector<std::array<int,4>> held;   // World px: left, right, top, bottom.
     forEachNear(float(cx),float(cz),reach,[&](int index) {
         const Unit& k=units_[size_t(index)];
-        if (!body(k) || k.builtBy!=factory.id || k.orders.empty()) return;
+        // An output standing idle on the pad leaves it too: its rally move
+        // ends at once when the door is walled (an empty route ends a move,
+        // event 0x40 from the navigator's deliver 0x44f080, docs/retail-
+        // pathfinding.md 3.1), as a corvp's Reaper rallied past a crowd of
+        // guards at its door was, and stood there for good.
+        if (!body(k) || k.builtBy!=factory.id || (k.orders.empty() && !overlaps(k,yl,yr,yt,yb))) return;
         // On its way out: on its PARK round this factory, still on the pad, or
         // on a plain move (its rally). An older output guarding, building,
         // patrolling or attacking near its factory is not leaving the door: it
         // would clear the area for as long as it stayed.
-        const Order& o=k.orders[currentLeg(k.orders)];
-        const bool parking=o.park && o.park->target==factory.id;
-        const bool plainMove=!o.targetId && !o.guard && !o.patrol && !o.attackMove && !o.buildType &&
-            !o.reclaimFeat && !o.repairTarget && !o.load && !o.unload && !o.wait && !o.waitAttack;
+        const Order* current=k.orders.empty() ? nullptr : &k.orders[currentLeg(k.orders)];
+        const bool parking=current && current->park && current->park->target==factory.id;
+        const bool plainMove=current && !current->targetId && !current->guard && !current->patrol && !current->attackMove &&
+            !current->buildType && !current->reclaimFeat && !current->repairTarget && !current->load && !current->unload &&
+            !current->wait && !current->waitAttack;
         const bool exiting=parking || plainMove || overlaps(k,yl,yr,yt,yb);
         const bool inArea=exiting && overlaps(k,left,right,top,bottom);
         if (inArea && (!leaving || k.id<leaving->id)) leaving=&k;
@@ -16916,10 +16922,16 @@ void World::clearYardDoor(const Unit& factory) {
     // door onto a shore for 300 ticks). With only a refused site, just the pad;
     // with only a held output, nothing but what holds it.
     int zl=0,zr=0,zt=0,zb=0;
+    // An output still on the pad has no side yet: TA's factories build at
+    // their centre (QueryBuildInfo's pad piece, e.g. armvp's at the centre,
+    // the factory's back row solid in its YardMap), so a few pixels off it say
+    // nothing of the way out, and halving the area there kept a Bulldog on an
+    // Arm Vehicle Plant's pad behind the idle crowd at its real door for good.
+    const bool onPad=leaving && overlaps(*leaving,yl,yr,yt,yb);
     if (leaving) {
         zl=left;zr=right;zt=top;zb=bottom;
-        if (!water && alongZ) (az>=0 ? zt : zb)=cz;
-        else if (!water) (ax>=0 ? zl : zr)=cx;
+        if (!water && !onPad && alongZ) (az>=0 ? zt : zb)=cz;
+        else if (!water && !onPad) (ax>=0 ? zl : zr)=cx;
     } else if (refused) {zl=pl;zr=pr;zt=pt;zb=pb;}
     struct Mover {int id,heldBy;bool lane;};   // heldBy: index into held, or -1 for the zone.
     std::vector<Mover> movers;
@@ -16938,7 +16950,7 @@ void World::clearYardDoor(const Unit& factory) {
     // often (43 -> 22-25) at level production.
     int64_t lox=0,loz=0,lex=0,lez=0;
     bool lane=false;
-    if (leaving) {
+    if (leaving && !leaving->orders.empty()) {
         const Order& o=leaving->orders[currentLeg(leaving->orders)];
         lox=leaving->x.floorInt();loz=leaving->z.floorInt();lex=o.x.floorInt();lez=o.z.floorInt();
         lane=lex!=lox || lez!=loz;
@@ -16959,6 +16971,10 @@ void World::clearYardDoor(const Unit& factory) {
         laneNearest(x,z,qx,qz);
         return (x-qx)*(x-qx)+(z-qz)*(z-qz)<c*c;
     };
+    // An output left idle on the pad (its rally ended there) is held by
+    // whatever stands in the area, its elder siblings that did the same just
+    // outside the door included: they move too, or each next one strands.
+    const bool padStranded=leaving && leaving->orders.empty();
     // A guard steps aside once per this factory's doorSerial: once per finished
     // output and once per refusal episode of the next one's site.
     forEachNear(float(cx),float(cz),reach,[&](int index) {
@@ -16976,7 +16992,7 @@ void World::clearYardDoor(const Unit& factory) {
         const bool byLane=guarding && lane && !water && k.orders[currentLeg(k.orders)].targetId==factory.id &&
             !overlaps(k,yl,yr,yt,yb);
         const bool zone=byLane ? inLane(k) :
-            overlaps(k,zl,zr,zt,zb) && (guarding || k.builtBy!=factory.id || overlaps(k,pl,pr,pt,pb));
+            overlaps(k,zl,zr,zt,zb) && (guarding || k.builtBy!=factory.id || overlaps(k,pl,pr,pt,pb) || padStranded);
         if (guarding && (zone || at>=0) && k.doorYieldFactory==factory.id && k.doorYieldSerial==factory.doorSerial) return;
         if (zone) movers.push_back({k.id,-1,byLane});
         else if (at>=0) movers.push_back({k.id,at,false});
