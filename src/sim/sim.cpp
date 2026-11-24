@@ -6454,6 +6454,28 @@ void World::attack(int unitId, int targetId, bool queue) {
 }
 
 
+// A commandfire weapon in native slot 2 (weapon3): the Commander's D-gun.
+bool World::isDgunSlot(const UnitType& t, int slot) {
+    return slot >= 0 && slot < int(t.weapons.size()) && t.weapons[size_t(slot)].commandFire &&
+           t.nativeWeaponSlot(slot) == 2;
+}
+
+void World::dgun(int unitId, int targetId, bool queue) {
+    OrdersNote note{*this,unitId};
+    Unit* u = unit(unitId);
+    if (!u || !u->alive() || !u->type || !u->type->canDgun) return;
+    bool has = false;
+    for (int s = 0; s < int(std::min<size_t>(3, u->type->weapons.size())); ++s) has = has || isDgunSlot(*u->type, s);
+    if (!has) return;
+    const Unit* target = unit(targetId);
+    if (!target || !canAttackTarget(*u, *target)) return;
+    if (!queue) { u->orders.clear(); cancelPath(*u); u->routeStamp = -1; }
+    u->orders.push_back({Fixed(), Fixed(), targetId});
+    u->orders.back().goal = true;
+    u->orders.back().dgun = true;
+    u->orders.back().issuedTick = tickCounter_;
+}
+
 // Intern every category token to a small int and resolve each weapon's overrides
 // against it. Done ONCE after loading, never afterwards: several rooms tick in
 // parallel over one shared registry, so anything lazily written here would race.
@@ -7928,7 +7950,10 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
     // Retail has no double-sight option (S, 4bfa50); with ours on, the scan
     // gathers as far as the plane the unit stamps, so a melee unit's reach
     // keeps up with its doubled sight.
-    const int64_t radius=sweep ? int64_t(w.range) : std::max<int64_t>(sightDistance(*u.type),w.range);
+    // TotalA.exe's Standby scan (0x43b700 -> picker 0x40b7b0, docs/retail-weapon-
+    // scripts.md 8.1) gathers known enemies within the unit's own sightdistance;
+    // each must then pass slot 0's range check (0x49abb0) below.
+    const int64_t radius=sweep ? int64_t(w.range) : int64_t(sightDistance(*u.type));
     // 411ae0 over the owner's enemy list +5 (hostile units it saw at the last
     // 7-tick rebuild, in unit order): live (+0x130 & 0x1000000) and not dying
     // (& 0x1000), by live centre distance (411b2c..411b95). Retail re-checks
@@ -7969,7 +7994,9 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
         // and is treated as unset.
         if (!t.type->shootMe && !players_[size_t(u.player)].automaticGates) continue;
         const int32_t eff=int32_t(w.damageVs(t.type));
-        if (!u.type->kamikaze && !w.melee && !(eff>0 && slotInRange(u,t,slot) && slotClearShot(u,t,slot)))
+        // 0x49abb0: distance^2 <= range^2 from the unit origin; kamikaze types
+        // skip it. TA has no line-of-fire test (docs/retail-weapon-scripts.md 3).
+        if (!u.type->kamikaze && !w.melee && !(eff>0 && slotInRange(u,t,slot)))
             continue;   // 52ad60
         if (categoryMatch(u.type->noTargetCats,*t.type)) continue;
         // 4127eb..4128db: a stone, freeze or charm class (vtable +0x1c / +0x20 /
@@ -8597,6 +8624,7 @@ void World::fireBehindStepOut(Unit& u) {
     auto tryFire=[&](int sl) {
         if (u.slotAuto>>sl&1) return;
         const Weapon& sw=u.type->weapons[size_t(sl)];
+        if (isDgunSlot(*u.type, sl) != attack.dgun) return;   // 8.2: D-gun only on a D-gun order
         if (sw.mindControl && !canCaptureTarget(u.player,*target)) return;
         // 530580 (every non-melee in-range test): the slot's air flags against
         // the target's current layer.
@@ -8747,7 +8775,14 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     }
     int slot = u.type->weapons.empty()
                    ? 0 : std::clamp(u.weaponSlot, 0, int(u.type->weapons.size()) - 1);
+    // TotalA.exe AttackSpecial (0x403190, docs/retail-weapon-scripts.md 8.2): a
+    // D-gun order fights with the commandfire slot -- its range is the chase's.
+    const bool dgunOrder = u.orders.front().dgun;
+    if (dgunOrder)
+        for (int s = 0; s < int(std::min<size_t>(3, u.type->weapons.size())); ++s)
+            if (isDgunSlot(*u.type, s)) { slot = s; break; }
     const Weapon* sel = slot < int(u.type->weapons.size()) ? &u.type->weapons[slot] : nullptr;
+    bool dgunFired = false;
     // A walker whose weapon (519ac0: the selected slot, else the first) is
     // melee attacks on Attack_Melee (404690). 4de530 gives it that mission
     // against a flyer too, as it tests no air bit for melee, but its head ends
@@ -9122,18 +9157,30 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         if (u.slotAuto>>sl&1) return;
         if (!slotAims(sl)) return;
         const Weapon& sw = u.type->weapons[size_t(sl)];
-        if(tickScriptWeapon(u,*target,sl))return;
+        // 8.2: Attack_Chase hands the target to slot 0 and leaves slot 2 manual,
+        // so a commandfire weapon in native slot 2 (the D-gun) is silent on a
+        // plain Attack; a D-gun order fires only that slot, and one shot ends
+        // it (event 0x800). A slot-0 commandfire weapon (a bomber's bombs) fires.
+        if (isDgunSlot(*u.type, sl) != dgunOrder) return;
+        if(tickScriptWeapon(u,*target,sl)){ if (dgunOrder && u.reloads[size_t(sl)]>0) dgunFired=true; return; }
         if(u.reloads[size_t(sl)]>0)return;
         // A bomb is let go, not aimed -- retail's Dropped weapon overrides its aim
         // virtual with a no-op, so the bomber is always considered on target (which
         // a hovering flyer with momentum could otherwise almost never satisfy).
         if (!u.type->isStructure() && sw.kind != Weapon::Kind::Dropped &&
             std::abs(diff) >= std::max(sw.aimTol, int32_t(0.03f / kCobAngle))) return;
-        fire(u, *target, sl);
+        if (fire(u, *target, sl) && dgunOrder) dgunFired = true;
     };
     if (aimHeld) return;
     // 52ae90 runs the weapons before the missions and the mover.
     forEachSlot(tryFire);
+    if (dgunFired) {   // Attack_Chase ends on the commandfire shot's 0x800
+        if (u.scriptAimTarget) clearScriptWeaponTarget(u);
+        dropLeg(u);
+        cancelPath(u);
+        u.routeStamp = -1;
+        return;
+    }
     // A weapon switch may have changed the slot: the
     // missions' heads read 519ac0 on this dispatch.
     if (u.type->weaponSwitching && slot!=u.weaponSlot && u.weaponSlot<int(u.type->weapons.size())) {
@@ -21505,6 +21552,7 @@ uint64_t World::stateHash() const {
             if (order.attackChased || order.attackAimTick != Order::kAttackUnaimed) {
                 mix(0x415454414b41494dull);mix(order.attackChased);mix(order.attackAimTick);
             }
+            if (order.dgun) mix(0x444755ull);
             if (order.chaseLeashed) {
                 mix(0x434841534555ull);mix(order.chaseLeash);
                 mix(uint16_t(order.chaseOrigin.x));mix(uint16_t(order.chaseOrigin.z));

@@ -201,6 +201,41 @@ int main(int argc, char** argv) {
               "an idle armcom's laser (AimPrimary/FirePrimary) fires at will, its D-gun does not",
               std::to_string(laser) + " laser, " + std::to_string(dgun) + " D-gun shots");
         check(p.paired, "paired Worlds keep the same state hash");
+
+        // docs/retail-weapon-scripts.md 8.2: a plain Attack never fires the D-gun;
+        // the D-gun order (AttackSpecial) fires it once and ends.
+        for (bool dgunOrder : {false, true}) {
+            Pair q;
+            setup(q, reg, vfs, map);
+            int c[2][2];
+            int kk = 0;
+            for (auto* w : {&q.a, &q.b}) {
+                c[kk][0] = w->spawn(com, x, z, 0.0f, 0);
+                c[kk][1] = w->spawn(radar, x + 120, z + 60, 0.0f, 1);
+                if (dgunOrder) w->dgun(c[kk][0], c[kk][1], false);
+                else w->attack(c[kk][0], c[kk][1], false);
+                ++kk;
+            }
+            int las = 0, dg = 0, lst[2] = {};
+            bool orderGone = false;
+            for (int tick = 1; tick <= 300; ++tick) {
+                q.tick();
+                const sim::Unit* u = q.a.unit(c[0][0]);
+                if (u->reloads[0] > lst[0]) ++las;
+                if (u->reloads[1] > lst[1]) ++dg;
+                lst[0] = u->reloads[0];
+                lst[1] = u->reloads[1];
+                if (dg > 0 && u->orders.empty()) orderGone = true;
+            }
+            const std::string detail = std::to_string(las) + " laser, " + std::to_string(dg) + " D-gun shots";
+            if (!dgunOrder)
+                check(las > 0 && dg == 0, "a plain Attack fires armcom's laser, never its D-gun", detail);
+            else {
+                check(dg == 1, "a D-gun order fires the D-gun exactly once", detail);
+                check(orderGone, "the D-gun order ends after its shot", detail);
+            }
+            check(q.paired, std::string(dgunOrder ? "D-gun" : "Attack") + ": paired Worlds keep the same state hash");
+        }
     }
     if (only && std::string(only) != "move") return failures ? 1 : 0;
 

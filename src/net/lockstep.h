@@ -69,6 +69,10 @@ enum class Cmd : uint8_t {
     // 60 real seconds are over. Sent only by the server, in a benchmark room; never
     // accepted from a client.
     BenchClock,
+    // Protocol 339: a candgun unit (the Commander) fires its commandfire weapon
+    // once at unit targetId (TotalA.exe AttackSpecial 0x403190; World::dgun).
+    // An ordinary PlayerCommands item (base layout); an order verb.
+    DGun,
 };
 
 struct SelectionOrder;

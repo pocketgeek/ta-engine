@@ -227,6 +227,9 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         case Cmd::Attack:
             if (owns(c.unitId)) { redirect(); world.attack(c.unitId, c.targetId, c.queue); }
             break;
+        case Cmd::DGun:
+            if (owns(c.unitId)) { redirect(); world.dgun(c.unitId, c.targetId, c.queue); }
+            break;
         case Cmd::AttackMove:
             if (owns(c.unitId)) { redirect(); world.attackMove(c.unitId, c.x, c.z, c.queue); }
             break;

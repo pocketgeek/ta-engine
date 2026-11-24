@@ -89,6 +89,18 @@ std::string upperStr(std::string s) {
                 page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "BUILD", true);
                 page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "ORDERS", false);
             } else if (u && u->type) {
+                // The <SIDE>GEN page shows only the orders the unit has (BLAST is the
+                // Commander's D-gun, sharing LOAD's slot).
+                const auto& t = *u->type;
+                const std::string pre = ta::sides::at(std::max(0, ta::sides::find(side_))).prefix;
+                const bool armed = !t.weapons.empty();
+                const std::pair<const char*, bool> shown[] = {
+                    {"MOVE", t.canMove}, {"PATROL", t.canPatrol || t.canMove}, {"ATTACK", armed},
+                    {"DEFEND", t.canGuard || t.canMove}, {"RECLAIM", t.canReclaim}, {"REPAIR", t.isBuilder},
+                    {"LOAD", t.canTransport}, {"UNLOAD", t.canTransport}, {"BLAST", t.canDgun},
+                    {"CLOAK", t.canCloak}, {"ONOFF", t.onOffable}, {"FIREORD", armed && t.canSetStance},
+                    {"MOVEORD", t.canMove && t.canSetStance}, {"CAPTURE", false}};
+                for (const auto& [name, on] : shown) page->setVisible(pre + name, on);
                 page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "ORDERS", true);
                 page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "BUILD", false);
             }
@@ -197,6 +209,7 @@ std::string upperStr(std::string s) {
         else if (n == "DEFEND") pendingCmd_ = 'g';
         else if (n == "REPAIR") pendingCmd_ = 'r';
         else if (n == "LOAD") pendingCmd_ = 'l';
+        else if (n == "BLAST") pendingCmd_ = 'd';   // the Commander's D-gun
         else if (n == "UNLOAD") pendingCmd_ = 'u';
         else if (n == "RECLAIM") pendingCmd_ = 'e';
         else if (n == "STOP") stopAll();

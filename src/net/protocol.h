@@ -24,7 +24,7 @@ namespace ta::net {
 // Bump it whenever the wire layout changes or the simulation can compute a different
 // result from the same inputs -- a peer or replay of another number would desync.
 // The CHANGELOG records what each release changed.
-constexpr uint32_t kNetVersion = 338;      // 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
+constexpr uint32_t kNetVersion = 339;      // 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
 constexpr uint32_t kMaxFrame = 1u << 18;   // 256 KB frame cap (hardening) -- headroom for a
                                            // big tick bundle when many units are ordered at once
 constexpr int kMaxSlots = 8;               // players per game (= max map start positions)

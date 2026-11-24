@@ -1381,20 +1381,32 @@ int main(int argc, char** argv) {
                   "a hold-position Commander does NOT walk to an out-of-range enemy",
                   "moved " + std::to_string(au ? au->x.toFloat() - startX : 0.0f) + "px");
 
-            // A leashed unit advances on something inside its leash...
-            // The mission scan takes only an enemy the owner sees (the visible-
-            // enemy list), so the enemy stands inside the Peewee's sight too.
+            // A leashed (Maneuver) unit chases an enemy that its idle scan found in
+            // weapon range, but no further than maneuverleashlength from its post,
+            // then walks back (TotalA.exe Standby 0x405fe0 -> scan 0x43b700 ->
+            // 0x43b1f0, Attack_Chase 0x4034a0; docs/retail-weapon-scripts.md 8.1).
+            // An enemy beyond weapon range draws no advance at all.
             sim::World w2; freshWorld(w2);
             int a2 = w2.spawn(sword, 1000, 2600, 0, 0);
-            const float near = float(sword->maxRange()) + 60.0f;
+            const float near = float(sword->maxRange()) - 40.0f;
             const int e2 = w2.spawn(sword, 1000 + near, 2600, 0, 1);
             w2.setStance(e2, 2);
             check(w2.unit(a2)->moveState == 1, "the Peewee is leashed");
             float sx2 = w2.unit(a2)->x.toFloat();
-            for (int i = 0; i < 30 * 8; ++i) w2.tick(1.0f / 30.0f);
-            check(w2.unit(a2) && w2.unit(a2)->x.toFloat() - sx2 > 24.0f,
-                  "a leashed unit advances on an enemy inside its leash",
-                  "moved " + std::to_string(w2.unit(a2) ? w2.unit(a2)->x.toFloat() - sx2 : 0.0f) + "px");
+            for (int i = 0; i < 30 * 2; ++i) w2.tick(1.0f / 30.0f);
+            w2.order(e2, 1000 + near + 3000, 2600, false);   // the enemy walks away
+            float farthest = 0;
+            for (int i = 0; i < 30 * 40 && w2.unit(a2); ++i) {
+                w2.tick(1.0f / 30.0f);
+                farthest = std::max(farthest, w2.unit(a2)->x.toFloat() - sx2);
+            }
+            check(farthest > 24.0f, "a leashed unit chases an in-range enemy that walks away",
+                  "farthest " + std::to_string(farthest) + "px");
+            check(farthest <= sword->leash + 48.0f, "the chase stops at the leash from the post",
+                  "farthest " + std::to_string(farthest) + "px, leash " + std::to_string(sword->leash));
+            check(w2.unit(a2) && std::fabs(w2.unit(a2)->x.toFloat() - sx2) < 48.0f,
+                  "the leashed unit walks back to its post",
+                  "ended " + std::to_string(w2.unit(a2) ? w2.unit(a2)->x.toFloat() - sx2 : 0.0f) + "px from it");
 
             // ...and stays put for one beyond it.
             sim::World w4; freshWorld(w4);
