@@ -423,7 +423,10 @@ namespace {
     }
 
     void GameView::drawStatsPanel(int winW, int winH) {
-        if (!statsPanel_ || !hudFont_.ok()) return;
+        // The rows draw in the UI face (blockText -> ta::uiText), not hudFont_: that is
+        // fonts/bodfontbody.gaf, a Kingdoms font TA does not ship, and gating on it hid
+        // the panel (and a benchmark run's PATHFINDER row) on every TA install.
+        if (!statsPanel_) return;
 
         // WHERE THE GAP IS. The right strip holds the minimap at the top and the command
         // panel at the bottom; everything between them is the black space this fills.

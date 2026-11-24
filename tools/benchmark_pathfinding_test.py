@@ -126,7 +126,9 @@ def probes(root, name, saved, size, extra=None):
 
 
 with tempfile.TemporaryDirectory(prefix="ta-bench-path-") as root:
-    log = run(root, "screen", "", {"TA_BENCH_MENU_TEST": "1"}, [])
+    # The menu opens on TA's own title screen (TaFrontEnd), which waits for input: its
+    # OPTIONS door opens the engine menu, whose run() checks the Benchmark screen.
+    log = run(root, "screen", "", {"TA_BENCH_MENU_TEST": "1", "TA_FRONT_SCRIPT": "OPTIONS"}, [])
     if "PASS: Benchmark pathfinding row picks and saves" not in log:
         fail("the Benchmark screen's row", log)
 

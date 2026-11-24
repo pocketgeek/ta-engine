@@ -2346,12 +2346,16 @@ if(TA_BUILD_CLIENT)
       set_tests_properties(selfdestruct_notice PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: self-destruct notice follows the countdown")
       # Shift-drag build lines through real mouse/wheel input: every previewed site is
-      # queued and then built, touching at gap 0, wheel gap held and clamped.
+      # queued and then built, touching at gap 0, wheel gap held and clamped. Twelve
+      # lines each want their own open patch (canPlace for every site and for the Light
+      # Laser Tower around it): on Metal Heck's flat metal plain. On Ashap Plateau the
+      # slope test (TotalA.exe 0x47d789: hi - lo > maxslope refuses) runs out of
+      # patches at the third line, on Coast To Coast and Great Divide at the first.
       add_test(NAME buildline_harness COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_BUILDLINE_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-test-profile
-          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Metal Heck" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/buildline.png")
       set_tests_properties(buildline_harness PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "PASS: [0-9]+ shift-drag lines")
@@ -2734,7 +2738,10 @@ if(TA_BUILD_CLIENT)
       # Its size is tuned to the scene: TA's models cast far smaller silhouettes than
       # the Kingdoms roster these variants were first sized on (80 units then filled
       # five pages, 58 the _full army), so the army is 240 and _full 210 (190 already
-      # released an extended page). _zoom takes 600: with fewer, every zoomed frame
+      # released an extended page). _band is the _full army: 240 exceeds four pages by
+      # area (every frame falls back before packing, so nothing is refused for want of
+      # room); 200-220 fit by area and fail only by packing, 190 sometimes packs and
+      # 230 is over by area again. _zoom takes 600: with fewer, every zoomed frame
       # repacks and nothing is ever evicted. _off is the
       # _extended army with unit shadows switched off at frame 60 (Options SHADOWS):
       # no frame maintains the atlas then, so its extended pages go at once.
@@ -2747,8 +2754,8 @@ if(TA_BUILD_CLIENT)
           set(_scene TA_SHADOW_BENCH=600 TA_RENDER_ZOOM=1 TA_RENDER_CAMERA=1 TA_RENDER_FRAMES=120)
           set(_expect "kept=[0-9]+ allocs=[1-9][0-9]* compactions=[1-9][0-9]* migrated=[0-9]+ evicted=[1-9][0-9]*.* validated=[1-9]")
         elseif(_variant STREQUAL "_band")
-          set(_scene TA_RENDER_SPARSE_AFTER=80 TA_RENDER_SPARSE_OFFSET=5200,5000 TA_RENDER_FRAMES=130
-              TA_SHADOW_PAGES_MAX=4)
+          set(_scene TA_SHADOW_BENCH=210 TA_RENDER_SPARSE_AFTER=80 TA_RENDER_SPARSE_OFFSET=5200,5000
+              TA_RENDER_FRAMES=130 TA_SHADOW_PAGES_MAX=4)
           set(_expect "page_releases=[0-2] shrinks=[0-9]+ validated=[1-9][0-9]* page_allocs=[1-4] alloc_failures=[1-9][0-9]")
         elseif(_variant STREQUAL "_extended")
           set(_scene TA_RENDER_SPARSE_AFTER=80 TA_RENDER_SPARSE_OFFSET=5200,5000 TA_RENDER_FRAMES=130
