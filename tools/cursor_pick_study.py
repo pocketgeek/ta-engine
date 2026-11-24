@@ -28,7 +28,7 @@ import statistics
 import subprocess
 import sys
 
-DEFAULT_MAP = "Ulasem Arena"
+DEFAULT_MAP = "Krogoth Encounter"
 SUBSET = {"TA_SHADOW_BENCH": "10000", "TA_PROFILE_ZOOM": "1.0",
           "TA_RENDER_CENTER": "7600,7600", "TA_RENDER_OFFSET": "4200,5400"}
 SCENES = {
@@ -43,7 +43,7 @@ SCENES = {
     "visible10k-sel": dict(env={"TA_SHADOW_BENCH": "10000", "TA_PROFILE_ZOOM": "0.25",
                                 "TA_RENDER_CURSOR_SELECT": "20"}),
     # An ordinary small battle (200 units, two sides), 20 selected.
-    "small-battle-sel": dict(env={"TA_SHADOW_BENCH": "200", "TA_SHADOW_BENCH_TYPE": "araarch",
+    "small-battle-sel": dict(env={"TA_SHADOW_BENCH": "200", "TA_SHADOW_BENCH_TYPE": "armpw",
                                   "TA_PROFILE_ZOOM": "1.0", "TA_RENDER_BATTLE": "1",
                                   "TA_RENDER_CURSOR_SELECT": "20"}),
     # 2,000-unit battle with flyers, construction, corpses, panning camera, moving units.

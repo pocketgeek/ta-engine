@@ -70,15 +70,19 @@ CursorSet::~CursorSet() {
 bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs, const Settings* settings) {
     if (!ren) return false;
     std::vector<uint8_t> gafBytes, palBytes;
+    // TA ships no palettes/cursors.pcx (a Kingdoms file): its cursors.gaf is drawn in
+    // the game palette, palettes/palette.pal.
+    std::string palPath = "palettes/cursors.pcx";
     try {
         gafBytes = vfs.read("anims/cursors.gaf");
-        palBytes = vfs.read("palettes/cursors.pcx");
+        if (!vfs.has(palPath)) palPath = "palettes/palette.pal";
+        palBytes = vfs.read(palPath);
     } catch (...) { return false; }
 
     gaf::Palette pal;
     std::vector<gaf::Sequence> seqs;
     try {
-        pal = gaf::Palette::fromBytes(palBytes, "palettes/cursors.pcx");
+        pal = gaf::Palette::fromBytes(palBytes, palPath);
         // -1: honour each frame's own transparency index (the cursor art is authored
         // that way, so backgrounds decode straight to alpha=0 -- verified on export).
         seqs = gaf::load(gafBytes, pal, -1, "anims/cursors.gaf");

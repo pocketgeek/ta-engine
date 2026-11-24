@@ -20,15 +20,15 @@ import time
 
 
 SCENES = {
-    "sparse": (24, "araat", 1.0, {}),
-    "towers": (500, "araat", 1.0, {}),
-    "keeps": (1500, "arakeep", 0.5, {}),
-    "spaced-keeps": (200, "arakeep", 0.5, {"TA_RENDER_SPACING": "160"}),
+    "sparse": (24, "armllt", 1.0, {}),
+    "towers": (500, "armllt", 1.0, {}),
+    "keeps": (1500, "armrad", 0.5, {}),
+    "spaced-keeps": (200, "armrad", 0.5, {"TA_RENDER_SPACING": "160"}),
     "distant": (2000, None, 0.25, {}),
-    "animated": (1200, "araarch", 0.5, {"TA_RENDER_MOTION": "1"}),
-    "battle": (1200, "araarch", 0.5, {"TA_RENDER_BATTLE": "1"}),
-    "pan": (500, "araat", 0.75, {"TA_RENDER_CAMERA": "1"}),
-    "zoom": (500, "araat", 1.0, {"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"}),
+    "animated": (1200, "armpw", 0.5, {"TA_RENDER_MOTION": "1"}),
+    "battle": (1200, "armpw", 0.5, {"TA_RENDER_BATTLE": "1"}),
+    "pan": (500, "armllt", 0.75, {"TA_RENDER_CAMERA": "1"}),
+    "zoom": (500, "armllt", 1.0, {"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"}),
 }
 
 
@@ -84,9 +84,9 @@ def run(args, scene, leg, mode):
         env["TA_RENDER_CAPTURE_DIR"] = str(captures)
     if args.verify and mode == "retained":
         env["TA_GEOMETRY_VERIFY"] = "1"
-        if kind == "arakeep":
+        if kind == "armrad":
             env["TA_REQUIRE_GEOMETRY_REUSE"] = "1"
-    command = [str(args.client), "game", "Ulasem Arena", "--data", str(args.data),
+    command = [str(args.client), "game", "Krogoth Encounter", "--data", str(args.data),
                "--testbuild", "--winsize", "1280", "960", "--novsync", "--maxfps", "0"]
     log = args.output / f"{name}.log"
     samples = []

@@ -3591,6 +3591,9 @@
         // All of them only shape the local harness scene; none run in a real game.
         if (const char* countText=ta::devEnv("TA_SHADOW_BENCH")) {
             const int count=std::clamp(std::atoi(countText),1,16000);
+            // The army stands at 5000,5000 (the render study's camera points and the
+            // tests' sparse offsets are absolute): the ctests run on Krogoth Encounter
+            // (12160 px square, dry land there).
             float centerX=5000,centerZ=5000;
             if(const char* center=ta::devEnv("TA_RENDER_CENTER"))
                 std::sscanf(center,"%f,%f",&centerX,&centerZ);
@@ -3605,7 +3608,7 @@
                 }
             }
             const char* only=ta::devEnv("TA_SHADOW_BENCH_TYPE");
-            std::vector<std::string> roster={"zonter","araarch","aralode","tarlode","zonroc","versword"};
+            std::vector<std::string> roster={"armpw","corak","armmex","cormex","armthund","armrock"};
             if(const char* custom=ta::devEnv("TA_RENDER_ROSTER")) {
                 // Comma-separated unit types replacing the 6-type roster.
                 roster.clear();
@@ -3624,14 +3627,14 @@
                     for(const auto& id:roster)list+=(list.empty() ? "" : ",")+id;
                     std::fprintf(stderr,"render roster: %s\n",list.c_str());
                 }
-                if(roster.empty())roster.push_back("araarch");
+                if(roster.empty())roster.push_back("armpw");
             }
             const int columns=std::max(1,int(std::ceil(std::sqrt(float(count)*1.6f))));
             const char* spacingText=ta::devEnv("TA_RENDER_SPACING");
             const float spacing=spacingText?std::clamp(float(std::atof(spacingText)),16.f,256.f):40.f;
             const int rows=(count+columns-1)/columns;
             // Interactive case (measurement B), TA_RENDER_COVER=type[,every]: a structure
-            // of `type` (default vertower) on every `every`-th row and column of the army
+            // of `type` (default armllt) on every `every`-th row and column of the army
             // grid (default 4), the army filling the rest of it around their footprints:
             // units stand just behind each structure (painted before it), the HIDDEN UNITS
             // cover workload under repeated buildings.
@@ -3643,7 +3646,7 @@
                 if(const size_t comma=spec.find(',');comma!=std::string::npos) {
                     every=std::clamp(std::atoi(spec.c_str()+comma+1),2,64);spec.resize(comma);
                 }
-                const auto* type=registry_.find(spec.empty() ? "vertower" : spec);
+                const auto* type=registry_.find(spec.empty() ? "armllt" : spec);
                 if(!type || !isStructure(type))throw std::runtime_error("TA_RENDER_COVER: not a structure type: "+spec);
                 for(int i=0;i<count;++i) {
                     if((i%columns)%every!=every/2 || (i/columns)%every!=every/2)continue;
@@ -3676,25 +3679,26 @@
             }
             int sites=0,ghosts=0,flyers=0,corpses=0,boats=0;
             if(ta::devFlag("TA_RENDER_EXTRAS")) {
-                // Construction: monarchs start real build sites south of the army.
+                // Construction: commanders start real build sites south of the army.
                 const float siteZ=centerZ+float(rows)*spacing*0.5f+160;
                 for(int k=0;k<6;++k) {
                     const float bx=centerX+float(k-3)*160,bz=siteZ;
-                    const int builder=spawn("araking",bx,bz+96,0,localPlayer_);
+                    const int builder=spawn("armcom",bx,bz+96,0,localPlayer_);
                     if(builder<=0)continue;
-                    for(const auto& option:registry_.buildable("araking")) {
+                    for(const auto& option:registry_.buildable("armcom")) {
                         const auto* site=registry_.find(option);
                         if(!site || !isStructure(site) || site->footX>4 || site->footZ>4)continue;
                         if(writableWorld().startBuild(builder,site,bx,bz)) {++sites;break;}
                     }
                 }
-                // Translucent spectral bodies and airborne units north of the army.
+                // Translucent spectral bodies (type.ghost: Kingdoms data; TA has none) and
+                // airborne units north of the army.
                 const float northZ=centerZ-float(rows)*spacing*0.5f-160;
                 for(const auto& [id,type]:registry_.types()) {
                     if(type.ghost && type.canMove && ghosts<8)
                         for(int k=0;k<8 && ghosts<8;++k)
                             ghosts+=spawn(id,centerX-480+float(k)*48,northZ,0,localPlayer_)>0;
-                    if(type.canFly && type.canMove && flyers<16 && id.rfind("zon",0)!=0)
+                    if(type.canFly && type.canMove && flyers<16)
                         for(int k=0;k<4 && flyers<16;++k)
                             flyers+=spawn(id,centerX+120+float(flyers)*56,northZ-48,0,localPlayer_)>0;
                 }
@@ -3726,9 +3730,9 @@
                 // Builders with queued (shift) build orders: the queued-build ghosts.
                 for(int k=0;k<3;++k) {
                     const float bx=centerX+float(k-1)*600,bz=centerZ+300;
-                    const int builder=spawn("araking",bx,bz,0,localPlayer_);
+                    const int builder=spawn("armcom",bx,bz,0,localPlayer_);
                     if(builder<=0)continue;
-                    for(const auto& option:registry_.buildable("araking")) {
+                    for(const auto& option:registry_.buildable("armcom")) {
                         const auto* site=registry_.find(option);
                         if(!site || !isStructure(site) || site->footX>4 || site->footZ>4)continue;
                         for(int q=0;q<3;++q)writableWorld().queueBuild(builder,site,bx+float(q)*96,bz+160,true);
@@ -3741,7 +3745,7 @@
                 // Long queued-build lists (the build-ghost workload): builder k stands at the
                 // west end of row k and queues its Q builds eastwards along the row, 128 px
                 // apart (rows 192 px apart), types cycling through the first T small
-                // structures the monarch builds. Sites the map refuses are skipped. Each
+                // structures the commander builds. Sites the map refuses are skipped. Each
                 // builder is first sent 4000 px west (or to the map edge), so no build
                 // starts during a study: the ghost count stays fixed and no conjuring
                 // sparkle (whose particles differ run to run) lands in the captures.
@@ -3749,7 +3753,7 @@
                 std::sscanf(queues,"%d,%d,%d,%f,%f",&builders,&perQueue,&typeCount,&dx,&dz);
                 builders=std::clamp(builders,0,64);perQueue=std::clamp(perQueue,0,256);
                 std::vector<const ta::sim::UnitType*> sites;
-                for(const auto& option:registry_.buildable("araking"))
+                for(const auto& option:registry_.buildable("armcom"))
                     if(const auto* site=registry_.find(option);site && isStructure(site) && site->footX<=4 &&
                        site->footZ<=4 && int(sites.size())<std::max(1,typeCount))sites.push_back(site);
                 queueTypes=int(sites.size());
@@ -3757,7 +3761,7 @@
                 for(int k=0;k<builders && !sites.empty();++k) {
                     const float rowZ=gz+(float(k)-float(builders-1)*0.5f)*192;
                     const float rowX=gx-float(perQueue-1)*0.5f*128;
-                    const int builder=spawn("araking",rowX-160,rowZ,0,localPlayer_);
+                    const int builder=spawn("armcom",rowX-160,rowZ,0,localPlayer_);
                     if(builder<=0)continue;
                     ++queueBuilders;
                     writableWorld().order(builder,std::max(64.f,rowX-4160),rowZ,false);
@@ -3808,7 +3812,7 @@
             //   TA_RENDER_SELECT=N|all   the first N of the army's own units selected
             //   TA_RENDER_ARM=<key>      that order armed (pendingCmd_: a g r m f p c l u)
             //   TA_RENDER_GHOSTS=builders,queue[,offscreen%[,builder]]
-            //                             builders (default arabuild) each with `queue`
+            //                             builders (default armck) each with `queue`
             //                             queued (shift) build orders cycling over its
             //                             first three plain structure options; the first
             //                             offscreen% of every queue goes to the map corner
@@ -3820,7 +3824,7 @@
             int ghostBuilders=0,ghostOrders=0,ghostOffscreen=0;
             if(const char* ghostText=ta::devEnv("TA_RENDER_GHOSTS")) {
                 int builders=0,queue=0,offPercent=0;
-                char builderName[64]="arabuild";
+                char builderName[64]="armck";
                 if(std::sscanf(ghostText,"%d,%d,%d,%63s",&builders,&queue,&offPercent,builderName)<2)
                     throw std::runtime_error(std::string("TA_RENDER_GHOSTS: expected builders,queue[,offscreen%[,builder]], got ")+ghostText);
                 builders=std::clamp(builders,1,256);queue=std::clamp(queue,1,200);offPercent=std::clamp(offPercent,0,100);

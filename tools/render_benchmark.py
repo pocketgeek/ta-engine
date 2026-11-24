@@ -50,17 +50,17 @@ import sys
 import time
 import zlib
 
-DEFAULT_MAP = "Ulasem Arena"
+DEFAULT_MAP = "Krogoth Encounter"
 
 # name -> dict(map, count, env, zoom, notes, sizes overrides, segments)
 # Per-size overrides: "env@WxH" entries are merged for that output size.
 SCENES = {
-    "small-battle": dict(count=200, type="araarch", zoom=1.0,
+    "small-battle": dict(count=200, type="armpw", zoom=1.0,
                          env={"TA_RENDER_BATTLE": "1"},
-                         notes="ordinary small battle: 200 Archers, two sides"),
+                         notes="ordinary small battle: 200 Peewees, two sides"),
     "stationary-mixed": dict(count=2000, zoom=0.5,
                              notes="dense stationary mixed army (6-type roster)"),
-    "moving": dict(count=1200, type="araarch", zoom=0.5, env={"TA_RENDER_MOTION": "1"},
+    "moving": dict(count=1200, type="armpw", zoom=0.5, env={"TA_RENDER_MOTION": "1"},
                    notes="dense continuously moving army (orders reissued every 240 frames)"),
     "total10k-subset": dict(count=10000, zoom=1.0,
                             env={"TA_RENDER_CENTER": "7600,7600", "TA_RENDER_OFFSET": "4200,5400"},
@@ -68,8 +68,8 @@ SCENES = {
                             notes="10k units, camera on a small corner of the army"),
     "total10k-visible": dict(count=10000, zoom=0.25,
                              notes="10k units, (nearly) all on screen"),
-    "forest": dict(map="Sea Dragon Spine", count=300, zoom=1.0, env={"TA_RENDER_FOREST": "1"},
-                   notes="densest scenery region of Sea Dragon Spine + 300 mixed units"),
+    "forest": dict(map="Plains and Passes", count=300, zoom=1.0, env={"TA_RENDER_FOREST": "1"},
+                   notes="densest scenery region of Plains and Passes + 300 mixed units"),
     "pan": dict(count=2000, zoom=0.75, env={"TA_RENDER_CAMERA": "1"},
                 notes="sinusoidal pan (continuous motion with reversals)"),
     "zoom": dict(count=2000, zoom=1.0, env={"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"},
@@ -78,14 +78,14 @@ SCENES = {
                  notes="camera jumps between four distant views every 60 frames"),
     "effects": dict(count=600, zoom=0.75, env={"TA_RENDER_BATTLE": "1", "TA_RENDER_EXTRAS": "1"},
                     notes="battle + construction sites, ghosts, flyers, corpses, projectiles"),
-    "naval": dict(map="Athri Cay", count=1, zoom=0.75, env={"TA_RENDER_NAVAL": "150"},
-                  notes="150 floating hulls on the water nearest the centre of Athri Cay"),
+    "naval": dict(map="Seven Islands", count=1, zoom=0.75, env={"TA_RENDER_NAVAL": "150"},
+                  notes="150 floating hulls on the water nearest the centre of Seven Islands"),
     "churn": dict(count=2000, zoom=0.75,
                   env={"TA_RENDER_MOTION": "1", "TA_RENDER_CAMERA": "1",
                        "TA_RENDER_CHURN": "60", "TA_RENDER_RESET": "300"},
                   notes="moving army + panning camera; 5% of the army dies/respawns every "
                         "60 frames; simulated render-target reset every 300 frames"),
-    "colour-reset": dict(count=200, type="araarch", zoom=1.0,
+    "colour-reset": dict(count=200, type="armpw", zoom=1.0,
                          env={"TA_RENDER_BATTLE": "1", "TA_RENDER_RESET": "120"},
                          notes="small battle (two player colours) with a simulated render-target "
                                "reset every 120 frames: both colour atlases are recreated"),
@@ -107,7 +107,7 @@ SCENES = {
                     notes="dense stationary mixed army; every 30 frames every fifth unit changes "
                           "veteran level (material-only body change, shadow unchanged)"),
     # Workstream G: distant images under a moving camera (zoom <= 0.6, 1280x960; the
-    # 7680x2160 view of Ulasem Arena clamps to zoom 0.73, above the image limit).
+    # 7680x2160 view of Krogoth Encounter clamps to zoom 0.73, above the image limit).
     "pan-distant": dict(count=2000, zoom=0.5, env={"TA_RENDER_CAMERA": "1"},
                         notes="the stationary mixed army at zoom 0.5 under the sinusoidal pan: "
                               "held distant images re-placed every frame, re-baked every 67 ms"),
@@ -116,40 +116,47 @@ SCENES = {
                            segments={"army": (300, 450), "corner": (450, None)},
                            notes="6000 units zoomed out (several distant-image pages), then from frame "
                                  "450 a corner of the army: images expire, pages are released"),
-    # Workstream M: every structure type (palette-lit models on all nine palette
-    # pages), live geometry (zoom 0.75 is above the distant-image limit). The roster
-    # is spelled out so builds without the harness's "structures" keyword run it too.
+    # Workstream M: every structure type (palette-lit models), live geometry (zoom
+    # 0.75 is above the distant-image limit). The roster is spelled out so builds
+    # without the harness's "structures" keyword run it too.
     "structures": dict(count=800, zoom=0.75,
                        env={"TA_RENDER_SPACING": "96", "TA_RENDER_ROSTER":
-                            "araat,aracastl,arakeep,aralode,aramana,arangate,aranull,arassh,aratre,arawall,"
-                            "creacad,crebomb,cregate,cregatl,crelode,cremana,crenavy,crepris,cresmit,crewall,"
-                            "npcflag,npctemp,npctemp2,npcthesh,tarcage,tarcastl,tardung,tarhell,tarlode,tarmana,"
-                            "tarngate,tarsh,tarwall,verasy,verat,vercastl,verfltwr,verkeep,verlight,verlode,"
-                            "vermana,vermort,verngate,verpill,vertower,verwall,zonfire,zonglyph,zonlode,zonmana,"
-                            "zonspide"},
-                       notes="800 structures of all 51 types (all nine palette pages), zoom 0.75: "
+                            "armaap,armalab,armamb,armamd,armanni,armap,armarad,armason,armasp,armasy,armatl,armavp,"
+                            "armbeac,armbrtha,armckfus,armdev1,armdrag,armemp,armestor,armfdrag,armfhlt,armflak,"
+                            "armfmkr,armfort,armfrt,armfus,armgate,armgeo,armguard,armhlt,armhp,armlab,armllt,"
+                            "armmakr,armmex,armmine1,armmine2,armmine3,armmine4,armmine5,armmine6,armmmkr,armmoho,"
+                            "armmstor,armplat,armrad,armrl,armsilo,armsolar,armsonar,armsy,armtarg,armtide,armtl,"
+                            "armuwes,armuwfus,armuwmex,armuwms,armvp,armvulc,armwin,coraap,coralab,corap,corarad,"
+                            "corason,corasp,corasy,coratl,coravp,corbeac,corbuild,corbuzz,corckfus,cordev1,cordoom,"
+                            "cordrag,corestor,corfdrag,corfhlt,corflak,corfmd,corfmkr,corfort,corfrt,corfus,corgant,"
+                            "corgate,corgeo,corhlt,corhp,corint,corlab,corllt,cormakr,cormex,cormine1,cormine2,"
+                            "cormine3,cormine4,cormine5,cormine6,cormmkr,cormoho,cormstor,corplas,corplat,corpun,"
+                            "corrad,corrl,corsilo,corsolar,corsonar,corsy,cortarg,cortide,cortl,cortoast,cortron,"
+                            "coruwes,coruwfus,coruwmex,coruwms,corvipe,corvp,corwin"},
+                       notes="800 structures of all 126 TA structure types, zoom 0.75: "
                              "palette-lit bodies drawn live"),
-    # Workstream J: a map whose decoded sections (238 MiB) exceed the 128 MiB CPU
-    # budget, under the pan + continuous zoom path: sections are evicted/re-decoded
-    # and the mip cache fills (pre-J builds keep every section decoded).
-    "bigmap-zoom": dict(map="Middle Earth V1", count=300, zoom=1.0,
+    # Workstream J: a map whose decoded sections exceed the 128 MiB CPU budget
+    # (measured on Kingdoms' Middle Earth V1 at 238 MiB; Seven Islands is larger),
+    # under the pan + continuous zoom path: sections are evicted/re-decoded and the
+    # mip cache fills (pre-J builds keep every section decoded).
+    "bigmap-zoom": dict(map="Seven Islands", count=300, zoom=1.0,
                         env={"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"},
-                        notes="pan + continuous zoom 0.25..1.0 on Middle Earth V1 (255 sections, "
-                              "238 MiB decoded: above the CPU section budget)"),
+                        notes="pan + continuous zoom 0.25..1.0 on Seven Islands (20480 px square, "
+                              "the largest shipped map: above the CPU section budget)"),
     # Workstream K: terrain work under camera motion on the largest shipped map
-    # (Middle Earth V1, 1008x1008 blocks = 32x32 chunks; min zoom 0.24 at 7680x2160).
-    "terrain-sweep": dict(map="Middle Earth V1", count=300, zoom=1.0,
-                          env={"TA_RENDER_CENTER": "16128,16128",
-                               "TA_RENDER_SWEEP": "16128,16128,9000,6000,480"},
+    # (Seven Islands, 20480 px square; Kingdoms-era calibrations not re-measured).
+    "terrain-sweep": dict(map="Seven Islands", count=300, zoom=1.0,
+                          env={"TA_RENDER_CENTER": "10240,10240",
+                               "TA_RENDER_SWEEP": "10240,10240,9000,6000,480"},
                           notes="fast elliptical sweep (9000x6000 px, 480 frames: up to 118 px/frame) "
-                                "with reversals in both axes over Middle Earth V1"),
-    "terrain-zoom-osc": dict(map="Middle Earth V1", count=300, zoom=0.5,
-                             env={"TA_RENDER_CENTER": "16128,16128", "TA_RENDER_ZOOM_OSC": "0.42,0.6,90"},
+                                "with reversals in both axes over Seven Islands"),
+    "terrain-zoom-osc": dict(map="Seven Islands", count=300, zoom=0.5,
+                             env={"TA_RENDER_CENTER": "10240,10240", "TA_RENDER_ZOOM_OSC": "0.42,0.6,90"},
                              notes="zoom oscillating 0.42..0.6 every 90 frames: the chunk level flips "
                                    "between 0 and 1 (at 7680x2160 both levels exceed the chunk budget)"),
-    "terrain-jumps": dict(map="Middle Earth V1", count=300, zoom=0.75,
-                          env={"TA_RENDER_CENTER": "16128,16128", "TA_RENDER_JUMP": "20",
-                               "TA_RENDER_JUMP_AT": "4000,4000;28000,4000;28000,28000;4000,28000;16000,16000"},
+    "terrain-jumps": dict(map="Seven Islands", count=300, zoom=0.75,
+                          env={"TA_RENDER_CENTER": "10240,10240", "TA_RENDER_JUMP": "20",
+                               "TA_RENDER_JUMP_AT": "3000,3000;17500,3000;17500,17500;3000,17500;10240,10240"},
                           notes="camera jumps between five far-apart views every 20 frames (faster "
                                 "than a view's terrain finishes composing)"),
 }
@@ -162,7 +169,7 @@ HISTORICAL = list(SCENES)
 # Build ghosts (perf follow-up E): kept out of the historical matrix, like the
 # interactive cases below ("--scenes ghost-queues ..." names them explicitly).
 GHOST_SCENES = {
-    # 16 monarchs x 32 queued builds of 4 repeated structure types on a 4096x3072 px
+    # 16 commanders x 32 queued builds of 4 repeated structure types on a 4096x3072 px
     # grid around the camera centre.
     "ghost-queues": dict(count=1, zoom=0.5, env={"TA_RENDER_GHOST_QUEUES": "16,32,4",
                                                  "TA_RENDER_CAMERA": "1"},
@@ -175,7 +182,7 @@ GHOST_SCENES = {
                                   "ghost off screen"),
     "ghost-few": dict(count=200, zoom=0.75, env={"TA_RENDER_GHOST_QUEUES": "4,12,4,0,700",
                                                  "TA_RENDER_CAMERA": "1"},
-                      notes="ordinary case: 200 mixed units, 4 monarchs x 12 queued builds south of "
+                      notes="ordinary case: 200 mixed units, 4 commanders x 12 queued builds south of "
                             "them, panning camera"),
 }
 SCENES.update(GHOST_SCENES)
@@ -185,7 +192,7 @@ SCENES.update(GHOST_SCENES)
 # shadow-cap-below/-above (zoom 1, a different army) for the same question.
 SHADOW_PAGE_SCENES = {
     # At 7680x2160 ("uhd"; the armies are sized for that view and stay far below the
-    # limit at 1280x960). Ulasem Arena's
+    # limit at 1280x960). Krogoth Encounter's
     # zoom-out floor there is 0.73, where TACTICAL DOTS (default on) replace the models,
     # so these views sit at 0.82 -- one wheel notch in -- where a settled mixed-roster
     # tile takes ~2700 px^2 and four 2048^2 pages hold ~6150 of them (the first frames
@@ -248,15 +255,15 @@ INTERACTIVE = {
                              expect={"mouse": "fixed", "cursor": True},
                              notes="10k own units, a corner in view; pointer held on empty ground, nothing "
                                    "selected: every frame tests every own unit and none is under it"),
-    "hover-units-10k": dict(count=10000, type="araarch", zoom=1.0,
+    "hover-units-10k": dict(count=10000, type="armpw", zoom=1.0,
                             env=dict(SUBSET_10K, TA_RENDER_MOUSE="sweep:0.70,0.62,1.0,1.0",
                                      TA_RENDER_SELECT="1"),
                             size_env={"7680x2160": HOVER_10K_UHD},
                             expect={"mouse": "sweep", "cursor": True, "selected": 1, "pick_hits": True},
-                            notes="10k own Archers, a corner in view; one selected (a non-builder: no build "
+                            notes="10k own Peewees, a corner in view; one selected (a non-builder: no build "
                                   "strip over the map), pointer sweeping over the visible corner of the army "
                                   "and the ground beside it"),
-    "hover-armed-10k": dict(count=10000, type="araarch", zoom=1.0,
+    "hover-armed-10k": dict(count=10000, type="armpw", zoom=1.0,
                             env=dict(SUBSET_10K, TA_RENDER_MOUSE="sweep:0.70,0.62,1.0,1.0",
                                      TA_RENDER_SELECT="200", TA_RENDER_ARM="g"),
                             size_env={"7680x2160": HOVER_10K_UHD},
@@ -271,32 +278,32 @@ INTERACTIVE = {
                                "(7680x2160: zoom clamps to 0.73, fully out, so units are Tactical Dots)"),
     # E: queued-build ghosts (16 builders x 24 orders over three repeated types, half of
     # every queue at the far map corner).
-    "ghosts-queue": dict(count=1, type="araarch", zoom=0.75, env={"TA_RENDER_GHOSTS": "16,24,50"},
+    "ghosts-queue": dict(count=1, type="armpw", zoom=0.75, env={"TA_RENDER_GHOSTS": "16,24,50"},
                          expect={"ghost_orders": 300, "ghost_offscreen": 120},
                          notes="16 builders with 24 queued builds each (3 repeated types), half of each "
                                "queue off screen at the far map corner"),
-    "ghosts-queue-pan": dict(count=1, type="araarch", zoom=0.75,
+    "ghosts-queue-pan": dict(count=1, type="armpw", zoom=0.75,
                              env={"TA_RENDER_GHOSTS": "16,24,50", "TA_RENDER_CAMERA": "1"},
                              expect={"ghost_orders": 300, "ghost_offscreen": 120},
                              notes="ghosts-queue under the sinusoidal pan"),
     # F: HIDDEN UNITS (Fade unless noted) with crowds under repeated trees and buildings;
     # the fade clock follows the study frame so fades match run to run.
-    # (Ulasem Arena, not the forest scene's Sea Dragon Spine: at 7680x2160 that small map
-    # clamps the zoom so far out that units are Tactical Dots and nothing can fade.)
-    "fade-forest": dict(count=1500, type="araarch", zoom=1.0,
+    # (Krogoth Encounter, not the forest scene's Plains and Passes: the default map
+    # keeps the scene comparable with the rest of the matrix.)
+    "fade-forest": dict(count=1500, type="armpw", zoom=1.0,
                         env={"TA_RENDER_FOREST": "1", "TA_RENDER_SPACING": "28",
                              "TA_RENDER_FADE_CLOCK": "1"},
                         settings={"hiddenUnits": "fade"},
                         expect={"fade_clock": True, "hidden_faded": True},
-                        notes="1500 Archers (28 px apart) in the densest scenery of Ulasem Arena; Fade"),
-    "fade-buildings": dict(count=2000, type="araarch", zoom=1.0,
-                           env={"TA_RENDER_COVER": "vertower,4", "TA_RENDER_SPACING": "32",
+                        notes="1500 Peewees (28 px apart) in the densest scenery of Krogoth Encounter; Fade"),
+    "fade-buildings": dict(count=2000, type="armpw", zoom=1.0,
+                           env={"TA_RENDER_COVER": "armllt,4", "TA_RENDER_SPACING": "32",
                                 "TA_RENDER_FADE_CLOCK": "1"},
                            settings={"hiddenUnits": "fade"},
                            expect={"fade_clock": True, "covers": 50, "hidden_faded": True},
-                           notes="2000 Archers (32 px) around a grid of towers (every 4th row/column); Fade"),
-    "dots-buildings": dict(count=2000, type="araarch", zoom=1.0,
-                           env={"TA_RENDER_COVER": "vertower,4", "TA_RENDER_SPACING": "32",
+                           notes="2000 Peewees (32 px) around a grid of LLTs (every 4th row/column); Fade"),
+    "dots-buildings": dict(count=2000, type="armpw", zoom=1.0,
+                           env={"TA_RENDER_COVER": "armllt,4", "TA_RENDER_SPACING": "32",
                                 "TA_RENDER_FADE_CLOCK": "1"},
                            settings={"hiddenUnits": "dots"},
                            expect={"fade_clock": True, "covers": 50},
