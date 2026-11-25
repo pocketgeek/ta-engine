@@ -913,16 +913,6 @@ int main(int argc,char** argv) {
         }
         return 0;
     }
-    if(argc==2 && std::strcmp(argv[1],"--projectile-in-unit")==0) {
-        std::array<int32_t,3> point,origin;int top;unsigned heading;
-        while(std::scanf("%d %d %d %d %d %d %d %u",&point[0],&point[1],&point[2],
-                &origin[0],&origin[1],&origin[2],&top,&heading)==8) {
-            ta::sim::RetailCollisionQuad quad;
-            for(auto& vertex:quad)if(std::scanf("%d %d",&vertex[0],&vertex[1])!=2)return 2;
-            std::printf("%d\n",int(ta::sim::retailProjectileInUnit(point,origin,top,uint16_t(heading),quad)));
-        }
-        return 0;
-    }
     if(argc==2 && std::strcmp(argv[1],"--flame-scan")==0) {
         std::array<int32_t,3> origin,step;unsigned range,speed,substeps,hit,clip;
         while(std::scanf("%d %d %d %d %d %d %u %u %u %u %u",&origin[0],&origin[1],&origin[2],

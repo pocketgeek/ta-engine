@@ -353,6 +353,29 @@ What these entries describe is ported; what is left of each is under "Open".
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run
   follows 0x411f50 (retailAirStrike).
+- Shot timing and body test (2026-11-24). World's tick runs the projectile
+  pass after the units, as TotalA.exe's 0x495490 does (0x4954ed units, whose
+  0x48adda -> 0x49e1a0 fires; then 0x495513 -> 0x49b720 projectiles): every
+  shot moves and is tested in its fire tick, against the bodies where the
+  units' pass left them. The spawners set +0x42 to the fire tick and +0x46
+  to now + lifetime (LOS / selfprop 0x49cb5f..0x49cb65, vlaunch
+  0x49ccf6..0x49cd17, ballistic and dropped from the fire tick); burst clones
+  join after the pass's count (0x49b720 reads it once) and move from the next
+  tick. The ground bodies are met where the units' pass left them; the
+  flyers' cell grid is still the one rebuilt before the units (Open (b)).
+  Every shot kind tests a point with 0x49b090 (World::projectileCollision):
+  off the map gone (0x49b0ac), the cell's body (word +0) when not the shot's
+  owner's and the point is below its y + model height (0x49b1c7..0x49b211,
+  no outline: the Kingdoms selection-quad test, projectilePointInUnit, is
+  deleted), the cell's flyer (word +2) from its y + type +0x162 (0) to its
+  y + model height inclusive (0x49b222..0x49b275), then features, water and
+  ground. Evidence: ta_shot (a shell, a rocket and a bomb have moved one step
+  when their fire tick ends; a tall 2x2 tower and a low 5x5 solar struck at
+  their corner cells under their tops; an LLT laser and a rocket at a
+  walking corak burst in it where it stands that tick), ta_beam,
+  ta_ballistic, retailgap_weapons, scenery_damage; legion baselines retaken
+  for air-stack-duel, air-stack-barracks and air-stack-barracks-5 (their
+  fights land a tick sooner).
 - Beams and the other line-of-sight shots (2026-11-24) fly as TotalA.exe's
   (rule 2 of 0x49b9ae; `World::tickTaLineOfSight`, `taLineOfSightStep`): the
   head moves one velocity step a tick until the expiry (range << 16) /
@@ -366,9 +389,7 @@ What these entries describe is ported; what is left of each is under "Open".
   (0x49b1c7..0x49b211, no outline test), a flyer there, or the ground bursts
   it (damage on contact, 0x499eb0); own bodies and anything below it pass. noexplode (the D-gun)
   deals its damage every tick it meets something and flies on (0x499ede).
-  A shot moves in its fire tick: retail runs the units (0x4954ed, which fire
-  at 0x48adda -> 0x49e1a0) before the projectiles (0x495513), World gives the
-  shots launched in its unit pass their first step after it. The client draws
+  The client draws
   rendertype 0 as 0x49bf3a..0x49c097 does (color, and color2 a pixel off the
   major axis, through the guipal -> palette.pal map 0x4ac7d0) and rendertype
   7 as 0x49c48c's two jittered strands of 5 px steps (`client/tabeamdraw.h`,
@@ -412,15 +433,33 @@ data (cleanup, no gameplay).
 - (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
   the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
   loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
-- (b) Shot timing: World runs the projectiles before the units, retail after
-  them (0x4954ed, 0x495513). Line-of-sight shots take their first step after
-  the unit pass (above); ballistic, selfprop and dropped shots still take
-  theirs in the next tick's pass, a tick late, and every shot is tested
-  against the bodies as they stood before the units moved. Those classes
-  also still test a body's cell with the Kingdoms outline (52a4d0's
-  selection quad, projectilePointInUnit) where 0x49b090 tests only the
-  height (World::projectileCollision's taPrimaryHeight, used by the
-  line-of-sight shots). The lightning
+- (b) Shot pass (see Ported): World rebuilds the flyers' cell grid
+  (updateAirOccupancy, word +2) once a tick, before the units' pass, and the
+  projectile pass after the units reads that grid: a shot meets a flyer in
+  the cells it held before it moved this tick (ground bodies are current).
+  Where TotalA.exe writes word +2 is not traced. Rebuilding the grid after
+  the units instead (tried 2026-11-24) leaves a flyer spawned this tick out
+  of the landing-site predicate's grid (retail_motion: two flyers landing on
+  one footprint) and moves the air-stack scenarios; rebuilding it twice
+  draws extra gameRand for overlapping flyers. Settle it with the writer of
+  word +2 (the Kingdoms analogue is 51da6a..51dbbe, after the unit updates).
+- (c) watch_end's allai case (debug ctest) has not ended since the shot pass
+  moved after the units (2026-11-24): the stress game (Ashap Plateau, two AIs,
+  TA_STRESS) is decided at tick 26520 before it and still undecided at the
+  test's 54003-tick limit after. At the end ~73 Core units hold attack
+  orders on an Arm armyork on the plateau at (3024, 586) and stand in the
+  lowland and on the slope below it ((2600..3200, 800..1500), y 0..180),
+  never reaching it; Arm keeps 25 units in its base. The stall is in the
+  approach (orders and navigation), not in the shots, but it is this
+  change's trajectory that reaches it: find why the approach stops short.
+  0x49b090's interceptor test (+0x56 target shot within weapon +0xd6,
+  0x49b106..0x49b1a9) bursts and goes on to the body tests; World's
+  optional targetShot returns at once (no TA shot passes one). The Kingdoms
+  kinds left in the pass (guided3d without taSelfProp, straight, flames,
+  the 2D fallback) keep their own launch delays and are tested by the same
+  0x49b090; of TA's weapons only a non-turret ballistic one reaches them
+  (the Core Contingency mines' ARMMINE* / CORMINE*, not traced through
+  0x49e1a0's dispatch). The lightning
   strands draw with the client's own CRT-rand stream (0x4e4870 is the
   game's shared one; drawing only). The D-gun (rendertype 3) draws its model
   at the head through the generic model path; 0x49c1f2's own pose words

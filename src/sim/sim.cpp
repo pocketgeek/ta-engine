@@ -591,7 +591,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                             support[i]={std::bit_cast<int32_t>(0u-uint32_t(point[0])),
                                         std::bit_cast<int32_t>(0u-uint32_t(point[2]))};
                         }
-                        t.projectileQuad=support;
                         if (!t.canFly && !t.isStructure() && !t.upright && !t.floater)
                             t.groundSupport=support;
                     }
@@ -7149,7 +7148,11 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
         p.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
         p.position=muzzle;p.muzzle=muzzle;p.velocity=velocity;
-        p.substeps=1;p.start=tickCounter_+1;p.end=p.start+lifetime;
+        // Both shots move in this tick's projectile pass (0x495513, after the
+        // units' 0x4954ed fired them): +0x42 is this tick (0x49c7ac) and +0x46
+        // the expiry, now + lifetime (0x49cb5f..0x49cb65; vlaunch
+        // 0x49ccf6..0x49cd17).
+        p.substeps=1;p.start=tickCounter_;p.end=tickCounter_+lifetime;
         p.flight=int32_t(lifetime);
         p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
         // Drawn yaw in the launch convention (velocity along +sin, +cos).
@@ -7161,13 +7164,9 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
             p.life=std::numeric_limits<int32_t>::max();
         } else {
             // Line of sight (0x49bb60, tickTaLineOfSight): straight, gone
-            // without a burst at the expiry. It moves in this tick's
-            // projectile pass (0x495513 after the units' 0x4954ed; World::tick
-            // runs it after the unit pass); +0x42 is this tick (0x49c7ac) and
-            // +0x46 the expiry (0x49cb65).
+            // without a burst at the expiry.
             p.taLineOfSight=true;
             p.taTail=muzzle;p.taLaunch=tickCounter_;p.taTailMoving=false;
-            p.start=tickCounter_;p.end=tickCounter_+lifetime;
             p.angles={0,yaw,pitch};
             p.life=std::numeric_limits<int32_t>::max();
         }
@@ -7291,7 +7290,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         const auto step=retailGroundStep(u.heading,u.speed);
         Projectile b;b.ballistic3d=true;b.wsrc=&w;
         b.taBallistic=w.taAim!=Weapon::TaAim::None;b.start=tickCounter_;
-        b.position=muzzle;b.velocity={step.s.v,0,step.c.v};
+        b.position=muzzle;b.muzzle=muzzle;b.velocity={step.s.v,0,step.c.v};
         b.angles={0,uint16_t(u.heading.v),0xc000};
         b.x=Fixed::raw(b.position[0]);b.z=Fixed::raw(b.position[2]);
         b.targetId=tu ? tu->id : 0;b.slot=slot;b.fromPlayer=u.player;b.fromId=u.id;b.fx=w.fx;
@@ -17532,7 +17531,7 @@ void World::tickTaBallistic(Projectile& p,std::span<const int> airGrid) {
 // not tested (0x49bc8b..0x49bcd4); before it, taLineOfSightStep moves the
 // head (and a beam's tail, 0x49bba3..0x49bc07) and 0x49b090 tests the head
 // alone, once a tick (0x49bd86): the body owning its cell when the point is
-// below that body's top (taPrimaryHeight), a flyer there, or the ground
+// below that body's top (projectileCollision), a flyer there, or the ground
 // bursts it (0x499eb0); off the map it is gone without one (0x49b0ac). A
 // noexplode shot (the disintegrator) is not retired by its burst (0x499ede
 // jumps past 0x499f32's kill): it deals its damage every tick it meets
@@ -17551,7 +17550,7 @@ void World::tickTaLineOfSight(Projectile& p,std::span<const int> airGrid) {
     p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
     p.age=int32_t(tickCounter_-p.start)+1;
     const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
-    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid,false,{},0,true);
+    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
     if(hit.code==2) {
         const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
         applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hit.unitId),p.position,{},p.slot);
@@ -17574,12 +17573,8 @@ void World::tickTaLineOfSight(Projectile& p,std::span<const int> airGrid) {
 // target unit unless it tracks).
 void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
     if(p.life<=0 || !p.wsrc)return;
+    if(tickCounter_<p.start)return;   // a burst clone joins the pool after the pass's count
     const Weapon& w=*p.wsrc;
-    if(tickCounter_<=p.start) {
-        const Unit* owner=unit(p.fromId);
-        if(!owner || !owner->alive() || owner->hp<=Fixed())p.life=0;
-        return;
-    }
     const auto burst=[&](int hitUnit) {   // 0x499eb0
         const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
         p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
@@ -17642,7 +17637,7 @@ void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
         p.position[axis]=std::bit_cast<int32_t>(uint32_t(p.position[axis])+uint32_t(p.velocity[axis]));
     p.angles={0,uint16_t(p.taHeading+0x8000u),p.taPitch};
     p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-    p.age=int32_t(tickCounter_-p.start);
+    p.age=int32_t(tickCounter_-p.start)+1;
     const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
     const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
     if(hit.code==2)burst(hit.unitId);
@@ -17775,30 +17770,31 @@ std::span<const int> World::updateAirOccupancy() {
 
 World::ProjectileCollisionResult World::projectileCollision(const std::array<int32_t,3>& point,
         int32_t& verticalSpeed,uint32_t weaponFlags,int owner,std::span<const int> airGrid,
-        bool bypassPrimaryGeometry,std::optional<std::array<int32_t,3>> targetShot,
-        uint16_t proximityRadius,bool taPrimaryHeight) const {
+        std::optional<std::array<int32_t,3>> targetShot,uint16_t proximityRadius) const {
     const int x=point[0]>>20,z=point[2]>>20;
     if(x<0 || z<0 || x>=hW_ || z>=hH_)return {1,0};
     if(targetShot && retailProjectileProximity(point,*targetShot,proximityRadius))return {2,0};
+    // 0x49b1c7..0x49b211: the body owning the cell (word +0), not the
+    // shot's owner's (0x49b1f4), struck when the point is below its top --
+    // its y (+0x6e) plus its type's model height (+0x16e). There is no
+    // outline test: a shot anywhere in a body's cells below its top hits it.
     const auto primary=searchBodyRect(x,z,1,1);
     const auto* body=primary.cells[0];
-    if(taPrimaryHeight) {
-        // TotalA.exe 0x49b1c7..0x49b211: the cell's body, not the shot's
-        // owner's (0x49b1f4), struck when the point is below its top -- its
-        // y (+0x6e) plus its type's model height (+0x16e); no outline test.
-        if(body && body->player!=owner && body->type &&
-           int64_t(point[1])<int64_t((body->type->canFly ? body->flightY : body->groundY).v)+body->type->modelTop)
-            return {2,body->id};
-    } else if(body && body->player!=owner && (bypassPrimaryGeometry || projectilePointInUnit(body->id,point)))return {2,body->id};
+    if(body && body->player!=owner && body->type &&
+       point[1]<std::bit_cast<int32_t>(uint32_t((body->type->canFly ? body->flightY : body->groundY).v)+
+                                      uint32_t(body->type->modelTop)))
+        return {2,body->id};
+    // 0x49b222..0x49b275: the flyer owning the cell (word +2), struck from its
+    // y plus type +0x162 (0 in TA, docs/retail-data.md) up to its y plus the
+    // model height, both ends included.
     const size_t cell=size_t(z)*hW_+x;
     const auto* airborne=cell<airGrid.size() && airGrid[cell]>0 ? unit(airGrid[cell]) : nullptr;
     if(airborne && airborne->alive() && !airborne->embarked() && airborne->type && airborne->player!=owner) {
-        // Type +13e is initialized to zero at 4c1419. Secondary occupancy
-        // tests altitude only, unlike the primary selection-quad predicate.
         const int32_t base=airborne->flightY.v;
         const int32_t top=std::bit_cast<int32_t>(uint32_t(base)+uint32_t(airborne->type->modelTop));
         if(point[1]>=base && point[1]<=top)return {2,airborne->id};
     }
+    // 0x49b28a on: features, water and the ground.
     return {projectileEnvironment(point,verticalSpeed,weaponFlags),0};
 }
 
@@ -17825,14 +17821,6 @@ int World::projectileEnvironment(const std::array<int32_t,3>& point,int32_t& ver
     if(feature<0xfffa && feature<mapPlacementTypes_.size())height=mapPlacementTypes_[feature].projectileHeight;
     return retailProjectileHitsEnvironment(point[1],verticalSpeed,weaponFlags,cell.low,
         uint8_t(seaLevel_),height,noSeaLevelTrigger_) ? 2 : 0;
-}
-
-bool World::projectilePointInUnit(int unitId,const std::array<int32_t,3>& point) const {
-    const auto* target=unit(unitId);
-    if(!target || !target->type || !target->type->projectileQuad)return false;
-    return retailProjectileInUnit(point,
-        {target->x.v,(target->type->canFly ? target->flightY : target->groundY).v,target->z.v},
-        target->type->modelTop,portHeadingToRetail(target->heading),*target->type->projectileQuad);
 }
 
 std::array<int32_t,3> World::unitPiecePoint(Unit& u,int32_t piece,bool sweetSpot) {
@@ -18554,7 +18542,7 @@ void World::tickWeaponBursts() {
             // A clone joins the pool after the pass's count (0x49b720): it
             // moves from the next tick.
             c.start=tickCounter_+1;
-            c.end=c.taBallistic || c.taLineOfSight ? tickCounter_+lifetime : c.start+lifetime;
+            c.end=c.taBallistic || c.taLineOfSight || c.taSelfProp ? tickCounter_+lifetime : c.start+lifetime;
             // 0x49b859: its +0x42 is now. A beam clone keeps the emitter's
             // tail (+0x10, the first shot's muzzle: 0x49b844 copies it and
             // 0x49b7e1 refreshes only the head).
@@ -20372,184 +20360,13 @@ void World::tick(float dt) {
     for (size_t i = unitsAtEconomy; i < units_.size(); ++i) decay(units_[i]);
 
 
-    // Native airborne occupancy (persistent) is rebuilt before projectile updates.
+
+    // The flyers' persistent cell grid (word +2): rebuilt here, before the
+    // units, as it always was. The landing-site predicate reads it in the
+    // units' pass and the projectile pass after them reads it too (rebuilding
+    // it again after the units moved changes the landing reservations and
+    // the air-stack scenarios; docs/ta-port-plan.md Open (b)).
     const auto projectileAircraft=updateAirOccupancy();
-    tickWeaponBursts();
-    tickFlames(projectileAircraft);
-    tickStraightProjectiles(projectileAircraft);
-    // Projectiles.
-    for (auto& p : projectiles_) {
-        if(p.straight)continue;
-        if(p.taLineOfSight) {tickTaLineOfSight(p,projectileAircraft);continue;}
-        if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
-        if(p.taBallistic) {tickTaBallistic(p,projectileAircraft);continue;}
-        if(p.guided3d) {
-            if(p.life<=0)continue;
-            if(tickCounter_<=p.start) {
-                const Unit* owner=unit(p.fromId);
-                if(!owner || !owner->alive() || owner->hp<=Fixed())p.life=0;
-                continue;
-            }
-            if(tickCounter_>=p.end) {
-                // Run out without striking: a miss, as in the straight shots.
-                if(const Unit* t=unit(p.targetId);t && p.wsrc)noteShotImpact(p.fromId,p.targetId,*p.wsrc,p.position,0,t->hp);
-                p.life=0;continue;
-            }
-            // 52e030 steers at a target that is alive (+0x130 0x1000000) and not
-            // dying (0x1000), and tests nothing else: a carried target (its
-            // attach, 51b5a0, keeps both bits; +0x114's carried bits are not
-            // read) is homed on through its SweetSpot over its own +0x68, which
-            // 4dad30 commits at the host's attach point every tick.
-            const Unit* target=unit(p.targetId);
-            const auto targetPoint=target && target->alive() ?
-                queryUnitScriptPoint(p.targetId,true) : p.position;
-            RetailGuidedShot state{p.position,p.velocity,p.angles};
-            const uint32_t flags=(p.wsrc->unitsOnly?0x800u:0u)|
-                (p.wsrc->groundBounce?0x1000u:0u)|(p.wsrc->waterWeapon?0x2000u:0u);
-            const int32_t rawSpeed=int32_t(double(p.wsrc->projVel)*2184.5333333333333);
-            const int32_t speedPerSubstep=rawSpeed/int32_t(p.substeps);
-            int hitUnit=0;
-            const bool hit=retailGuidedTick(state,targetPoint,p.wsrc->turnRate/kTick,
-                speedPerSubstep,
-                p.substeps,p.wsrc->shotSpin,!p.wsrc->shotModel.empty(),
-                [&](const auto& point,int32_t& verticalSpeed) {
-                    const auto result=projectileCollision(point,verticalSpeed,flags,p.fromPlayer,
-                        projectileAircraft);
-                    if(result.code==2)hitUnit=result.unitId;
-                    return result.code;
-                });
-            p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
-            p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-            p.age=int32_t(tickCounter_-p.start);
-            if(hit) {
-                const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
-                applyHit(*p.wsrc,Fixed::raw(p.position[0]).toFloat(),
-                    Fixed::raw(p.position[2]).toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),p.position,{},p.slot);
-                noteShotImpact(p.fromId,p.targetId,*p.wsrc,p.position,hitUnit,shotHp);
-                p.spent=true;p.life=0;
-            } else if(p.life>0)--p.life;
-            continue;
-        }
-        const bool ballistic3d=p.ballistic3d && p.wsrc;
-        const float ox = p.x.toFloat(), oz = p.z.toFloat();   // segment start (before this step)
-        p.x += p.vx;   // px per tick already
-        p.z += p.vz;
-        --p.life;
-        ++p.age;
-        if(ballistic3d) {
-            // BallisticWeapon::update (0x52bf90) resolves every 3D substep
-            // through 0x52a4d0. The old port advanced this XYZ state for drawing
-            // but then used only the separate 2D target sweep for collision, so
-            // arrows passed through trees, terrain and water in World.
-            RetailBallisticShot state{p.position,p.velocity,p.angles};
-            const int32_t gravityStep=retailBallisticGravityStep(ballisticGravityRaw_,
-                p.wsrc->gravityAdj,p.substeps);
-            const uint32_t flags=(p.wsrc->unitsOnly?0x800u:0u)|
-                (p.wsrc->groundBounce?0x1000u:0u)|(p.wsrc->waterWeapon?0x2000u:0u);
-            bool stopped=false;
-            for(uint32_t step=0;step<p.substeps;++step) {
-                retailBallisticStep(state,gravityStep,p.wsrc->shotSpin);
-                const auto hit=projectileCollision(state.position,state.velocity[1],flags,
-                    p.fromPlayer,projectileAircraft);
-                if(hit.code==0)continue;
-                p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
-                p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-                if(hit.code==2) {
-                    const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
-                    applyHit(*p.wsrc,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hit.unitId),p.position,{},
-                             p.slot);
-                    noteShotImpact(p.fromId,p.targetId,*p.wsrc,state.position,hit.unitId,shotHp);
-                }
-                // Native retires an out-of-map shell without damage and dispatches
-                // exactly one impact when collision returns 2.
-                p.spent=true;p.life=-1;stopped=true;break;
-            }
-            if(!stopped) {
-                p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
-                p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-            }
-            // Ballistic XYZ motion owns collision. Keep the old range-derived
-            // endpoint for a shell that completes its simulated flight without a
-            // 3D impact; do not also run the unrelated 2D target-radius sweep.
-            continue;
-        }
-        Unit* t = unit(p.targetId);
-        // Older 2D-only fixture shots may still model a bomb as a terminal
-        // effect. Production DroppedBallistic shots take the 3D collision path
-        // above and never enter this approximate segment test.
-        bool bomb = p.wsrc && p.wsrc->kind == Weapon::Kind::Dropped;
-        if (!bomb && t && t->alive() && !t->embarked()) {
-            // Distance from the target to the segment travelled this tick, so a
-            // fast projectile (e.g. the totem's lightning, ~50px/tick) can't
-            // skip past the small hit radius between ticks.
-            float sx = p.x.toFloat() - ox, sz = p.z.toFloat() - oz;
-            float seg = sx * sx + sz * sz;
-            float u = seg > 0 ? ((t->x.toFloat() - ox) * sx + (t->z.toFloat() - oz) * sz) / seg : 0.0f;
-            u = std::clamp(u, 0.0f, 1.0f);
-            float cx = ox + u * sx, cz = oz + u * sz;
-            float dx = t->x.toFloat() - cx, dz = t->z.toFloat() - cz;
-            float r = t->type ? 8.0f + 8.0f * float(std::max(t->type->footX,
-                                                             t->type->footZ)) : 8.0f;
-            if (dx * dx + dz * dz < r * r) {
-                // Apply the impact: direct hit + area splash (per the weapon's
-                // FBI areaofeffect), using the grid from the previous rebuild.
-                // A shot ALWAYS has its weapon: all three launch sites set wsrc, and
-                // damage is read from the weapon at impact (applyHit -> damageVs), which
-                // is also how retail does it -- it loads the def's damage field at the
-                // point of use in 76 places and snapshots it onto nothing. The
-                // Projectile::damage this branch used was a dead copy of w.damage.
-                applyHit(*p.wsrc, t->x.toFloat(), t->z.toFloat(), p.fromPlayer, p.fromId, t, {},
-                         std::array<int32_t,3>{t->x.v, (t->type && t->type->canFly ? t->flightY : t->groundY).v, t->z.v},
-                         p.slot);
-                p.life = -1;
-                p.spent = true;   // connected: don't also crater at expiry
-            }
-        }
-    }
-    // The expiry fallback also handles any legacy 2D bomb fixture. Normal
-    // DroppedBallistic shots retire in the 3D collision path above, where the
-    // native impact cell/unit is known and cannot detonate twice.
-    // ...and so does an ordinary BALLISTIC shell that missed. A retail ballistic
-    // projectile has no lifetime at all: it flies its arc under gravity and always
-    // comes down, and the terrain impact runs the ordinary area-damage path with no
-    // hit unit (KINGDOMS.icd 0x52a6f3 -> 0x529c10). Ours simply vanished, so every
-    // missed siege shell -- 32 ballistic weapon blocks with a real blast radius,
-    // the catapults, trebuchets and mortars -- dealt nothing whatsoever.
-    // A guided or hitscan shot that runs out is still a silent dud, which is retail
-    // too: those DO carry a range-derived expiry that kills them without damage.
-    for (size_t bi = 0; bi < projectiles_.size(); ++bi) {
-        const Projectile bp = projectiles_[bi];
-        if (bp.spent || bp.life > 0 || !bp.wsrc) continue;
-        bool dropped = bp.wsrc->kind == Weapon::Kind::Dropped;
-        // Ballistic = the plain arcing shot: not guided, not a hitscan beam.
-        bool ballistic = bp.wsrc->kind == Weapon::Kind::Normal && !bp.wsrc->beam;
-        // Splash weapons only. Retail also strikes whatever feature sits in the
-        // impact cell even for a shot with no areaofeffect, but our applyHit damages
-        // that centre cell unconditionally -- so porting it literally would have
-        // every stray arrow chopping and igniting forests. Deliberate divergence.
-        if (!dropped && !(ballistic && bp.wsrc->aoe > 0.0f)) continue;
-        // A fallback 2D bomb is let go over its target, so whatever it lands on
-        // takes the DIRECT hit -- several bombs carry no areaofeffect at all. A
-        // missed shell has no such victim: retail's terrain impact carries no hit
-        // unit, and a unit there would have been caught by the in-flight test.
-        Unit* under = nullptr;
-        if (dropped) {
-            float bestD = 1e30f;
-            forEachNear(bp.x.toFloat(), bp.z.toFloat(), 40.0f, [&](int idx) {
-                Unit& e = units_[size_t(idx)];
-                if (!e.alive() || e.embarked() || !e.type || allied(e.player, bp.fromPlayer)) return;
-                float dx = (e.x - bp.x).toFloat(), dz = (e.z - bp.z).toFloat();
-                float d = dx * dx + dz * dz;
-                if (d < bestD) { bestD = d; under = &e; }
-            });
-        }
-        // Either way it bursts on the ground where it came down.
-        const int ground = heights_.empty() ? 0 : retailTerrainHeight(bp.x.v, bp.z.v, terW_, terH_,
-            [&](int x, int z) { return heights_[size_t(z) * size_t(terW_) + size_t(x)]; });
-        applyHit(*bp.wsrc, bp.x.toFloat(), bp.z.toFloat(), bp.fromPlayer, bp.fromId, under,
-                 {}, std::array<int32_t,3>{bp.x.v, Fixed::fromInt(ground).v, bp.z.v}, bp.slot);
-    }
-    std::erase_if(projectiles_, [](const Projectile& p) { return p.life <= 0; });
 
     // The spatial hash for this tick (the scans + separation), and who is
     // parked where: units are solid (see sim.h).
@@ -21270,19 +21087,189 @@ void World::tick(float dt) {
         } else tickNavigationMovement(u,target);
 
     }
-    // TotalA.exe's game tick runs the units (0x4954ed -> 0x48ad30, whose
-    // 0x48adda -> 0x49e1a0 fires the weapons) before the projectiles
-    // (0x495513 -> 0x49b720), so a line-of-sight shot launched this tick
-    // takes its first step and test in this tick. Ours runs the projectiles
-    // first: the shots the units just launched take that pass here.
-    {
-        bool fresh=false;
-        for(auto& p:projectiles_)
-            if(p.taLineOfSight && p.start==tickCounter_ && p.age==0 && p.life>0) {
-                tickTaLineOfSight(p,projectileAircraft);fresh=true;
+    // The projectile pass. TotalA.exe's game tick 0x495490 runs the units
+    // (0x4954ed -> 0x48ad30, whose 0x48adda -> 0x49e1a0 fires the weapons)
+    // and then the projectiles (0x495513 -> 0x49b720), so every shot the
+    // units launched this tick takes its first step and test in this tick,
+    // against the bodies where the units' pass left them. The flyers' cell
+    // grid (word +2, read by 0x49b222) is the one rebuilt before the units
+    // (projectileAircraft, above): a flyer is met in the cells it held then.
+    tickWeaponBursts();
+    tickFlames(projectileAircraft);
+    tickStraightProjectiles(projectileAircraft);
+    // Projectiles.
+    for (auto& p : projectiles_) {
+        if(p.straight)continue;
+        if(p.taLineOfSight) {tickTaLineOfSight(p,projectileAircraft);continue;}
+        if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
+        if(p.taBallistic) {tickTaBallistic(p,projectileAircraft);continue;}
+        if(p.guided3d) {
+            if(p.life<=0)continue;
+            if(tickCounter_<=p.start) {
+                const Unit* owner=unit(p.fromId);
+                if(!owner || !owner->alive() || owner->hp<=Fixed())p.life=0;
+                continue;
             }
-        if(fresh)std::erase_if(projectiles_,[](const Projectile& p){return p.life<=0;});
+            if(tickCounter_>=p.end) {
+                // Run out without striking: a miss, as in the straight shots.
+                if(const Unit* t=unit(p.targetId);t && p.wsrc)noteShotImpact(p.fromId,p.targetId,*p.wsrc,p.position,0,t->hp);
+                p.life=0;continue;
+            }
+            // 52e030 steers at a target that is alive (+0x130 0x1000000) and not
+            // dying (0x1000), and tests nothing else: a carried target (its
+            // attach, 51b5a0, keeps both bits; +0x114's carried bits are not
+            // read) is homed on through its SweetSpot over its own +0x68, which
+            // 4dad30 commits at the host's attach point every tick.
+            const Unit* target=unit(p.targetId);
+            const auto targetPoint=target && target->alive() ?
+                queryUnitScriptPoint(p.targetId,true) : p.position;
+            RetailGuidedShot state{p.position,p.velocity,p.angles};
+            const uint32_t flags=(p.wsrc->unitsOnly?0x800u:0u)|
+                (p.wsrc->groundBounce?0x1000u:0u)|(p.wsrc->waterWeapon?0x2000u:0u);
+            const int32_t rawSpeed=int32_t(double(p.wsrc->projVel)*2184.5333333333333);
+            const int32_t speedPerSubstep=rawSpeed/int32_t(p.substeps);
+            int hitUnit=0;
+            const bool hit=retailGuidedTick(state,targetPoint,p.wsrc->turnRate/kTick,
+                speedPerSubstep,
+                p.substeps,p.wsrc->shotSpin,!p.wsrc->shotModel.empty(),
+                [&](const auto& point,int32_t& verticalSpeed) {
+                    const auto result=projectileCollision(point,verticalSpeed,flags,p.fromPlayer,
+                        projectileAircraft);
+                    if(result.code==2)hitUnit=result.unitId;
+                    return result.code;
+                });
+            p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
+            p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+            p.age=int32_t(tickCounter_-p.start);
+            if(hit) {
+                const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
+                applyHit(*p.wsrc,Fixed::raw(p.position[0]).toFloat(),
+                    Fixed::raw(p.position[2]).toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),p.position,{},p.slot);
+                noteShotImpact(p.fromId,p.targetId,*p.wsrc,p.position,hitUnit,shotHp);
+                p.spent=true;p.life=0;
+            } else if(p.life>0)--p.life;
+            continue;
+        }
+        const bool ballistic3d=p.ballistic3d && p.wsrc;
+        const float ox = p.x.toFloat(), oz = p.z.toFloat();   // segment start (before this step)
+        p.x += p.vx;   // px per tick already
+        p.z += p.vz;
+        --p.life;
+        ++p.age;
+        if(ballistic3d) {
+            // BallisticWeapon::update (0x52bf90) resolves every 3D substep
+            // through 0x52a4d0. The old port advanced this XYZ state for drawing
+            // but then used only the separate 2D target sweep for collision, so
+            // arrows passed through trees, terrain and water in World.
+            RetailBallisticShot state{p.position,p.velocity,p.angles};
+            const int32_t gravityStep=retailBallisticGravityStep(ballisticGravityRaw_,
+                p.wsrc->gravityAdj,p.substeps);
+            const uint32_t flags=(p.wsrc->unitsOnly?0x800u:0u)|
+                (p.wsrc->groundBounce?0x1000u:0u)|(p.wsrc->waterWeapon?0x2000u:0u);
+            bool stopped=false;
+            for(uint32_t step=0;step<p.substeps;++step) {
+                retailBallisticStep(state,gravityStep,p.wsrc->shotSpin);
+                const auto hit=projectileCollision(state.position,state.velocity[1],flags,
+                    p.fromPlayer,projectileAircraft);
+                if(hit.code==0)continue;
+                p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
+                p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+                if(hit.code==2) {
+                    const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
+                    applyHit(*p.wsrc,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hit.unitId),p.position,{},
+                             p.slot);
+                    noteShotImpact(p.fromId,p.targetId,*p.wsrc,state.position,hit.unitId,shotHp);
+                }
+                // Native retires an out-of-map shell without damage and dispatches
+                // exactly one impact when collision returns 2.
+                p.spent=true;p.life=-1;stopped=true;break;
+            }
+            if(!stopped) {
+                p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
+                p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+            }
+            // Ballistic XYZ motion owns collision. Keep the old range-derived
+            // endpoint for a shell that completes its simulated flight without a
+            // 3D impact; do not also run the unrelated 2D target-radius sweep.
+            continue;
+        }
+        Unit* t = unit(p.targetId);
+        // Older 2D-only fixture shots may still model a bomb as a terminal
+        // effect. Production DroppedBallistic shots take the 3D collision path
+        // above and never enter this approximate segment test.
+        bool bomb = p.wsrc && p.wsrc->kind == Weapon::Kind::Dropped;
+        if (!bomb && t && t->alive() && !t->embarked()) {
+            // Distance from the target to the segment travelled this tick, so a
+            // fast projectile (e.g. the totem's lightning, ~50px/tick) can't
+            // skip past the small hit radius between ticks.
+            float sx = p.x.toFloat() - ox, sz = p.z.toFloat() - oz;
+            float seg = sx * sx + sz * sz;
+            float u = seg > 0 ? ((t->x.toFloat() - ox) * sx + (t->z.toFloat() - oz) * sz) / seg : 0.0f;
+            u = std::clamp(u, 0.0f, 1.0f);
+            float cx = ox + u * sx, cz = oz + u * sz;
+            float dx = t->x.toFloat() - cx, dz = t->z.toFloat() - cz;
+            float r = t->type ? 8.0f + 8.0f * float(std::max(t->type->footX,
+                                                             t->type->footZ)) : 8.0f;
+            if (dx * dx + dz * dz < r * r) {
+                // Apply the impact: direct hit + area splash (per the weapon's
+                // FBI areaofeffect), using the grid from the previous rebuild.
+                // A shot ALWAYS has its weapon: all three launch sites set wsrc, and
+                // damage is read from the weapon at impact (applyHit -> damageVs), which
+                // is also how retail does it -- it loads the def's damage field at the
+                // point of use in 76 places and snapshots it onto nothing. The
+                // Projectile::damage this branch used was a dead copy of w.damage.
+                applyHit(*p.wsrc, t->x.toFloat(), t->z.toFloat(), p.fromPlayer, p.fromId, t, {},
+                         std::array<int32_t,3>{t->x.v, (t->type && t->type->canFly ? t->flightY : t->groundY).v, t->z.v},
+                         p.slot);
+                p.life = -1;
+                p.spent = true;   // connected: don't also crater at expiry
+            }
+        }
     }
+    // The expiry fallback also handles any legacy 2D bomb fixture. Normal
+    // DroppedBallistic shots retire in the 3D collision path above, where the
+    // native impact cell/unit is known and cannot detonate twice.
+    // ...and so does an ordinary BALLISTIC shell that missed. A retail ballistic
+    // projectile has no lifetime at all: it flies its arc under gravity and always
+    // comes down, and the terrain impact runs the ordinary area-damage path with no
+    // hit unit (KINGDOMS.icd 0x52a6f3 -> 0x529c10). Ours simply vanished, so every
+    // missed siege shell -- 32 ballistic weapon blocks with a real blast radius,
+    // the catapults, trebuchets and mortars -- dealt nothing whatsoever.
+    // A guided or hitscan shot that runs out is still a silent dud, which is retail
+    // too: those DO carry a range-derived expiry that kills them without damage.
+    for (size_t bi = 0; bi < projectiles_.size(); ++bi) {
+        const Projectile bp = projectiles_[bi];
+        if (bp.spent || bp.life > 0 || !bp.wsrc) continue;
+        bool dropped = bp.wsrc->kind == Weapon::Kind::Dropped;
+        // Ballistic = the plain arcing shot: not guided, not a hitscan beam.
+        bool ballistic = bp.wsrc->kind == Weapon::Kind::Normal && !bp.wsrc->beam;
+        // Splash weapons only. Retail also strikes whatever feature sits in the
+        // impact cell even for a shot with no areaofeffect, but our applyHit damages
+        // that centre cell unconditionally -- so porting it literally would have
+        // every stray arrow chopping and igniting forests. Deliberate divergence.
+        if (!dropped && !(ballistic && bp.wsrc->aoe > 0.0f)) continue;
+        // A fallback 2D bomb is let go over its target, so whatever it lands on
+        // takes the DIRECT hit -- several bombs carry no areaofeffect at all. A
+        // missed shell has no such victim: retail's terrain impact carries no hit
+        // unit, and a unit there would have been caught by the in-flight test.
+        Unit* under = nullptr;
+        if (dropped) {
+            float bestD = 1e30f;
+            forEachNear(bp.x.toFloat(), bp.z.toFloat(), 40.0f, [&](int idx) {
+                Unit& e = units_[size_t(idx)];
+                if (!e.alive() || e.embarked() || !e.type || allied(e.player, bp.fromPlayer)) return;
+                float dx = (e.x - bp.x).toFloat(), dz = (e.z - bp.z).toFloat();
+                float d = dx * dx + dz * dz;
+                if (d < bestD) { bestD = d; under = &e; }
+            });
+        }
+        // Either way it bursts on the ground where it came down.
+        const int ground = heights_.empty() ? 0 : retailTerrainHeight(bp.x.v, bp.z.v, terW_, terH_,
+            [&](int x, int z) { return heights_[size_t(z) * size_t(terW_) + size_t(x)]; });
+        applyHit(*bp.wsrc, bp.x.toFloat(), bp.z.toFloat(), bp.fromPlayer, bp.fromId, under,
+                 {}, std::array<int32_t,3>{bp.x.v, Fixed::fromInt(ground).v, bp.z.v}, bp.slot);
+    }
+    std::erase_if(projectiles_, [](const Projectile& p) { return p.life <= 0; });
 
     // Retail updates missions/movers in 51d3e0 before 4f6c70 runs 416430
     // (5263aa, then 526411). Install completed routes only after movement,

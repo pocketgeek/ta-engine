@@ -278,9 +278,14 @@ int main(int argc, char** argv) {
                 const auto& shot=w.projectiles().front();
                 check(shot.guided3d && shot.targetId==mover && shot.fromId==shooter && shot.slot==0,
                       "Guided launch stores its owner, slot, target, and native XYZ trajectory");
-                check(shot.position==shot.muzzle && shot.x.v==shot.position[0] &&
-                      shot.z.v==shot.position[2] && shot.start==w.tickCount()+1 && shot.end>shot.start,
-                      "Guided launch keeps the script muzzle, range lifetime, and delayed start");
+                // TotalA.exe runs the units (0x4954ed) before the projectiles
+                // (0x495513): the missile (0x49c9c0, +0x42 = the fire tick) has
+                // taken its first step (0x49bb5b) when its fire tick ends.
+                std::array<int32_t,3> step=shot.muzzle;
+                for(size_t a=0;a<3;++a)step[a]=int32_t(uint32_t(step[a])+uint32_t(shot.velocity[a]));
+                check(shot.taSelfProp && shot.position==step && shot.x.v==shot.position[0] &&
+                      shot.z.v==shot.position[2] && shot.start==w.tickCount() && shot.age==1 && shot.end>shot.start,
+                      "the missile leaves the script muzzle and takes its first step in its fire tick");
                 // Jump the target 300px sideways: a straight shot now misses by far
                 // more than the hit radius.
                 if (auto* m = w.unit(mover)) { m->x = ta::sim::Fixed::fromInt(1300); m->orders.clear(); }

@@ -249,8 +249,10 @@ int main(int argc, char** argv) {
                   std::to_string(speed));
             // Where the head first meets the target body, flown straight.
             int contact = 0;
-            for (int k = 1; k < 40 && !contact; ++k)
-                if (w.projectilePointInUnit(target, add(muzzle, v, k))) contact = k;
+            for (int k = 1; k < 40 && !contact; ++k) {
+                int32_t vy = v[1];
+                if (w.projectileCollision(add(muzzle, v, k), vy, 0, 0, {}).unitId == target) contact = k;
+            }
             const double dist = std::sqrt(std::pow((aim[0] - muzzle[0]) / 65536.0, 2) +
                                           std::pow((aim[1] - muzzle[1]) / 65536.0, 2) +
                                           std::pow((aim[2] - muzzle[2]) / 65536.0, 2));

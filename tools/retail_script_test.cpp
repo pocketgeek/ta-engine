@@ -790,8 +790,6 @@ int main(int argc,char** argv) {
             shooter.weapons={arrow};shooter.weapon=arrow;
             UnitType targetType;targetType.maxHp=2000;targetType.footX=targetType.footZ=2;
             targetType.modelTop=20*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-10*65536,-10*65536},{10*65536,-10*65536},
-                {10*65536,10*65536},{-10*65536,10*65536}}};
             World world;world.setTerrain(std::vector<uint8_t>(64*64,10),64,64,0);
             RetailMapFeatureType mapTree;mapTree.name="tree";mapTree.projectileHeight=255;
             std::vector<uint16_t> raw(64*64,0xffff);const int treeId=25*64+28;
@@ -823,8 +821,6 @@ int main(int argc,char** argv) {
             arrow.range=550;arrow.damage=476;arrow.reload=100;
             shooter.weapons={arrow};shooter.weapon=arrow;
             targetType.footX=targetType.footZ=4;targetType.modelTop=80*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-24*65536,-24*65536},{24*65536,-24*65536},
-                {24*65536,24*65536},{-24*65536,24*65536}}};
             World world;
             world.setTerrain(std::vector<uint8_t>(64*64,10),64,64,0);
             world.setMapPlacementFeatures(std::vector<uint16_t>(64*64,0xffff),{});
@@ -855,8 +851,6 @@ int main(int argc,char** argv) {
             shooter.weapons={cannon};shooter.weapon=cannon;
             UnitType targetType;targetType.maxHp=2000;targetType.footX=targetType.footZ=2;
             targetType.modelTop=20*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-10*65536,-10*65536},{10*65536,-10*65536},
-                {10*65536,10*65536},{-10*65536,10*65536}}};
             World world;world.setTerrain(std::vector<uint8_t>(64*64,10),64,64,0);
             RetailMapFeatureType mapTree;mapTree.name="tree";mapTree.projectileHeight=255;
             std::vector<uint16_t> raw(64*64,0xffff);const int treeId=25*64+28;
@@ -893,8 +887,6 @@ int main(int argc,char** argv) {
             arrow.range=450;arrow.damage=213;arrow.reload=100;shooter.weapons={arrow};shooter.weapon=arrow;
             UnitType targetType;targetType.maxHp=2000;targetType.footX=targetType.footZ=2;
             targetType.modelTop=80*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-20*65536,-20*65536},{20*65536,-20*65536},
-                {20*65536,20*65536},{-20*65536,20*65536}}};
             World world;world.setTerrain(std::vector<uint8_t>(64*64,10),64,64,0);
             RetailMapFeatureType mapTree;mapTree.name="tree";mapTree.projectileHeight=255;
             std::vector<uint16_t> raw(64*64,0xffff);const int treeId=25*64+28;
@@ -950,8 +942,6 @@ int main(int argc,char** argv) {
             bomber.weapons={egg};bomber.weapon=egg;
             UnitType targetType;targetType.maxHp=100;targetType.footX=targetType.footZ=2;
             targetType.modelTop=20*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-16*65536,-16*65536},
-                {16*65536,-16*65536},{16*65536,16*65536},{-16*65536,16*65536}}};
             World dropped;dropped.setTerrain(std::vector<uint8_t>(64*64,0),64,64,0);
             dropped.setMapPlacementFeatures(std::vector<uint16_t>(64*64,0xffff),{});
             const int bomberId=dropped.spawn(&bomber,400,400,0,0);
@@ -1007,8 +997,6 @@ int main(int argc,char** argv) {
             shooter.weapons.push_back(weapon);shooter.weapon=weapon;
             UnitType targetType;targetType.maxHp=100;targetType.footX=targetType.footZ=2;
             targetType.modelTop=20*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-10*65536,-10*65536},{10*65536,-10*65536},
-                {10*65536,10*65536},{-10*65536,10*65536}}};
             World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
             if(blocked) {
                 RetailMapFeatureType tree;tree.name="tree";tree.projectileHeight=60;
@@ -1058,8 +1046,6 @@ int main(int argc,char** argv) {
             effect.sources.push_back({{256,3*256},{14*256,3*256},1,0,false});
             weapon.lightningEffect=definition;shooter.weapons.push_back(weapon);shooter.weapon=weapon;
             UnitType victim;victim.maxHp=100;victim.footX=victim.footZ=2;victim.modelTop=20*65536;
-            victim.projectileQuad=RetailCollisionQuad{{{-10*65536,-10*65536},{10*65536,-10*65536},
-                {10*65536,10*65536},{-10*65536,10*65536}}};
             World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
             const int from=world.spawn(&shooter,400,400,0,0),target=world.spawn(&victim,480,400,0,1);
             world.unit(from)->groundY=Fixed::fromInt(50);world.unit(target)->groundY=Fixed::fromInt(50);
@@ -1091,8 +1077,6 @@ int main(int argc,char** argv) {
             shooter.weapons.push_back(weapon);shooter.weapon=weapon;
             UnitType targetType;targetType.maxHp=100;targetType.footX=targetType.footZ=2;
             targetType.modelTop=20*65536;
-            targetType.projectileQuad=RetailCollisionQuad{{{-10*65536,-10*65536},{10*65536,-10*65536},
-                {10*65536,10*65536},{-10*65536,10*65536}}};
             World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
             if(blocked) {
                 RetailMapFeatureType tree;tree.name="tree";tree.projectileHeight=60;
@@ -1173,38 +1157,43 @@ int main(int argc,char** argv) {
         require(collision(208*65536,20*65536-1,208*65536)==std::pair{0,-19},"map no-sea-trigger flag bypasses water");
         require(collision(208*65536,10*65536,208*65536)==std::pair{2,-19},"map no-sea-trigger flag retains terrain impacts");
         std::cout<<"PASS: world projectile environment resolves terrain and multi-cell feature collision heights\n";
+        // TotalA.exe 0x49b090: the cell owner below its y + model height
+        // (0x49b1c7..0x49b211), no outline test; the flyer of word +2 from
+        // its y to its top, both included (0x49b222..0x49b275).
         UnitType type;type.maxHp=100;type.modelTop=20*65536;
-        type.projectileQuad=RetailCollisionQuad{{{-10*65536,-10*65536},{10*65536,-10*65536},
-            {10*65536,10*65536},{-10*65536,10*65536}}};
         World world;world.setTerrain(std::vector<uint8_t>(32*32,10),32,32,0);
         world.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
         const int id=world.spawn(&type,200,200);auto* u=world.unit(id);
         u->heading=retailHeadingToPort(0);u->groundY=Fixed::fromInt(50);
-        require(world.projectilePointInUnit(id,{200*65536,60*65536,200*65536}),"world collision uses model quad and body height");
-        require(!world.projectilePointInUnit(id,{210*65536,60*65536,200*65536}),"selection-quad edge is excluded");
-        require(!world.projectilePointInUnit(id,{200*65536,71*65536,200*65536}),"shot above body misses");
         int32_t vy=0;
         const std::array<int32_t,3> bodyPoint{200*65536,60*65536,200*65536};
-        require(world.projectileCollision(bodyPoint,vy,0,1,{}).unitId==id,"primary cell routes to model collision");
+        require(world.projectileCollision(bodyPoint,vy,0,1,{}).unitId==id,"the cell's body is struck below its top");
+        require(world.projectileCollision({207*65536,69*65536,207*65536},vy,0,1,{}).unitId==id,
+            "anywhere in the cell, with no outline test");
+        require(world.projectileCollision({200*65536,70*65536,200*65536},vy,0,1,{}).unitId!=id,
+            "a point at its top passes over (0x49b20d)");
+        require(world.projectileCollision({200*65536,12*65536,200*65536},vy,0,1,{}).unitId==id,
+            "a point below its y still strikes it (no lower bound)");
+        require(world.projectileCollision({217*65536,60*65536,200*65536},vy,0,1,{}).unitId!=id,
+            "a point in the next cell misses it");
         require(world.projectileCollision(bodyPoint,vy,0,0,{}).code==0,"same-owner primary body is excluded");
-        require(world.projectileCollision(bodyPoint,vy,0,0,{},false,bodyPoint,1).code==2,
+        require(world.projectileCollision(bodyPoint,vy,0,0,{},bodyPoint,1).code==2,
             "interception proximity precedes unit ownership");
         type.canFly=true;u->flightY=Fixed::fromInt(100);
-        require(world.projectilePointInUnit(id,{200*65536,110*65536,200*65536}) &&
-            !world.projectilePointInUnit(id,{200*65536,60*65536,200*65536}),"flying collision uses authoritative altitude");
-        require(!world.projectilePointInUnit(999,{0,0,0}),"absent unit has no collision body");
         u->flightGroundMode=2;
-        type.projectileQuad=RetailCollisionQuad{{{-2*65536,-2*65536},{2*65536,-2*65536},
-            {2*65536,2*65536},{-2*65536,2*65536}}};
         const auto airborne=world.updateAirOccupancy();
         require(airborne[12*32+12]==id,"airborne footprint enters the secondary grid");
         require(world.projectileCollision({206*65536,120*65536,200*65536},vy,0,1,airborne).unitId==id,
-            "secondary footprint uses inclusive height without a selection-quad test");
+            "secondary footprint uses inclusive height");
+        require(world.projectileCollision({206*65536,100*65536,200*65536},vy,0,1,airborne).unitId==id,
+            "secondary footprint includes its base");
         require(world.projectileCollision({206*65536,120*65536+1,200*65536},vy,0,1,airborne).code==0,
             "secondary body excludes a point above its top");
+        require(world.projectileCollision({206*65536,100*65536-1,200*65536},vy,0,1,airborne).code==0,
+            "secondary body excludes a point below its base");
         require(world.projectileCollision({206*65536,110*65536,200*65536},vy,0,0,airborne).code==0,
             "same-owner aircraft is excluded");
-        std::cout<<"PASS: world projectile point query uses native model quad and altitude\n";
+        std::cout<<"PASS: world projectile point query follows TotalA.exe 0x49b090\n";
     }
     {
         using namespace ta::sim;

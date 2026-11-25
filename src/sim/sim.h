@@ -383,7 +383,6 @@ struct UnitType {
     std::string shadowArt;    // FBI shadowart: shadow sprite name in shadows.gaf
     bool upright=false;
     std::optional<RetailGroundSupport> groundSupport;
-    std::optional<RetailCollisionQuad> projectileQuad;
     bool groundModelLoaded=false;
     int32_t modelTop=0; // native fixed-point model top, type +0x14a
     uint8_t sightHeight=0; // low byte of the bind-pose model top's integer height
@@ -3088,23 +3087,24 @@ public:
     // A script piece's world point (0x43def0; a SweetSpot's drawn centre);
     // a piece out of range is the unit origin.
     std::array<int32_t,3> unitPiecePoint(Unit& u,int32_t piece,bool sweetSpot);
-    bool projectilePointInUnit(int unitId,const std::array<int32_t,3>& point) const;
     // Native collision result: 0 clear/bounce, 1 outside map, 2 environmental hit.
     int projectileEnvironment(const std::array<int32_t,3>& point,int32_t& verticalSpeed,
                               uint32_t weaponFlags) const;
     // Retail's persistent secondary (airborne) occupant grid, map word +2.
-    // Rebuilt once per tick in player/entity order (51da76/51db36); read by
-    // projectiles and by the landing-site predicate 509400.
+    // Rebuilt once per tick in player/entity order (51da76/51db36), after the
+    // units' pass and before the projectiles' (World::tick); read by the
+    // projectiles (TotalA.exe 0x49b222) and by the landing-site predicate.
     RetailAirOccupancy airOccupancy_;
     int airRetiring_=0;
     struct AirOccupancyHost;
     std::span<const int> updateAirOccupancy();
     void retireAirOccupant(Unit& u);
+    // TotalA.exe 0x49b090, every shot kind's test of one point: 0 clear (or a
+    // bounce), 1 off the map, 2 a burst (unitId the body struck, or 0).
     struct ProjectileCollisionResult { int code=0,unitId=0; };
     ProjectileCollisionResult projectileCollision(const std::array<int32_t,3>& point,
         int32_t& verticalSpeed,uint32_t weaponFlags,int owner,std::span<const int> airGrid,
-        bool bypassPrimaryGeometry=false,std::optional<std::array<int32_t,3>> targetShot={},
-        uint16_t proximityRadius=0,bool taPrimaryHeight=false) const;
+        std::optional<std::array<int32_t,3>> targetShot={},uint16_t proximityRadius=0) const;
     uint64_t stateHash() const;
     // A coarse, layout-independent digest for replay verification: FNV over (id, type,
     // owner, x, z, hp, front order kind and target) in unit-id order and nothing else --

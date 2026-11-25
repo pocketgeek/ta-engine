@@ -229,12 +229,14 @@ int main(int argc, char** argv) {
                             still = true;
                     if (still) continue;
                     ++shells;
-                    // The burst point is the next step along: allow one tick of travel.
+                    // The burst point is the next step along: allow one tick of travel,
+                    // and half the target's footprint: 0x49b090 strikes the body
+                    // anywhere in its cells below its top (0x49b1c7..0x49b211).
                     const double dx = (old.position[0] - old.taTargetPoint[0]) / 65536.0;
                     const double dz = (old.position[2] - old.taTargetPoint[2]) / 65536.0;
                     const double miss = std::sqrt(dx * dx + dz * dz);
                     worstMiss = std::max(worstMiss, miss);
-                    if (miss < 48.0 + w.accuracy / 65536.0 * 6.283 * gap) ++near;
+                    if (miss < 48.0 + 8.0 * std::max(dummy->footX, dummy->footZ) + w.accuracy / 65536.0 * 6.283 * gap) ++near;
                 }
                 live.clear();
                 for (const auto& q : p.a.projectiles())
