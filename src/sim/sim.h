@@ -992,14 +992,14 @@ struct alignas(64) Order {
     // with a tag when set.
     bool suppressApproach = false;
     int32_t padSuppress1_ = 0;      // was Kingdoms' approach ring; kept for Order's layout
-    // A flyer's attack at a point (the same 4de530 kind 3 resolver, by the
-    // selected slot's weapon): AIRSTRIKE (`dropped`), AIRTOGROUNDHOVER (the
-    // type's hoverattack) or AIRTOGROUND, each with no target unit (mission
-    // +0x16 is 0). Its point (+0x22) is attackPointX/Z, its mission runs on
-    // `mission`, its +0x4e in airRunCount and its controller in flightGoal,
-    // as on a flyer's unit attack (World::tickAirPoint). targetId stays 0.
-    // Hashed with a tag when set.
-    static constexpr uint8_t kAirStrike = 1, kAirHover = 2, kAirRun = 3;
+    // A flyer's attack at a point (TotalA.exe's resolver 0x43f1b7, by slot
+    // 0's weapon): AIRSTRIKE (`dropped`) or AIRTOGROUND, each with no target
+    // unit (mission +0x16 is 0); a hover gunship gets AIRTOGROUND too. Its
+    // point (+0x22) is attackPointX/Z, its mission runs on `mission`, its
+    // +0x4e in airRunCount and its controller in flightGoal, as on a flyer's
+    // unit attack (World::tickAirPoint). targetId stays 0. 2 is not used
+    // (it was an engine-only hover at a point). Hashed with a tag when set.
+    static constexpr uint8_t kAirStrike = 1, kAirRun = 3;
     uint8_t airPoint = 0;
     // A formation leg an attack's group check put ahead of the attack
     // (SUPPRESS's Move_Ground_Formation, a flyer attack's

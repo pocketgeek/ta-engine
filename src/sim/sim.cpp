@@ -9409,13 +9409,14 @@ bool World::suppress(int unitId, float x, float z, bool queue) {
     o.issuedTick=tickCounter_;
     o.attackPointX=px;o.attackPointZ=pz;
     if (u->type->canFly) {
-        // 4de770..4de7e3: the selected slot's `dropped` key gives AIRSTRIKE
-        // (row 0x615dac), the type's hoverattack (+0x260 0x8000000; not the
-        // weapon's) AIRTOGROUNDHOVER (0x615d98), else AIRTOGROUND (0x615d8c);
-        // each with no target, so the ctor (4d6d66) clears the target bit
-        // 0x200 from the row's flags.
-        o.airPoint=u->type->weapons[size_t(slot)].cursorAirstrike ? Order::kAirStrike
-                 : u->type->hoverAttack ? Order::kAirHover : Order::kAirRun;
+        // TotalA.exe 0x43f1b7..0x43f1cf: with no target, slot 0's weapon
+        // (type +0x1ee) decides alone: `dropped` (weapon +0x111 bit 8) gives
+        // AIRSTRIKE (0x43f2b2), any other AIRTOGROUND (0x43f302). The type's
+        // hoverattack (+0x241 0x8000000) is read only with a target
+        // (0x43f2fa / 0x43f323): a hover gunship attacks a point with
+        // AirToGround's runs. Each with no target, so the ctor clears the
+        // target bit 0x200 from the row's flags (0x43a1a1).
+        o.airPoint=u->type->weapons[size_t(slot)].cursorAirstrike ? Order::kAirStrike : Order::kAirRun;
     } else {
         o.suppress=true;
         o.suppressSlot=uint8_t(slot);
@@ -9427,7 +9428,6 @@ bool World::suppress(int unitId, float x, float z, bool queue) {
 void World::tickAirPoint(Unit& u) {
     switch (u.orders.front().airPoint) {
     case Order::kAirStrike: tickAirStrike(u,nullptr); break;
-    case Order::kAirHover: tickTaAirAttack(u,nullptr,true); break;
     default: tickTaAirAttack(u,nullptr,false); break;
     }
 }
@@ -14469,15 +14469,15 @@ void World::tickRetailConstruction(Unit& builder) {
 
 // TotalA.exe's AirToGround (0x412710, retailTaAirToGround) and
 // AirToGroundHover (0x413470, retailTaAirToGroundHover) on a flyer's attack
-// order: a unit target that cannot fly, or an attack at a point
-// (Order::kAirRun / kAirHover, World::suppress). Both run on the order's own
-// state: Order::mission, mission +0x22 in attackPointX/Z, the hover's side
-// (+0x36) in bit 16 of airRunCount and its miss count (+0x3a) in the low word.
-// A unit target's lost-target exits are tickCombat's (seekLostTarget), before
-// the dispatch, so the head's own seek is reached only by an attack at a point:
-// VTOL_SEEKATTACK at the point once the attack has gone. Engine deviation:
-// TotalA.exe has no hover at a point (its stages read the target, +0x16), so
-// World's runs its stages on the point.
+// order: AirToGround on a unit target that cannot fly or at a point
+// (Order::kAirRun, World::suppress), AirToGroundHover only on a unit target
+// (the resolver gives a point no hover, 0x43f1b7). Both run on the order's
+// own state: Order::mission, mission +0x22 in attackPointX/Z, the hover's
+// side (+0x36) in bit 16 of airRunCount and its miss count (+0x3a) in the
+// low word. A unit target's lost-target exits are tickCombat's
+// (seekLostTarget), before the dispatch, so the head's own seek is reached
+// only by an attack at a point: VTOL_SEEKATTACK at the point once the
+// attack has gone.
 void World::tickTaAirAttack(Unit& u,const Unit* target,bool hover) {
     struct Host {
         World& w; Unit& u; const Unit* target; bool hover;
@@ -14486,7 +14486,7 @@ void World::tickTaAirAttack(Unit& u,const Unit* target,bool hover) {
         Fixed seekX,seekZ;
         bool owns(const Order& o) const {
             if (target) return o.targetId==target->id;
-            return o.airPoint==(hover ? Order::kAirHover : Order::kAirRun) && !o.targetId;
+            return !hover && o.airPoint==Order::kAirRun && !o.targetId;
         }
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
@@ -14552,14 +14552,10 @@ void World::tickTaAirAttack(Unit& u,const Unit* target,bool hover) {
             goal.point.y=Fixed::fromInt(std::min(511,ground+u.type->cruiseAlt)).v;
             install(goal);
         }
-        // 0x49abb0(unit, target, 0): slot 0's range test.
+        // 0x49abb0(unit, target, 0): slot 0's range test (AirToGroundHover
+        // runs only on a unit target).
         bool inReach() const {
-            if (u.type->weapons.empty()) return false;
-            if (target) return w.slotInRange(u,*target,0);
-            const Order& o=u.orders.front();
-            const int64_t dx=(u.x.v>>16)-(o.attackPointX.v>>16),dz=(u.z.v>>16)-(o.attackPointZ.v>>16);
-            const int64_t r=u.type->weapons.front().range;
-            return dx*dx+dz*dz<=r*r;
+            return !u.type->weapons.empty() && target && w.slotInRange(u,*target,0);
         }
         // 0x412b3f / 0x413a8a: the pad test, and the landing put ahead once the
         // dispatch is done (its controller let go, 0x412bbe / 0x413b04).

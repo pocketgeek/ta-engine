@@ -2,6 +2,7 @@
 #include "sim/retailflight.h"
 #include "sim/retailrng.h"
 #include "sim/retailpark.h"
+#include "sim/retailairground.h"
 #include "sim/pathsearch.h"
 #include <algorithm>
 #include <functional>
@@ -351,6 +352,33 @@ int main(int argc, char** argv) {
         g.states={{}}; g.queue={0}; g.actions={{9,-1,0,0,0,false},{2,-1,1,0,0,false}};
         retailDispatchMissions(1,g.events,g);
         if (!(g.states[0].flags&0x800000u) || g.states[0].stage!=0) return 1;
+    }
+    {
+        // AirToGroundHover stage 3 (0x413902): two misses of slot 0's reach
+        // wait on 0x110e8 (0x413996), the unit word's refused aim (TA 0x1000,
+        // World 0x100000) among them; a hold waits on 0x100e8.
+        struct Hover {
+            bool reach=false; int holds=0;
+            uint32_t random(int) { return 0; }
+            void seek(bool,RetailFlightVector) {}
+            bool beginFlight() { return false; }
+            void slotsAuto() {}
+            void aim() {}
+            void install(const RetailFlightGoal&) {}
+            void hold(const RetailFlightGoal&) { ++holds; }
+            bool inReach() const { return reach; }
+            bool padDamaged() const { return false; }
+            bool padDetour() { return false; }
+        } host;
+        RetailTaAirAttack in; in.target=true; in.range=300;
+        in.position={0,0,0}; in.targetPoint={Fixed::fromInt(400).v,0,0};
+        RetailMissionState hm; hm.stage=3;
+        int32_t side=0,misses=1;
+        int r=retailTaAirToGroundHover(hm,{},side,misses,0,0,in,host);
+        if (r!=2 || misses!=0 || hm.waitMask!=(0x728u|0x100000u) || host.holds) return 1;
+        host.reach=true;
+        r=retailTaAirToGroundHover(hm,{},side,misses,0,0,in,host);
+        if (r!=2 || hm.waitMask!=0x728u || host.holds!=1) return 1;
     }
     std::cout << "retail_mission_test: passed\n";
 }

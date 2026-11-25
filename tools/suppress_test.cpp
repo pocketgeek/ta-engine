@@ -179,8 +179,8 @@ Run fireAt(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const Shooter& sh,
         r.endDist = d;
         if (i >= ticks * 2 / 3) { lateSum += d; ++lateN; }
         r.airborne = r.airborne || u->flightGroundMode == 2;
-        if (!u->orders.empty() && u->orders.front().airPoint == sim::Order::kAirHover &&
-            u->orders.front().flightGoal && u->orders.front().flightGoal->radius == 0x10) {
+        if (!u->orders.empty() && u->orders.front().airPoint && u->orders.front().flightGoal &&
+            u->orders.front().flightGoal->radius == 0x10 && (u->orders.front().flightGoal->flags & 0x40)) {
             ++r.ringGoals;
             if ((u->orders.front().flightGoal->flags & 0x48) != 0x48) r.ringWithoutFixed = true;
         }
@@ -337,25 +337,18 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
         check(r.orderAtEnd && r.ordersAtEnd == 1, "and keeps the order", describeAir(r));
         check(flyAt(vfs, reg, runner, 1500).hash == r.hash, "the same run gives the same state hash");
     }
-    // AIRTOGROUNDHOVER: holds two thirds of slot 0's range off the point,
-    // 45 degrees either side of its bearing in turn (TotalA.exe 0x4139ad;
-    // World runs it on the point), and fires.
+    // A hoverattack flyer at a point: TotalA.exe's resolver gives a point no
+    // AIRTOGROUNDHOVER (0x43f1b7..0x43f1cf reads only slot 0's `dropped`;
+    // hoverattack is read with a target, 0x43f2fa), so it flies AIRTOGROUND's
+    // runs over the point.
     {
         const Run r = flyAt(vfs, reg, hover, 1500);
-        const int d = int(hover->weapons[0].range) * 2 / 3;
-        std::printf("  %s (hoverattack, distance %d) at a point 600 px off: %s\n", hover->id.c_str(), d,
-                    describeAir(r).c_str());
-        check(r.airKind == Order::kAirHover, "a hoverattack flyer gets AIRTOGROUNDHOVER at the point", describeAir(r));
-        // Between two holds a quarter turn apart it passes 0.71 d off the point.
-        check(r.airborne && r.lateDist > 0.65f * d && r.lateDist < d + 24, "it hovers two thirds of its range off the point",
-              describeAir(r));
-        check(r.shots >= 2 && r.hits >= 2 && r.hitDist < 64 && !r.targetedShot,
-              "and its shots land on the point, with no target", describeAir(r));
+        std::printf("  %s (hoverattack) at a point 600 px off: %s\n", hover->id.c_str(), describeAir(r).c_str());
+        check(r.airKind == Order::kAirRun, "a hoverattack flyer gets AIRTOGROUND at the point (0x43f302)", describeAir(r));
+        check(r.ringGoals == 0, "it never holds a hover station over the point", describeAir(r));
+        check(r.airborne && r.shots >= 2 && r.hits >= 2 && r.hitDist < 64 && !r.targetedShot,
+              "its shots land on the point, with no target", describeAir(r));
         check(r.orderAtEnd && r.ordersAtEnd == 1, "and keeps the order", describeAir(r));
-        // 0x413a52..0x413a76: the hold is the target controller (0x44e330:
-        // headed, 0x40 here), radius 0x10, at cruisealt (0x44e6c0: 0x8).
-        check(r.ringGoals > 0 && !r.ringWithoutFixed,
-              "each hold has a fixed heading and its own altitude (0x48)", describeAir(r));
     }
     // AIRSTRIKE: the shipped bomber, whose bomb is `dropped`.
     {
