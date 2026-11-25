@@ -65,7 +65,7 @@ struct Scene {
         w->setPathService(true);
         w->setFeatureTypes({body});
         w->mapCorpse(&t.victim, 0);
-        w->player(0).mana = 100;
+        
         dead = w->spawn(&t.victim, bodyX, 300, 0, owner);
         w->unit(dead)->hp = {}; w->unit(dead)->deathType = 9;
     }
@@ -129,7 +129,8 @@ static void orderedResurrect(const Types& t) {
     s.tick(300);
     const sim::Unit* raised = s.w->unit(raisedId);
     check(raised && raised->hp > Fixed::fromInt(1), "...which gains health");
-    check(s.w->player(0).mana == 100, "raising cost nothing");
+    check(s.w->books(0).stored[0] == 0 && s.w->books(0).stored[1] == 0 && s.w->books(0).own[0].req == 0 &&
+          s.w->books(0).own[1].req == 0, "raising cost nothing");
 }
 
 // A feature -- a map wreck, or the heap a destroyed wreck leaves -- is raised

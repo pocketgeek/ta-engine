@@ -10,7 +10,7 @@ static void check(bool value,const char* message) {if(!value)throw std::runtime_
 int main() try {
     auto files=std::make_shared<hpi::Vfs::Files>();
     auto text=[&](const std::string& path,const std::string& value){(*files)[path]={value.begin(),value.end()};};
-    text("units/tower.fbi","[UNITINFO]{\nunitname=tower;\nname=Tower;\nmaxdamage=100;\nfootprintx=2;\nfootprintz=3;\n}");
+    text("units/tower.fbi","[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=tower;\nname=Tower;\nmaxdamage=100;\nfootprintx=2;\nfootprintz=3;\n}");
     tnt::Map map;map.width=map.height=64;map.blocksX=map.blocksY=32;
     map.heights.assign(4096,40);map.features.assign(4096,0xffff);
     map.tileKeys.assign(1024,0);map.tileCols.assign(1024,0);map.tileRows.assign(1024,0);

@@ -374,10 +374,10 @@ int main(int argc,char** argv) {
             if (!legion) {
                 sim::World w;std::vector<Placed> placed;ring(placed);fixture(w,placed,mode);
                 const int b=w.spawn(&worker,650,800,0,0);w.updateNavigationExploration();
-                const double mana=w.player(0).mana;   // no reclaim income
+                const float metal=w.books(0).own[1].prod,energy=w.books(0).own[0].prod;   // no reclaim income
                 w.reclaim(b,walled,false);
                 int children=0;const int t=drive(w,b,1500,children);
-                check(w.unit(b)->orders.empty() && w.feature(walled)->alive && w.player(0).mana<=mana,
+                check(w.unit(b)->orders.empty() && w.feature(walled)->alive && w.books(0).own[1].prod<=metal && w.books(0).own[0].prod<=energy,
                       "an unreachable single reclaim ends on its failed approach");
                 std::printf("     (dropped at t=%d)\n",t);
             }

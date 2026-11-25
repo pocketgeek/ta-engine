@@ -6,7 +6,8 @@ static void check(bool ok,const char* why) {if(!ok)throw std::runtime_error(why)
 template<class F> void rejects(F fn) {bool rejected=false;try{fn();}catch(const ParseLimitError&){rejected=true;}check(rejected,"limit not enforced");}
 int main() try {
     auto root=parseText("[MiXeD]{\n Value=first;\n}\n[other]{}\n[mixed]{\nVALUE=last;\n}");
-    check(root.child("MIXED")->valueOr("value","")=="last","case/last definition");
+    // TA (CLAUDE.md, src/tdf): the first definition of a section wins.
+    check(root.child("MIXED")->valueOr("value","")=="first","case/first definition");
     auto ordered=root.orderedChildren();
     check(ordered.size()==3 && ordered[0].second->valueOr("VALUE","")=="first" && ordered[2].first=="mixed","duplicate order/history");
     check(root.childOrder.size()==2,"unique first-seen order");
@@ -22,7 +23,8 @@ int main() try {
     rejects([&]{parseText("[b]{}","shared",{1,20,100000,{},&usage});});
     ta::StopSource stop;stop.request_stop();
     rejects([&]{parseText("[a]{}","cancel",{10,20,100000,stop.get_token()});});
-    auto strings=parseText("// comment\n[TEXT]{\na=French; sentence;\nb=};\n}");
-    check(strings.child("text")->valueOr("a","")=="French; sentence" && strings.child("text")->valueOr("b","")=="}","retail string syntax");
+    auto strings=parseText("// comment\n[TEXT]{\na=French; sentence;\n}");
+    // TA: a value ends at the first ';'.
+    check(strings.child("text")->valueOr("a","")=="French","retail string syntax");
     std::puts("TDF compatibility and resource limits passed");return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"%s\n",e.what());return 1;}

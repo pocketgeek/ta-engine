@@ -214,13 +214,13 @@ void armedRows() {
     ClickUnit caster = builder(); caster.raise = true; caster.reclaim = true;
     c = armed('c', HoverKind::None, caster);
     expect(c.order, ClickOrder::Resurrect, "2.5 a raisable reclaimable body: Resurrect");
-    expectCursor(c.cursor, CursorId::Revive, "2.5 a raisable reclaimable body: Revive (retail shows Reclaim)");
+    expectCursor(c.cursor, CursorId::Reclaim, "2.5 a raisable reclaimable body: Reclaim, as retail shows it");
     ClickUnit mason = builder(); mason.reclaim = true;
     c = armed('c', HoverKind::None, mason);
     expect(c.order, ClickOrder::Reclaim, "2.5 a feature: Reclaim");
     expectCursor(c.cursor, CursorId::Reclaim, "2.5 a feature: Reclaim cursor");
     ClickUnit raiser = builder(); raiser.raise = true;
-    expectCursor(armed('c', HoverKind::None, raiser).cursor, CursorId::Revive, "2.5 a non-reclaimable body: Revive (ours)");
+    expectCursor(armed('c', HoverKind::None, raiser).cursor, CursorId::Reclaim, "2.5 a raisable feature: Reclaim (retail)");
     expectCursor(armed('c', HoverKind::None, soldier()).cursor, CursorId::Normal, "2.5 nothing there: Normal");
     // TotalA.exe 0x43f0e0 action 12 over a unit: a reclaimable feature under
     // the point first (0x43f68a), else RECLAIMUNIT on the unit, any owner's (0x43f6aa).
@@ -408,7 +408,7 @@ bool cursorNames(CursorId c, ClickOrder o) {
         case ClickOrder::AttackMove: return c == CursorId::Attack || c == CursorId::Airstrike || c == CursorId::Move;
         case ClickOrder::Reclaim: case ClickOrder::ReclaimArea: case ClickOrder::ReclaimUnit:
             return c == CursorId::Reclaim;
-        case ClickOrder::Resurrect: return c == CursorId::Revive;
+        case ClickOrder::Resurrect: return c == CursorId::Revive || c == CursorId::Reclaim;
         case ClickOrder::Pickup: return c == CursorId::Load;
         case ClickOrder::Assist: case ClickOrder::Repair: return c == CursorId::Repair;
         case ClickOrder::Guard: return c == CursorId::Defend;

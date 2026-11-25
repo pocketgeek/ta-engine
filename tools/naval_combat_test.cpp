@@ -61,7 +61,7 @@ int main(int argc,char**argv) {
             const float initial=order==0?distance:order==1?
                 float(std::min<int>(type->weapon.range,type->sight))+300.f:float(type->weapon.range)+300.f;
             const int a=w.spawn(type,tx-initial,tz,0,0),b=w.spawn(&victim,tx,tz,0,1);
-            w.player(0).mana=30000;
+            
             if (order==1) w.attackMove(a,shore?4048.f:tx,tz,false);
             if (order==2) w.attack(a,b,false);
             bool fired=false,routed=false,seen=false;
@@ -200,7 +200,7 @@ int main(int argc,char**argv) {
                 w.spawn(&spotter,tx,tz-240,0,0);
                 const int a=w.spawn(sub,tx-distance,tz,1.570796327f,0);
                 w.unit(a)->moveState=moveState;
-                w.player(0).mana=30000;
+                
                 Shot out;
                 std::vector<std::pair<float,float>> trail;
                 bool attacking=false;

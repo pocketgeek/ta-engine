@@ -175,7 +175,7 @@ static std::unique_ptr<World> makeWorld() {
     w->setTerrain(std::vector<uint8_t>(size_t(128) * 128, 100), 128, 128, 20);
     w->setPathService(true);
     w->player(0).team = 0; w->player(1).team = 1;
-    w->player(0).mana = 1e6; w->player(1).mana = 1e6;
+    
     // TA economy (sim/taeconomy.h): plenty of metal and energy in store, so builds never stall.
     w->setStartResources(0, 1e6f, 1e6f); w->setStartResources(1, 1e6f, 1e6f);
     return w;

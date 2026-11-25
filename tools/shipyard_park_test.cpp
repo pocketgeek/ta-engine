@@ -54,13 +54,13 @@ void setupPondMap(sim::World& w,const sim::TypeRegistry& registry,sim::Pathfindi
 void pondYard(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
     sim::World w;setupPondMap(w,registry,mode);
     const auto* sub=registry.find("armsub");
-    auto yardType=*registry.find("armsy");yardType.workerTime*=20;yardType.storage=1000000;
+    auto yardType=*registry.find("armsy");yardType.workerTime*=20;
     const int yard=w.spawn(&yardType,1800,1800,0,0);
-    w.player(0).mana=1000000;w.train(yard,sub,3);
+    w.train(yard,sub,3);
     const Rect pad=footprint(*w.unit(yard));
     std::vector<int> subs;int firstDone=-1,firstClear=-1,tick=0;
     for(;tick<12000;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         for(const auto& u:w.units())
             if(u.alive() && u.type==sub && std::find(subs.begin(),subs.end(),u.id)==subs.end())subs.push_back(u.id);
         if(!subs.empty()) {
@@ -90,15 +90,15 @@ void landFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,boo
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto barracks=*registry.find("armlab");barracks.workerTime*=20;barracks.storage=1000000;
+    auto barracks=*registry.find("armlab");barracks.workerTime*=20;
     const auto* sword=registry.find("armpw");
     const int id=w.spawn(&barracks,1800,1800,0,0);
     if(rally)w.order(id,2600,1000,false);
-    w.player(0).mana=1000000;w.train(id,sword,count);
+    w.train(id,sword,count);
     const Rect yard=footprint(*w.unit(id));
     std::vector<int> out;bool parked=true,rallied=true;
     for(int tick=0;tick<6000;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         for(const auto& u:w.units())
             if(u.alive() && u.type==sword && !u.underConstruction && std::find(out.begin(),out.end(),u.id)==out.end()) {
                 out.push_back(u.id);
@@ -168,7 +168,7 @@ void deadRally(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto barracks=*registry.find("armlab");barracks.workerTime*=20;barracks.storage=1000000;
+    auto barracks=*registry.find("armlab");barracks.workerTime*=20;
     const auto* sword=registry.find("armpw");
     const int id=w.spawn(&barracks,1800,1800,0,0);
     const int victim=w.spawn(sword,2600,1000,1,0);
@@ -177,10 +177,10 @@ void deadRally(const sim::TypeRegistry& registry,sim::PathfindingMode mode) {
     w.destroy(victim);   // self-destruct: two seconds, then gone
     for(int tick=0;tick<300 && w.unit(victim) && w.unit(victim)->alive();++tick)w.tick(1.f/30);
     const bool gone=!w.unit(victim) || !w.unit(victim)->alive();
-    w.player(0).mana=1000000;w.train(id,sword,1);
+    w.train(id,sword,1);
     int out=0;bool parked=false;
     for(int tick=0;tick<3000 && !out;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         for(const auto& u:w.units())
             if(u.alive() && u.type==sword && u.player==0 && !u.underConstruction) {
                 out=u.id;parked=std::any_of(u.orders.begin(),u.orders.end(),[](const auto& o){return bool(o.park);});
@@ -217,12 +217,12 @@ void flyerFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,co
     const std::string label=modeLabel(mode)+factoryId+"/"+flyerId+": ";
     if(!flyer || !shipped || !flyer->canFly || !shipped->isStructure()) {check(false,label+"fixture: a factory and a flyer");return;}
     sim::World w;flatWorld(w,registry,mode);
-    auto factory=*shipped;factory.workerTime*=40;factory.storage=1000000;
+    auto factory=*shipped;factory.workerTime*=40;
     constexpr float kFx=2000,kFz=2000,kRx=3000,kRz=1200;
     const int id=w.spawn(&factory,kFx,kFz,0,0);
     if(rally)w.order(id,kRx,kRz,false);
     const int count=rally?3:12;
-    w.player(0).mana=1000000;w.train(id,flyer,count);
+    w.train(id,flyer,count);
     struct Out {int id;bool seen=false,resolved=false;size_t legs=0;float x=0,z=0;};
     // Retail's PARK lasts until its flight arrives: the leg keeps its park on
     // the way, so the AI still sees a parked newborn it is free to command
@@ -231,7 +231,7 @@ void flyerFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,co
     std::vector<Out> out;
     int tick=0;
     for(;tick<20000;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         for(const auto& u:w.units()) {
             if(!u.alive() || u.type!=flyer || u.underConstruction)continue;
             auto it=std::find_if(out.begin(),out.end(),[&](const Out& o){return o.id==u.id;});
@@ -290,7 +290,7 @@ void flyerMobileRally(const sim::TypeRegistry& registry,sim::PathfindingMode mod
     const std::string label=modeLabel(mode)+"mobile producer/armpeep: ";
     if(!shipped || !shipped->canFly) {check(false,label+"fixture: a flyer");return;}
     sim::World w;flatWorld(w,registry,mode);
-    auto flyer=*shipped;flyer.buildTime=1;flyer.buildCost=0;
+    auto flyer=*shipped;flyer.buildTime=1;flyer.buildCostMetal=0;
     sim::UnitType producer{};producer.id=producer.name="mobile-producer";producer.footX=producer.footZ=6;
     producer.maxHp=10000;producer.isBuilder=true;producer.workerTime=1000;
     producer.maxVel=sim::Fixed::fromFloat(1);producer.canMove=true;

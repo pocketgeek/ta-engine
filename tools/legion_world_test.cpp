@@ -4757,17 +4757,17 @@ ProbeRun patrolrepairRun(bool serial,bool moving) {
     UnitType builder{};builder.id=builder.name="legion-worker";builder.isBuilder=builder.canMove=builder.canReclaim=builder.canPatrol=true;
     builder.upright=true;builder.maxHp=100;builder.footX=builder.footZ=2;builder.maxVel=Fixed::fromInt(3);
     builder.accel=builder.brake=Fixed::fromInt(10);builder.turnRate=builder.turnInPlaceRate=10000;builder.halfCellTicks=3;
-    builder.sight=160;builder.sightHeight=24;builder.workerTime=100;builder.buildDist=80;builder.storage=10000;builder.buildTime=1;
+    builder.sight=160;builder.sightHeight=24;builder.workerTime=100;builder.buildDist=80;builder.buildTime=1;
     UnitType lode{};lode.id=lode.name="legion-lode";lode.side="ARA";lode.maxHp=100;lode.maxVel=Fixed();
-    lode.footX=lode.footZ=4;lode.buildTime=100;lode.buildCost=10;
-    UnitType ally=builder;ally.id=ally.name="legion-ally";ally.isBuilder=false;ally.buildTime=100;ally.buildCost=10;
+    lode.footX=lode.footZ=4;lode.buildTime=100;lode.buildCostMetal=10;
+    UnitType ally=builder;ally.id=ally.name="legion-ally";ally.isBuilder=false;ally.buildTime=100;ally.buildCostMetal=10;
     builder.workerTime=moving?10:100;if(moving)builder.buildDist=16;
     const int id=f.spawn(builder,16,32);
     const int damaged=moving?f.spawn(ally,24,32):f.spawn(lode,40,37);
     f.start();
     f.world.unit(damaged)->hp=Fixed::fromInt(moving?20:25);
     if(!moving)f.world.blockFoot(lode,float((40+g_shift)*16),float((37+g_shift)*16),true);
-    f.world.player(0).mana=10000;
+    
     const auto searches0=f.world.pathStats().requests();
     f.world.patrol(id,64*16,32*16);
     bool repaired=false,resumed=false,started=false,moved=false;int repairTicks=0,retailTicks=0,legionTicks=0;

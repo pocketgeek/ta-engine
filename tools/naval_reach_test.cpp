@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
                 w.setPathfindingMode(ta::sim::PathfindingMode::Legion);
                 w.setMapPlacementFeatures(std::vector<uint16_t>(size_t(W) * H, 0xffff), {});
             }
-            w.player(0).mana = 100000;
+            
             // TotalA.exe's search reads an unexplored cell as clear ground
             // (0x40d7b0, docs/retail-pathfinding.md 2.4): unexplored sea would
             // send the builder scouting the coast. Reachability is the question

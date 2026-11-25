@@ -1,5 +1,5 @@
 // Absurd / Absurdly Defensive AI seats earn double energy AND metal: the seat's
-// income multiplier (ai::incomeMultFor -> MatchSlot::manaMult -> PlayerBooks::mult)
+// income multiplier (ai::incomeMultFor -> MatchSlot::incomeMult -> PlayerBooks::mult)
 // scales every production credit of the TA economy settle (sim/taeconomy.cpp).
 // Retail's own computer levels keep TotalA.exe's x0.5 / x0.7 / x1.0 (retail-ai.md 2).
 #include "ai/ai.h"

@@ -1118,13 +1118,13 @@ int main(int argc,char** argv) {
             0x10021004,3,0x10021001,1,0x10031000,0x10023004,3,0x10065000};
         UnitType repairer;repairer.maxHp=100;repairer.isBuilder=true;repairer.canMove=true;
         repairer.workerTime=1;repairer.simulationScript=repairFile;
-        UnitType damaged;damaged.maxHp=100;damaged.buildTime=100;damaged.buildCost=100;
+        UnitType damaged;damaged.maxHp=100;damaged.buildTime=100;damaged.buildCostMetal=100;
         World repairWorld;
         repairWorld.setTerrain(std::vector<uint8_t>(32*32,100),32,32,20);
         const int worker=repairWorld.spawn(&repairer,200,200,0);
         const int repaired=repairWorld.spawn(&damaged,220,200,0);
         repairWorld.unit(repaired)->hp=Fixed::fromInt(50);
-        repairWorld.player(0).mana=0;
+        
         const uint16_t repairHeading=uint16_t(retailDirection(Fixed::fromInt(-20),Fixed()).v-
             portHeadingToRetail(repairWorld.unit(worker)->heading));
         // RepairUnit's approach (407190 stages 0-1): the worker already
@@ -1308,7 +1308,7 @@ int main(int argc,char** argv) {
         cloakWorld.tick(1.f/30);
         require(!cloakWorld.unit(spy)->cloaked && RetailReplayProbe::scriptStatics(cloakWorld,spy)[0]==1,
             "StartCloaking reaches the script even when the unit cannot pay to turn invisible");
-        cloakWorld.unit(nearby)->hp={};cloakWorld.player(0).mana=0;
+        cloakWorld.unit(nearby)->hp={};
         cloakWorld.tick(1.f/30);
         require(!cloakWorld.unit(spy)->cloaked && RetailReplayProbe::scriptStatics(cloakWorld,spy)[0]==1,
             "insufficient cloak energy does not restore the uncloaked script pose");

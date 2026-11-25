@@ -1,5 +1,6 @@
-// Map scenario resource actions 16-20 on TA's economy (sim/taeconomy.h): the one
-// scenario "resources" figure is metal and energy alike (World::applyScenarioResourceAction).
+// Map scenario resource actions 16-20 and conditions 24 / 25 on TA's economy
+// (sim/taeconomy.h): the one scenario "resources" figure is metal and energy alike
+// (World::applyScenarioResourceAction); the conditions read the scarcer store.
 #include "sim/scenario.h"
 #include "sim/sim.h"
 #include "client/renderframe.h"
@@ -27,7 +28,7 @@ int main() try {
     for(auto* w:{client.get(),referee.get()})
         w->setScenario(std::make_unique<sim::ScenarioScript>(scene,registry,w==client.get()?0:-1,1,32,32));
     check(client->scenario()->showClock() && referee->scenario()->showClock(),"Display gameclock action not latched");
-    check(books(*client).stored[0]==200 && books(*client).stored[1]==200 && client->player(0).mana==200,
+    check(books(*client).stored[0]==200 && books(*client).stored[1]==200,
           "set resources did not write both stores (or clamped before the settle)");
     for(int tick=1;tick<=61;++tick) {
         client->tick(1.f/30);referee->tick(1.f/30);
@@ -53,7 +54,7 @@ int main() try {
         check(books(*w).stored[0]==16777216 && books(*w).stored[1]==16777216,"set resources did not round to float32");
         w->applyScenarioResourceAction(0,17,25);
         w->applyScenarioResourceAction(0,18,5);
-        check(books(*w).stored[0]==30 && books(*w).stored[1]==30 && w->player(0).mana==30,"give resources");
+        check(books(*w).stored[0]==30 && books(*w).stored[1]==30,"give resources");
         w->applyScenarioResourceAction(0,19,50);
         check(books(*w).stored[0]==0 && books(*w).stored[1]==0,"take resources went below zero");
         w->applyScenarioResourceAction(0,16,-1);w->tick(1.f/30);
@@ -62,6 +63,21 @@ int main() try {
         w->applyScenarioResourceAction(0,16,25);w->clearScenarioState();
         check(w->player(0).scenarioResourceLimit==0,"replay reset leaked resource override");
     }
-    std::cout<<"PASS: TA metal/energy resource limit/reset, set/give/take, HUD cap and peer parity\n";
+    // Conditions 24 / 25 (Resources less / greater than v) on the scarcer store.
+    auto outcome=[&](int opcode,const char* value,float energy,float metal) {
+        auto w=make();
+        w->applyScenarioResourceAction(0,16,5000);   // cap high: the settle keeps the figures
+        auto& b=const_cast<sim::econ::PlayerBooks&>(books(*w));b.stored[0]=energy;b.stored[1]=metal;
+        crt::Scenario rules;rules.players.resize(2);
+        rules.players[1].push_back({{{opcode,{value}}},{{5,{}}}});   // -> Victory for me
+        w->setScenario(std::make_unique<sim::ScenarioScript>(rules,registry,0,1,32,32));
+        w->tick(1.f/30);
+        return w->scenarioOutcome(0)==1;
+    };
+    check(outcome(24,"50",100,40) && outcome(24,"50",40,100),"less than: either store under v");
+    check(!outcome(24,"50",60,60),"less than: both stores at or over v");
+    check(outcome(25,"50",60,70) && !outcome(25,"50",100,40) && !outcome(25,"50",40,100),
+          "greater than: both stores over v");
+    std::cout<<"PASS: TA metal/energy resource limit/reset, set/give/take, conditions, HUD cap and peer parity\n";
     return 0;
 } catch(const std::exception& e) {std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}

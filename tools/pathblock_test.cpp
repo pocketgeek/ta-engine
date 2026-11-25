@@ -125,7 +125,7 @@ static int runBlockedApproach(bool legion,float blockerX,float blockerZ,int limi
     UnitType builder=soldier(),blocker=soldier(),site=soldier();
     builder.id=builder.name="bld";builder.isBuilder=true;builder.buildDist=60;builder.turnInPlaceRate=1000;
     blocker.id=blocker.name="blk";
-    site.id=site.name="site";site.maxVel=Fixed();site.buildTime=10000;site.buildCost=0;
+    site.id=site.name="site";site.maxVel=Fixed();site.buildTime=10000;site.buildCostMetal=0;
     const int bid=w.spawn(&builder,160,512,0,0);
     // Ordered onto a clear site; the body walks in afterwards.
     w.queueBuild(bid,&site,512,512,false);
@@ -159,7 +159,7 @@ static PlacementRun runSitePlacement(bool legion,int what,bool fly=false) {
     builder.accel=Fixed::fromFloat(0.1f);builder.brake=Fixed::fromFloat(0.5f);
     builder.canFly=fly;
     blocker.id=blocker.name="blk";
-    site.id=site.name="site";site.maxVel=Fixed();site.buildTime=10000;site.buildCost=0;
+    site.id=site.name="site";site.maxVel=Fixed();site.buildTime=10000;site.buildCostMetal=0;
     const int bid=w.spawn(&builder,160,512,0,0);
     w.queueBuild(bid,&site,512,512,false);
     w.order(bid,160,800,true);
@@ -206,7 +206,7 @@ static ClearRun runSiteClear(bool legion,int who,int extraGuards=0) {
     UnitType builder=soldier(),blocker=soldier(),site=soldier();
     builder.id=builder.name="bld";builder.isBuilder=true;builder.buildDist=60;builder.turnInPlaceRate=1000;
     blocker.id=blocker.name="blk";
-    site.id=site.name="site";site.maxVel=Fixed();site.buildTime=10000;site.buildCost=0;
+    site.id=site.name="site";site.maxVel=Fixed();site.buildTime=10000;site.buildCostMetal=0;
     site.footX=4;site.footZ=4;
     // The builder starts beside the site and the blocker within a guard's
     // 70 px of it, so a guard stands still on the site when the order comes.
@@ -488,7 +488,7 @@ int main() {
         w.setPathService(true);
         UnitType builder=soldier(),site=soldier();
         builder.isBuilder=true; builder.workerTime=1000;
-        site.maxVel=Fixed(); site.buildTime=1; site.buildCost=0;
+        site.maxVel=Fixed(); site.buildTime=1; site.buildCostMetal=0;
         const int id=w.spawn(&builder,128,128);
         w.queueBuild(id,&site,320,128,false);
         w.queueBuild(id,&site,128,320,true);

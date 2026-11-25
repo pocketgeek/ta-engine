@@ -35,7 +35,7 @@ bool groundOutput(const ta::sim::UnitType* t) {
 bool largeOutputCase(const ta::sim::TypeRegistry& registry,const ta::sim::UnitType& factory,
                      const ta::sim::UnitType* large,const ta::sim::UnitType* small,
                      int side,bool legion,bool largeFirst) {
-    auto producer=factory;producer.storage=1000000;
+    auto producer=factory;
     ta::sim::World world;
     if(legion)world.setPathfindingMode(ta::sim::PathfindingMode::Legion);
     // A loaded map's feature plane: movement and placement then take the
@@ -47,7 +47,7 @@ bool largeOutputCase(const ta::sim::TypeRegistry& registry,const ta::sim::UnitTy
     const auto heading=uint16_t(factory.orientation+(side<0 ? -half : side>0 ? std::max(half-1,0) : 0));
     const int id=world.spawn(&producer,float(112*16+factory.footX%2*8),float(112*16+factory.footZ%2*8),
         float(int16_t(heading))*6.28318530718f/65536.f,0);
-    world.player(0).mana=1000000;
+    
     if(largeFirst)world.train(id,large,1);
     world.train(id,small,3);
     if(!largeFirst)world.train(id,large,1);
@@ -107,7 +107,7 @@ int main(int argc,char** argv) {
         // a quarter round, so the Kingdoms version's four 90-degree turns are
         // gone.
         for(const auto& c:roster) {
-            auto producer=*registry.find(c.producer);producer.storage=1000000;
+            auto producer=*registry.find(c.producer);
             const auto* output=c.output ? registry.find(c.output) : nullptr;
             if(!c.output)for(const auto& id:registry.buildable(c.producer)) {
                 const auto* t=registry.find(id);
@@ -123,7 +123,7 @@ int main(int argc,char** argv) {
             world.setTerrain(std::vector<uint8_t>(256*256,water?0:100),256,256,water?100:20);
             world.buildNavClasses(registry);world.setPathService(true);
             const int id=world.spawn(&producer,1800,1800,std::nullopt,0);
-            world.player(0).mana=1000000;
+            
             if(c.infinite)world.setRepeat(id,output);else world.train(id,output,c.count);
             int complete=0,tick=0;
             for(;tick<24000 && complete<c.count;++tick) {
@@ -180,7 +180,7 @@ int main(int argc,char** argv) {
             };
             {
                 ta::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
-                world.buildNavClasses(registry);world.player(0).mana=1000000;
+                world.buildNavClasses(registry);
                 const int factory=world.spawn(lab,1800,1800,0,0);
                 const int base=world.spawn(peewee,600,600,0,0);
                 const int fallback=world.unit(base)->stance;

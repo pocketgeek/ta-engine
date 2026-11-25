@@ -26,7 +26,7 @@ def options(path=4):
     # GameOptions wire bytes (server_public_test.options), pathfinding byte `path`: 4 = Legion, 0 = Retail.
     return bytes([1, 0, 10, 0]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, path, 1, 0, 0, 10, 10])
 
-CMD = dict(Move=0, Stop=4, ReclaimArea=23, BuildManaArea=26, Order=27)
+CMD = dict(Move=0, Stop=4, ReclaimArea=23, RetiredAreaBuild=26, Order=27)
 
 
 def varint(v):
@@ -98,7 +98,7 @@ def bundle(r):
             out.append(('order', player, serial, verb, ids))
         else:
             unit, = struct.unpack_from('<i', data, pos + 2)
-            pos += 43 if kind in (CMD['ReclaimArea'], CMD['BuildManaArea']) else 35
+            pos += 43 if kind in (CMD['ReclaimArea'], CMD['RetiredAreaBuild']) else 35
             out.append(('cmd', player, kind, unit))
     return tick, out
 

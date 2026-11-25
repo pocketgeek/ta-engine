@@ -20,13 +20,13 @@ int main(int argc,char** argv) {
             const auto* builder=registry.find(worker);
             check(builder!=nullptr,"real builder exists");if (!builder) continue;
             sim::UnitType site;site.id="test_site";site.maxVel=sim::Fixed();site.footX=4;site.footZ=4;
-            site.maxHp=100;site.buildTime=20;site.buildCost=10;
+            site.maxHp=100;site.buildTime=20;site.buildCostMetal=10;
             sim::World w;w.setPathService(paths);
             if(pathMode==3)w.setPathfindingMode(sim::PathfindingMode::Legion);
             bool legionBuild=false,legionReclaim=false;
             w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int bid=w.spawn(builder,512,624,std::nullopt,0);
-            w.player(0).mana=1000;
+            
             sim::FeatType tree;tree.reclaimable=true;
             sim::FeatType decor;decor.reclaimable=false;
             w.setFeatureTypes({tree,decor});

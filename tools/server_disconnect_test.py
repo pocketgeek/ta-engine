@@ -49,7 +49,7 @@ from server_public_test import login, options, server
 STALL_MS, WAIT_MS = 3000, 8000
 HOLD_S, JITTER_S = 2.4, 1.0        # Bob's silences under the threshold (the hold is ~0.7 s less)
 AI_TAKEOVER, LEAVE = 4, 2          # net::Event::Kind
-WIDE = (23, 26)                    # ReclaimArea, BuildManaArea carry x2/z2 (43 bytes)
+WIDE = (23, 26)                    # ReclaimArea, RetiredAreaBuild carry x2/z2 (43 bytes)
 
 
 def recipe():

@@ -1,5 +1,5 @@
 #include "client/sound.h"
-#include "client/monarchalert.h"
+#include "client/commanderalert.h"
 #include "client/retaildeathsfx.h"
 #include "cob/vm.h"
 #include "sim/matchsetup.h"
@@ -54,7 +54,7 @@ int main(int argc,char** argv) {
     int failures=0;
     const auto check=[&](bool ok,const char* message) {if(!ok){++failures;std::cerr<<"FAIL "<<message<<'\n';}};
     {
-        ta::MonarchAlert alert;   // TotalA.exe 0x47f850 / 0x47fad0 / 0x47feee
+        ta::CommanderAlert alert;   // TotalA.exe 0x47f850 / 0x47fad0 / 0x47feee
         check(!alert.admit(1,0,false,false,100), "another player's unit does not alert");
         check(!alert.admit(0,0,true,false,100), "spectators hear no alert");
         check(!alert.admit(0,0,false,true,100), "a unit on screen does not alert");
@@ -64,11 +64,11 @@ int main(int argc,char** argv) {
         check(!alert.admit(0,0,false,false,699), "the alert waits 600 game ticks once heard");
         check(alert.admit(0,0,false,false,700), "and repeats at the boundary");
         // 0x47fdf9 / 0x47ff26: priority 9 against 10 - level (Off|Medium|Full = 0|5|10).
-        check(!ta::MonarchAlert::speaks(0) && ta::MonarchAlert::speaks(5) && ta::MonarchAlert::speaks(10),
+        check(!ta::CommanderAlert::speaks(0) && ta::CommanderAlert::speaks(5) && ta::CommanderAlert::speaks(10),
               "under attack is spoken at Medium and Full speech only");
-        check(!ta::MonarchAlert::shows(0) && ta::MonarchAlert::shows(5) && ta::MonarchAlert::shows(10),
+        check(!ta::CommanderAlert::shows(0) && ta::CommanderAlert::shows(5) && ta::CommanderAlert::shows(10),
               "its line shows at Medium and Full unit chat text only");
-        check(ta::MonarchAlert::line("Commander")=="Commander: Under Attack", "the line is \"%s: %s\"");
+        check(ta::CommanderAlert::line("Commander")=="Commander: Under Attack", "the line is \"%s: %s\"");
     }
     SDL_SetMainReady();
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);

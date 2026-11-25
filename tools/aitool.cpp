@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
     int fac = 1;
     if (const char* fe = std::getenv("TA_FACTION")) fac = std::clamp(std::atoi(fe), 0, 4);
     cfg.slots = {{true, 0, 0, 1.0f}, {true, fac, 1, mm, true, ai::defensiveLevel(diff)}};
-    if (std::getenv("TA_2AI")) { cfg.slots[0].manaMult=mm;cfg.slots[0].automaticGates=true;
+    if (std::getenv("TA_2AI")) { cfg.slots[0].incomeMult=mm;cfg.slots[0].automaticGates=true;
         cfg.slots[0].defensiveAi=ai::defensiveLevel(diff); }
     auto spots = sim::setupMatch(w, reg, cfg);
     std::vector<std::pair<float, float>> enemyStarts;
@@ -67,14 +67,14 @@ int main(int argc, char** argv) {
     float ex = enemyStarts.empty() ? 0 : enemyStarts[0].first;
     float ez = enemyStarts.empty() ? 0 : enemyStarts[0].second;
 
-    // How many mana deposits exist, and how many are near the AI's start (a rough
+    // How many metal patches exist, and how many are near the AI's start (a rough
     // proxy for how much economy it can build).
     int nearAi = 0;
     for (const auto& [sx, sz] : w.depositSpots()) {
         float dx = sx - spots[1].first, dz = sz - spots[1].second;
         if (dx * dx + dz * dz < 900.f * 900.f) ++nearAi;
     }
-    std::printf("map mana spots: %zu total, %d within 900px of the AI start\n",
+    std::printf("map metal spots: %zu total, %d within 900px of the AI start\n",
                 w.depositSpots().size(), nearAi);
     // Is the enemy base reachable by ground from the AI base? (a common attack blocker)
     const sim::UnitType* ground = reg.find("tarknigh");
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 
     auto report = [&](int t) {
         std::map<std::string, int> comp;
-        int army = 0; float mana = 0, income = 0;
+        int army = 0; float metal = 0, income = 0;
         float minDist = 1e9f;   // closest army unit to the enemy base (shows advances)
         for (const auto& u : w.units())
             if (u.alive() && u.player == 1 && u.type) {
@@ -146,13 +146,14 @@ int main(int argc, char** argv) {
                     minDist = std::min(minDist, d);
                 }
             }
-        mana = w.player(1).mana; income = w.player(1).income;
+        const auto& books = w.books(1); metal = books.stored[1]; income = books.income[1];
         std::string s;
         for (const auto& [id, n] : comp) { s += id + ":" + std::to_string(n) + " "; }
         // storage too: a treasury pinned near zero can be a spending problem OR a
         // CAP problem, and the two want opposite fixes.
-        std::printf("t=%3ds  income=%.0f mana=%.0f/%.0f  army=%d closest-to-enemy=%.0f  | %s\n",
-                    t, income, mana, w.player(1).storage, army, army ? minDist : -1, s.c_str());
+        std::printf("t=%3ds  metal +%.1f %.0f/%.0f  energy +%.0f %.0f/%.0f  army=%d closest-to-enemy=%.0f  | %s\n",
+                    t, income, metal, books.cap[1], books.income[0], books.stored[0], books.cap[0],
+                    army, army ? minDist : -1, s.c_str());
         // One machine-readable line per report: the empire's size against its income.
         int units = 0, structs = 0, builders = 0, unfinished = 0;
         for (const auto& u : w.units())
@@ -162,9 +163,9 @@ int main(int argc, char** argv) {
                 else if (u.type->isBuilder) ++builders;
                 if (u.underConstruction) ++unfinished;
             }
-        std::printf("SUM t=%d income=%.1f mana=%.0f capacity=%.0f units=%d structs=%d mobile=%d builders=%d "
+        std::printf("SUM t=%d income=%.1f metal=%.0f capacity=%.0f units=%d structs=%d mobile=%d builders=%d "
                     "unfinished=%d fullsecs=%d cap=%d\n",
-                    t, income, mana, w.player(1).manaCapacity(), units, structs, units - structs, builders,
+                    t, income, metal, books.cap[1], units, structs, units - structs, builders,
                     unfinished, fullSeconds, w.unitCap());
         if (std::getenv("TA_AI_ECON")) {
             // Where is the income going? Dump every under-construction site and every
@@ -172,9 +173,9 @@ int main(int argc, char** argv) {
             for (const auto& u : w.units()) {
                 if (!u.alive() || u.player != 1 || !u.type) continue;
                 if (u.underConstruction)
-                    std::printf("      UC %s#%d hp=%.0f%% cost=%.0f btime=%.0f\n",
+                    std::printf("      UC %s#%d hp=%.0f%% metal=%.0f energy=%.0f btime=%.0f\n",
                                 u.type->id.c_str(), u.id, 100.f * u.hp.toFloat() / std::max(float(u.type->maxHp), 1.f),
-                                u.type->buildCost, u.type->buildTime);
+                                u.type->buildCostMetal, u.type->buildCostEnergy, u.type->buildTime);
                 // Producer eligibility, mirroring Controller::tick's own test. A
                 // builder is only offered work when it is idle AND siteless, so a
                 // faction with few builders that are always on a site can never
@@ -217,8 +218,8 @@ int main(int argc, char** argv) {
         ctl.tick(w, uint32_t(t), sink);
         if (twoAi) ctl0.tick(w, uint32_t(t), sink);
         w.tick(dt);
-        if (t%30==0 && w.player(1).manaCapacity() > 0.01f &&
-            w.player(1).mana >= w.player(1).manaCapacity() * 0.9f) ++fullSeconds;
+        if (t%30==0 && w.books(1).cap[1] > 0.01f &&
+            w.books(1).stored[1] >= w.books(1).cap[1] * 0.9f) ++fullSeconds;
         if (t%30==0) for (const auto& u:w.units()) {
             if (!u.alive() || u.player!=1 || !u.type || u.underConstruction ||
                 u.type->isStructure() || u.type->canFly || u.type->isBuilder) continue;

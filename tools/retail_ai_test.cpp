@@ -3,7 +3,6 @@
 #include "sim/retailplacement.h"
 #include "sim/retailmap.h"
 #include "sim/retailrng.h"
-#include "sim/retailplayer.h"
 #include "sim/sim.h"
 #include "sim/matchsetup.h"
 #include "hpi/hpi.h"
@@ -185,36 +184,6 @@ int main(int argc,char** argv) {
         }
         return 0;
     }
-    if (argc==2 && std::strcmp(argv[1],"--resources")==0) {
-        float stored;
-        while (std::scanf("%f",&stored)==1) {
-            RetailResourceHistory history;
-            if (std::scanf("%f %f",&history.income,&history.usage)!=2) return 2;
-            for (auto& sample:history.samples) for (float& v:sample)
-                if (std::scanf("%f",&v)!=1) return 2;
-            history.advance();
-            std::printf("%d",int(history.shortfall(stored)));
-            for (const auto& sample:history.samples) for (float v:sample)
-                std::printf(" %u",std::bit_cast<uint32_t>(v));
-            std::putchar('\n');
-        }
-        return 0;
-    }
-    if (argc==2 && std::strcmp(argv[1],"--priority")==0) {
-        RetailBuildPriority type; unsigned population,shortfall,seed;
-        int count,completed,weapon; float ratio;
-        while (std::scanf("%u %u %d %d %d %d %f %u %f %u %u",&type.flags,&type.secondaryFlags,
-                &count,&completed,&weapon,&type.desired,&type.cost,&population,&ratio,&shortfall,&seed)==11) {
-            type.count=int16_t(count); type.completed=int16_t(completed); type.weapon=int16_t(weapon);
-            std::vector<int> calls;
-            const auto score=retailBuildPriority(type,uint16_t(population),ratio,shortfall!=0,
-                [&](int n){calls.push_back(n); return retailRandom(seed,n);});
-            std::printf("%u %u %zu",unsigned(score),seed,calls.size());
-            for (int n:calls) std::printf(" %d",n);
-            std::putchar('\n');
-        }
-        return 0;
-    }
     if (argc==2 && std::strcmp(argv[1],"--empty")==0) {
         unsigned kind,tick,seed,active,dirty; int target,parameter;
         while (std::scanf("%u %u %u %d %d %u %u",&kind,&tick,&seed,&target,&parameter,&active,&dirty)==7) {
@@ -264,115 +233,5 @@ int main(int argc,char** argv) {
         [&](unsigned i,auto&){events.push_back(int(i));});
     if (!events.empty()) return 1;
     std::puts("PASS: AI scheduling orders refresh, assignment and due groups; skips slot 99");
-    World world;
-    auto& ai=world.player(0).retailAi.emplace();
-    ai.schedule.groups[1]={true,1};ai.squads[1].kind=RetailAiSquadKind::Base;
-    std::vector<World::RngObservation> draws;
-    world.setRngObserver([&](const auto& draw){draws.push_back(draw);});
-    world.tick(1.0f/30.0f);
-    if (draws.size()!=1 || draws[0].bound!=30 || ai.schedule.groups[1].deadline!=draws[0].result+16) return 1;
-    const auto hash=world.stateHash(); ++ai.schedule.groups[1].deadline;
-    if (world.stateHash()==hash) return 1;
-    UnitType type;type.canMove=true;type.maxVel=Fixed::fromInt(2);
-    const int id=world.spawn(&type,256,256);
-    ai.squads[1].members.push_back(id);ai.schedule.groups[1].deadline=2;
-    bool stopped=false;
-    try { world.tick(1.0f/30.0f); }
-    catch (const std::runtime_error& e) { stopped=std::strstr(e.what(),"occupied squad planner")!=nullptr; }
-    if (!stopped) return 1;
-    std::puts("PASS: restored AI clocks run and hash in World; unsupported occupied planning stops explicitly");
-    {
-        World assigned;
-        UnitType baseType;baseType.id="base";baseType.maxHp=100;baseType.maxVel=Fixed();
-        UnitType mobile;mobile.id="mobile";mobile.maxHp=100;mobile.maxVel=Fixed::fromInt(1);mobile.canMove=true;
-        const int base1=assigned.spawn(&baseType,1000,1000,0,0);
-        const int base2=assigned.spawn(&baseType,300,160,0,0);
-        const int newcomer=assigned.spawn(&mobile,300,160,0,0);
-        for (int id:{base1,base2,newcomer}) {
-            assigned.unit(id)->standbyAllowed=false;assigned.unit(id)->guardNoMoveAllowed=false;
-        }
-        auto& state=assigned.player(0).retailAi.emplace();
-        state.initialized=true;state.anchorsRestored=true;state.schedule.assignmentCountdown=1;
-        state.anchors.emplace(1,std::pair<int16_t,int16_t>{20,10});
-        for (unsigned i=1;i<=2;++i) {
-            state.schedule.groups[i]={true,0xffffffffu};state.squads[i].kind=RetailAiSquadKind::Base;
-            state.squads[i].active=1;
-        }
-        state.squads[1].parameters[0]=1;state.squads[1].members={base1};
-        state.squads[2].members={base2};
-        // Base two's member centre is nearer. Base one's explicit anchor wins
-        // only after moving base two's actual centre away.
-        assigned.unit(base2)->x=Fixed::fromInt(600);
-        assigned.tick(1.f/30);
-        if (state.squads[1].members!=std::vector<int>{base1,newcomer} ||
-            assigned.unit(newcomer)->moveState!=1 || assigned.unit(newcomer)->fireState!=2 ||
-            state.squads[1].parameters[8]!=0) return 1;
-        assigned.tick(1.f/30);
-        if (state.squads[1].parameters[8]!=1 || state.squads[1].dirty!=1 || state.squads[2].parameters[8]!=0) return 1;
-        const auto before=assigned.stateHash();state.anchors[1].first++;
-        if (assigned.stateHash()==before) return 1;
-        std::puts("PASS: nearest base assignment uses anchors and updates active squad presence next tick");
-        // Without an anchor, every live member contributes, including mobile
-        // units. Their integer coordinates are averaged before conversion.
-        state.anchors.clear();state.squads[1].parameters[0]=0;
-        assigned.unit(base1)->x=Fixed::fromInt(1000);
-        assigned.unit(base1)->z=Fixed::fromInt(160);
-        assigned.unit(newcomer)->x=Fixed::fromInt(0);
-        const int next=assigned.spawn(&mobile,500,160,0,0);
-        assigned.unit(next)->standbyAllowed=false;assigned.unit(next)->guardNoMoveAllowed=false;
-        state.schedule.assignmentCountdown=1;
-        assigned.tick(1.f/30);
-        if (state.squads[1].members!=std::vector<int>{base1,newcomer,next}) return 1;
-        std::puts("PASS: unanchored base centre includes mobile squad members");
-    }
-    World cached;
-    UnitType structure; structure.id="cache-test";structure.maxHp=100;structure.maxVel=Fixed();structure.buildTime=1000;
-    const int completedId=cached.spawn(&structure,256,256);
-    const int constructionId=cached.spawn(&structure,512,512);
-    for (int id:{completedId,constructionId}) {
-        cached.unit(id)->standbyAllowed=false;cached.unit(id)->guardNoMoveAllowed=false;
-    }
-    cached.unit(constructionId)->underConstruction=true;
-    cached.unit(constructionId)->hp=Fixed::fromInt(50);
-    auto& player=cached.player(0);
-    player.cacheClock={true,0xfffffffau}; // wraps to a refresh on tick one
-    auto& cache=player.buildCache.emplace();
-    RetailBuildCacheEntry entry;entry.type=&structure;entry.inputs.cost=2040;
-    entry.inputs.weapon=-1;cache.entries.push_back(entry);
-    unsigned start=0;
-    for (;;++start) { auto seed=retailSeed(start); if (retailRandom(seed,30)==0) break; }
-    cached.setGameSeed(start);
-    draws.clear();cached.setRngObserver([&](const auto& draw){draws.push_back(draw);});
-    cached.tick(1.0f/30.0f);
-    if (draws.size()<2 || draws[0].bound!=30 || draws[0].result!=0 || draws[1].bound!=30 ||
-        cache.entries[0].inputs.count!=2 || cache.entries[0].inputs.completed!=1) {
-        std::fprintf(stderr,"cache counts %d/%d; draws",cache.entries[0].inputs.count,cache.entries[0].inputs.completed);
-        for (const auto& d:draws) std::fprintf(stderr," %d:%u",d.bound,d.result);
-        std::fputc('\n',stderr);return 1;
-    }
-    auto cacheHash=cached.stateHash();cache.resources.samples[0][1]=9;
-    if (cached.stateHash()==cacheHash) return 1;
-    auto& planner=cache.planner.emplace(ta::sim::RetailBuildCache::Planner{});
-    planner.types.push_back({{1},"test",100,false});
-    auto checkPlannerHash=[&](auto change) {
-        const auto before=cached.stateHash();change();return before!=cached.stateHash();
-    };
-    if (!checkPlannerHash([&]{planner.limited=true;}) ||
-        !checkPlannerHash([&]{planner.types[0].choices.push_back(1);}) ||
-        !checkPlannerHash([&]{planner.types[0].faction="other";}) ||
-        !checkPlannerHash([&]{planner.types[0].weight=50;}) ||
-        !checkPlannerHash([&]{planner.types[0].special=true;})) return 1;
-    cached.unit(completedId)->hp=Fixed();
-    player.cacheClock={true,0xfffffffau};cached.setGameSeed(start);
-    cached.tick(1.0f/30.0f);
-    if (cache.entries[0].inputs.count!=1 || cache.entries[0].inputs.completed!=0) {
-        std::fprintf(stderr,"post-death cache counts %d/%d\n",cache.entries[0].inputs.count,cache.entries[0].inputs.completed);return 1;
-    }
-    RetailResourceHistory history;
-    history.usage=10;history.advance();
-    if (history.shortfall(100)) return 1; // newest sample is excluded
-    history.advance();if (!history.shortfall(100)) return 1;
-    for (int i=0;i<29;++i) history.advance();
-    if (history.shortfall(100)) return 1;
-    std::puts("PASS: World refreshes build counts, records resource history and hashes priority state");
+    return 0;
 }

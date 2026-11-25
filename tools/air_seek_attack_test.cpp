@@ -58,7 +58,7 @@ Run run(const TypeRegistry& registry,const UnitType& attacker,const UnitType& vi
     w.setPlayerCount(2);
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     w.buildNavClasses(registry);
-    w.player(0).mana=1e6;w.player(1).mana=1e6;
+    
     const auto weak=fragile(victim);
     const auto bystander=sturdy(*registry.find("armpw"));
     const float vx=2000,vz=2000;

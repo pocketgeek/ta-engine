@@ -217,7 +217,7 @@ void syntheticCases() {
         const int u=w.spawn(&vt,1000,1150,0,0),g=w.spawn(&mover,1000,1050,0,0),b=w.spawn(&mason,900,1150,0,0);
         const int h=w.spawn(&ft,1000,1000,0,1);
         w.spawn(&vt,300,300,0,2);   // the recipient is in the game
-        w.player(0).mana=1e6;
+        
         w.unit(u)->hp=Fixed::fromInt(5000);
         w.guard(g,u,false);w.orderWait(b,2.0f,false);w.repair(b,u,true);w.attack(h,u,false);
         p.run(10);

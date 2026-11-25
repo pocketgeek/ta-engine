@@ -40,11 +40,11 @@ int main(int argc,char** argv) {
             world.setTeam(1,0);
             const int blocker=world.spawn(registry.find("corpt"),x.toFloat(),z.toFloat(),0,1);
             world.train(yard,ship,1);
-            for (int tick=0;tick<300;++tick) {world.player(0).mana=100000;world.tick(1.f/30.f);}
+            for (int tick=0;tick<300;++tick) {world.tick(1.f/30.f);}
             check(world.unit(yard)->productionSiteId==0,"another player's ship occupying the open pad still blocks production");
             world.order(blocker,2000,2600,false);
             for (int tick=0;tick<9000 && !world.unit(yard)->buildQueue.empty();++tick) {
-                world.player(0).mana=100000;world.tick(1.f/30.f);
+                world.tick(1.f/30.f);
             }
             check(world.unit(yard)->buildQueue.empty() && std::any_of(world.units().begin(),world.units().end(),[&](const auto& u) {
                 return u.alive() && u.type==ship && !u.underConstruction;
@@ -63,7 +63,7 @@ int main(int argc,char** argv) {
             world.spawn(registry.find("armpt"),x.toFloat(),z.toFloat(),0,0);
             world.train(yard,ship,1);
             for (int tick=0;tick<9000 && !world.unit(yard)->buildQueue.empty();++tick) {
-                world.player(0).mana=100000;world.tick(1.f/30.f);
+                world.tick(1.f/30.f);
             }
             check(world.unit(yard)->buildQueue.empty() && std::any_of(world.units().begin(),world.units().end(),[&](const auto& u) {
                 return u.alive() && u.type==ship && !u.underConstruction;
