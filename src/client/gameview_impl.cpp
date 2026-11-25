@@ -2096,7 +2096,6 @@
             for (const auto& shot:shots->second)
             for (int slot=0;slot<int(u.type->weapons.size()) && slot<32;++slot) {
                 if (!(shot.weapons & (uint32_t(1)<<slot))) continue;
-                const auto& w = u.type->weapons[size_t(slot)];
                 // FireWeapon/Attack COB callbacks own firing audio, including
                 // deliberately silent branches. Native 530140 dispatches the
                 // callback; it does not infer sounds from the weapon's visual kind.
