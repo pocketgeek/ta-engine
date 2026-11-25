@@ -40,6 +40,7 @@
 #include <cmath>
 #include <cstdio>
 #include <vector>
+#include "test_carrier_script.h"
 
 using ta::sim::UnitType;
 using ta::sim::World;
@@ -217,6 +218,9 @@ static UnitType boatType() {
     // round the drop point instead of driving onto the point (0x406a23).
     t.canHover = true;
     t.footZ = 4;   // armthovr's: a 96 px drop-point circle (retailUnloadCircleRadius)
+    // Its own TransportPickup / TransportDrop (BoomCalc's reach, BUSY, the
+    // attach and DROP_UNIT on a link piece), as every TA carrier has.
+    ta::testfixture::giveCarrierScript(t,int(kRange));
     return t;
 }
 
@@ -511,8 +515,10 @@ static void crowdedCoastlineUnloadRetry() {
             const bool airRefused=air && vtol!=transport->orders.end() &&
                 (vtol->transportMission.flags&0x800000u) && transport->cargo.size()==1;
             if(air)mission=vtol;
+            // (A TransportDrop called out of the boom's reach on the way in
+            // is refused the same way; the retry watched is the blocked one.)
             if(mission!=transport->orders.end() && (air ? airRefused : surfaceRefused) &&
-               !retrySeen) {
+               !retrySeen && blocker) {
                 retrySeen=true;retryTick=int(w.tickCount());retryX=transport->x;retryZ=transport->z;
                 heldThroughRetry=transport->cargo.size()==1 && w.unit(cid)->inTransport==tid;
                 w.order(blocker,dropX+256,dropZ,false);
@@ -521,8 +527,12 @@ static void crowdedCoastlineUnloadRetry() {
                int(w.tickCount())>=retryTick+4) {
                 if(transport->x!=retryX || transport->z!=retryZ)
                     carrierMovedDuringRetry=true;
-                passengerFollowedCarrier=passengerFollowedCarrier &&
-                    w.unit(cid)->x==transport->x && w.unit(cid)->z==transport->z;
+                // It rides the carrier's link: on the hull, or out on the
+                // boom while a TransportDrop runs (within the boom's reach).
+                const float px=(w.unit(cid)->x-transport->x).toFloat(),pz=(w.unit(cid)->z-transport->z).toFloat();
+                passengerFollowedCarrier=passengerFollowedCarrier && (air ?
+                    w.unit(cid)->x==transport->x && w.unit(cid)->z==transport->z :
+                    px*px+pz*pz<=(kRange+1)*(kRange+1));
             }
             released=transport->cargo.empty();
             if(released && blocker) {
@@ -802,8 +812,8 @@ static void transferLifecycle() {
     UnitType carrier=boatType(),passenger=footType();
     const int tid=w.spawn(&carrier,400,400),cid=w.spawn(&passenger,430,400);
     w.loadInto(cid,tid);
-    // GROUND_PICKUP's call at once (stages 0-2 in one dispatch); the script
-    // (the engine's fifteen-tick stand-in) attaches at its end.
+    // GROUND_PICKUP's call at once (stages 0-2 in one dispatch); the
+    // carrier's TransportPickup (test_carrier_script.h) attaches at its end.
     for(int tick=0;tick<14;++tick)w.tick(1.f/30);
     check(!w.unit(cid)->embarked(),"the TransportPickup script runs before it attaches");
     check(w.unit(cid)->orders.empty(),"the passenger is given no order");
@@ -814,7 +824,7 @@ static void transferLifecycle() {
     w.unloadAt(tid,500,400);
     for(int tick=0;tick<15;++tick)w.tick(1.f/30);
     check(w.unit(cid)->embarked(),"unloading waits before releasing its passenger");
-    // GROUND_UNLOAD's call (its approach handler), then the fifteen-tick drop.
+    // GROUND_UNLOAD's call (its approach handler), then TransportDrop's work and DROP_UNIT.
     int releaseTick=15;
     while(releaseTick<40 && w.unit(cid)->embarked()) { w.tick(1.f/30);++releaseTick; }
     std::printf("  (released after %d ticks)\n",releaseTick);
@@ -908,7 +918,7 @@ static void queueUnloadDuringPickup() {
 }
 
 static void transportEffectEvents() {
-    // The surface carriers' boom (the engine's beam stand-in); VTOL_PICKUP
+    // The surface carriers' boom (their scripts' calls); VTOL_PICKUP
     // and VTOL_UNLOAD have no transfer at a distance.
     for(bool air:{false}) {
         World w;setTestPathfinding(w);
@@ -933,8 +943,9 @@ static void transportEffectEvents() {
             w.tick(1.f/30);
             for(const auto& event:w.transportEffects()) {
                 check(event.tick==w.tickCount(),"unload effect retains callback tick");
-                check(event.passenger==std::array<int32_t,3>{500*65536,1234567,400*65536},
-                      "unload effect captures complete destination position");
+                // DROP_UNIT's point: where the script's link holds it.
+                check(event.passenger[0]==500*65536 && event.passenger[2]==400*65536,
+                      "unload effect captures the link's destination position");
                 captured.push_back(event);
             }
         }
@@ -999,6 +1010,15 @@ static void unloadTransferInterruption() {
         check(w.unit(cid)->embarked(),"unload interruption precedes passenger release");
         w.stop(tid);
         for(int tick=0;tick<30;++tick)w.tick(1.f/30);
+        if(!air) {
+            // A surface carrier's TransportDrop, once called, runs on whatever
+            // becomes of the order (GROUND_UNLOAD 0x4069bf; nothing stops the
+            // script): DROP_UNIT puts the passenger down at the first point.
+            check(!w.unit(cid)->embarked() && w.unit(tid)->cargo.empty() &&
+                  std::abs(w.unit(cid)->x.toFloat()-500)<=1 && std::abs(w.unit(cid)->z.toFloat()-400)<=1,
+                  "a stopped surface unload's TransportDrop still drops at its point");
+            continue;
+        }
         check(w.unit(cid)->inTransport==tid && w.unit(tid)->cargo.size()==1,
               "stopped unload retains cargo after the original transfer deadline");
         w.unloadAt(tid,500,450);
@@ -1672,8 +1692,11 @@ static void exactLandingSites() {
             board(w,tid,cid);w.unloadAt(tid,512.25f,520.5f);
             check(runUntilUnloaded(w,tid),"exact-site unloading succeeds on a clear native placement plane");
             // VTOL_UNLOAD drops where the link holds the passenger: the hull's
-            // point controller ends within half a pixel of the point.
-            const float exact=flying ? 1.0f : 0.0f;
+            // point controller ends within half a pixel of the point. A
+            // surface drop is TransportDrop's link, set from the point in whole
+            // pixels (the packed XZ word, 0x40698c..0x4069bf) by the boom's
+            // turn and run: within a pixel too.
+            const float exact=1.0f;
             check(std::abs(w.unit(cid)->x.toFloat()-512.25f)<=exact && std::abs(w.unit(cid)->z.toFloat()-520.5f)<=exact,
                 "unloading preserves the selected position without snapping or spiralling");
         }

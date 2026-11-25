@@ -3987,18 +3987,14 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             auto& goal = u.orders[currentLeg(u.orders)];
             if(goal.transportUnloadApproach) {
                 const auto target=goal.missionTarget.value_or(std::pair{goal.x,goal.z});
-                const bool inRange=retailTransportInRange((target.first-u.x).v,
-                    (target.second-u.z).v,uint16_t(u.type->transportDist));
                 // The order after this unload: past the paired unload leg
                 // while the approach still stands alone (unloadAt).
                 const size_t leg=currentLeg(u.orders);
                 const bool nextOrder=leg+(goal.unload ? 1u : 2u)<u.orders.size();
-                // A scripted carrier's call is TransportDrop(the first
-                // passenger, the point) (0x40698c..0x4069bf): BoomCalc decides,
-                // and a drop under way holds BUSY.
-                const bool scripted=w.scriptedTransport(u,true);
+                // The call is TransportDrop(the first passenger, the point)
+                // (0x40698c..0x4069bf): BoomCalc decides, and a drop under
+                // way holds BUSY. A carrier without the script drops nobody.
                 auto call=[&] {
-                    if (!scripted) return inRange;
                     // Nobody aboard: the transfer stage ends it (0x406969).
                     const Unit* c=u.cargo.empty() ? nullptr : w.unit(u.cargo.front());
                     if (!c || !c->alive() || c->inTransport!=u.id) return true;
@@ -5333,7 +5329,7 @@ bool World::tickTransport(Unit& u, float dt) {
         }
         // A scripted drop (retailScriptedUnloadTransfer): the mission's own
         // passenger (+0x16), whom the script's DROP_UNIT puts down.
-        if (scriptedTransport(u,true) && mission.stage>=2) {
+        if (mission.stage>=2) {
             if(tickCounter_>=mission.deadline) {
                 mission.deadline=0xffffffffu;mission.pending|=1;
             }
@@ -5357,47 +5353,6 @@ bool World::tickTransport(Unit& u, float dt) {
         if (u.cargo.empty()) {
             brakeGround(u);removeUnloadLeg();return true;
         }
-        if (mission.stage<=1) return coast();
-        // The FIRST passenger (0x489690). One that is no longer aboard
-        // (dead) sends the mission back to the call.
-        Unit* c=unit(u.cargo.front());
-        if (o.transportPassenger!=c->id) {
-            o.transportPassenger=c->id;o.transportTicks=0;
-            mission.stage=1;mission.sleep(tickCounter_,1);return coast();
-        }
-        if(tickCounter_>=mission.deadline) {
-            mission.deadline=0xffffffffu;mission.pending|=1;
-        }
-        const uint32_t events=(u.missionEvents|mission.pending)&mission.waitMask;
-        if(mission.waitMask && !events)return coast();
-        u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
-        // The link carries the point with the hull (retailHullPoint).
-        const auto offset=retailHullPoint(o.transportX.v,o.transportZ.v,
-            uint16_t(portHeadingToRetail(u.heading)-o.transportHeading));
-        const Fixed dropX=Fixed::raw(satAdd32(u.x.v,offset.first));
-        const Fixed dropZ=Fixed::raw(satAdd32(u.z.v,offset.second));
-        const int cx=int16_t(uint32_t(dropX.v)>>20),cz=int16_t(uint32_t(dropZ.v)>>20);
-        const int result=retailSurfaceUnloadTransfer(mission,o.transportTicks,tickCounter_,true,[&] {
-            if (!mapPlacementCells_.empty()) return mobilePlacement(*c,cx,cz,false);
-            // Terrain-only harnesses have no native feature plane.
-            const int foot=footCells(c->type);
-            if (!navFor(c->type).fits(cx+foot/2,cz+foot/2,foot)) return false;
-            const auto bodies=searchBodyRect(cx,cz,c->type->footX,c->type->footZ);
-            for (const Unit* body:bodies.cells) if (body && body->id!=c->id) return false;
-            return true;
-        },[&] {
-            transportEffects_.push_back({tickCounter_,{dropX.v,o.transportY.v,dropZ.v},
-                                         {u.x.v,u.groundY.v,u.z.v}});
-        });
-        if (result==7) { removeUnloadLeg();return true; }
-        if (mission.stage!=4) return coast();
-        releasePassenger(*c,dropX,dropZ);
-        o.transportPassenger=0;
-        // The emptied mission stays queued until the next one-tick sleep.
-        o.transportUnloadReleasePending=true;
-        mission.stage=0;
-        mission.waitMask=1;mission.deadline=tickCounter_+1;
-        mission.pending=0x500u;
         return coast();
     }
     // Every surface unload runs GROUND_UNLOAD's approach (unloadAt) and every
@@ -5457,12 +5412,6 @@ void World::attachCargo(Unit& carrier,Unit& passenger,int piece) {
     passenger.x=carrier.x;passenger.z=carrier.z;
     updateBodyIndex(passenger);refreshMovingSearchBody(passenger);
     noteOrders(passenger.id);
-}
-
-bool World::scriptedTransport(const Unit& carrier,bool drop) const {
-    if (carrier.type->canFly || !unitScript(carrier.id)) return false;
-    const cob::File* file=carrier.type->script();
-    return file && file->scriptIndexExact(drop ? "TransportDrop" : "TransportPickup")>=0;
 }
 
 bool World::scriptBusy(int unitId) const {
@@ -5569,20 +5518,10 @@ void World::flyTransportGoal(Unit& u,Order& o,RetailMissionState& mission) {
 
 bool World::tickGroundPickup(Unit& u,size_t leg) {
     Order& o=u.orders[leg];
-    // A carrier with a TransportPickup script runs it (BoomCalc, ATTACH_UNIT
+    // The carrier's TransportPickup script does the work (BoomCalc, ATTACH_UNIT
     // and BUSY are the script's; it finishes whatever becomes of the order).
-    // Engine stand-in for a script-less carrier: BUSY for fifteen ticks, then
-    // the attach and BUSY off, which posts 4. It attaches whatever the
-    // passenger did meanwhile; it aimed the boom when it was called.
-    const bool scripted=scriptedTransport(u,false);
-    if (!scripted && o.transportTicks>0) {
-        if (o.transportTicks>=15) {
-            o.transportTicks=0;
-            if (Unit* p=unit(o.transportPassenger); p && canAttachCargo(u,*p)) attachCargo(u,*p);
-            o.transportPassenger=0;
-            u.missionEvents|=4;
-        } else ++o.transportTicks;
-    }
+    // TotalA.exe has no script-less unit: a carrier without the script picks
+    // nobody up (the call starts nothing).
     if (const Unit* p=unit(o.targetId); !p || !p->alive()) o.transportMission.pending|=8;
     struct Host {
         World& w; Unit& u;
@@ -5613,23 +5552,14 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                 bool canLoad() const { return u.type->canTransport; }
                 // 0x4067d4: the passenger's footprint x against transportsize.
                 bool fits() const { return p->type->footX<=u.type->maxTransportSize; }
-                bool scripted;
-                bool busy() const { return scripted ? w.scriptBusy(u.id) : goal.transportTicks>0; }
+                bool busy() const { return w.scriptBusy(u.id); }
                 void call() {
-                    // TransportPickup(passenger): BoomCalc aims the boom; out of
-                    // its reach the script does nothing.
-                    if (scripted) {
-                        w.startTransportScript(u,false,uint32_t(p->id),0);
-                        if (w.scriptBusy(u.id) && p->inTransport!=u.id)
-                            w.transportEffects_.push_back({w.tickCounter_,
-                                {p->x.v,p->groundY.v,p->z.v},{u.x.v,u.groundY.v,u.z.v}});
-                        return;
-                    }
-                    if (busy() || !retailTransportInRange((p->x-u.x).v,(p->z-u.z).v,
-                            uint16_t(u.type->transportDist))) return;
-                    goal.transportTicks=1;goal.transportPassenger=p->id;
-                    w.transportEffects_.push_back({w.tickCounter_,
-                        {p->x.v,p->groundY.v,p->z.v},{u.x.v,u.groundY.v,u.z.v}});
+                    // TransportPickup(passenger) (0x40680f): BoomCalc aims the
+                    // boom; out of its reach the script does nothing.
+                    w.startTransportScript(u,false,uint32_t(p->id),0);
+                    if (w.scriptBusy(u.id) && p->inTransport!=u.id)
+                        w.transportEffects_.push_back({w.tickCounter_,
+                            {p->x.v,p->groundY.v,p->z.v},{u.x.v,u.groundY.v,u.z.v}});
                 }
                 bool aboard() const { return p->inTransport==u.id; }
                 void approach() {
@@ -5656,7 +5586,7 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                     goal.controller=0;goal.navigationExhausted=true;
                     host.request=false;
                 }
-            } ops{w,u,goal,p,*this,w.scriptedTransport(u,false)};
+            } ops{w,u,goal,p,*this};
             return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,ops);
         }
     } host{*this,u};

@@ -19,6 +19,7 @@
 #include <cstring>
 #include <functional>
 #include <vector>
+#include "test_carrier_script.h"
 
 using namespace ta::sim;
 namespace net = ta::net;
@@ -42,6 +43,7 @@ struct Types {
         carrier.footX = carrier.footZ = 2; carrier.sight = 4096;
         carrier.canTransport = true; carrier.transportCap = 4; carrier.transportSizeCap = 16;
         carrier.maxTransportSize = 4; carrier.transportDist = 150;
+        ta::testfixture::giveCarrierScript(carrier,150);
         if (air) { carrier.canFly = true; carrier.cruiseAlt = 100; }
         // TA's land-going carriers hover (armthovr): GROUND_UNLOAD stops them on
         // a circle round the drop point (TotalA.exe 0x406a23) instead of on it.

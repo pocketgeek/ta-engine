@@ -677,29 +677,7 @@ approximated (marked "cosmetic" when it changes no simulation state); (c) a
 test or fixture note; (d) Kingdoms code still compiled but unreachable from TA
 data (cleanup, no gameplay).
 
-- (a) None left in the shot paths.
-- (b) Shot pass details. The lightning
-  strands draw with the client's own CRT-rand stream (0x4e4870 is the
-  game's shared one; drawing only). The D-gun (rendertype 3) draws its model
-  at the head through the generic model path; 0x49c1f2's own pose words
-  (+0x38 local) are not traced. The cruise branch of 0x49b3e0 is ported untested; non-turret LOS weapons compare only the
-  heading with the body (docs/retail-weapon-scripts.md 7.8). The range gate
-  0x49aa80 measures the horizontal range to the slot's target point (the
-  SweetSpot, 0x49e3c8); World keeps the callers' test to the target's origin
-  for that part and runs the surfaced and arc tests in the fire path.
-  A target below a ballistic weapon at short range is aimed with acos's
-  unsigned angle (0x49a9ce): the shell goes up and long, as in retail.
-- (b) Transports: GET 20 ARMORED answers 0 (SET 20, 0x48b090(2), is not
-  stored). An unload given while TransportPickup still swings the boom races
-  it for the same pieces, as in retail. A dropped passenger re-picked before
-  its BeCarried wake keeps that wake's schedule (retail would push a second
-  BeCarried, 0x4384a0).
-- (c) The client watch/spectator
-  harness checks (gameview_devharness.cpp) still spawn Kingdoms units. A
-  script-less (test) carrier keeps the old transport stand-in (fifteen ticks
-  of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
-  astern can stand out of reach (the roster fixture moved hovers to open land).
-- (d) None left: see "Resolved (mana pool and client pass, 2026-11-25)".
+None left: see "Resolved (close-final pass, 2026-11-25)".
 
 ## Resolved (2026-11-24 audit)
 
@@ -898,3 +876,90 @@ data (cleanup, no gameplay).
   retail_cost_test (an oracle driver), cartographer_document_test,
   cartographer_playtest_test, replay_writer_test, music_decode_test.
 
+## Resolved (close-final pass, 2026-11-25)
+
+- Fire gate to the SweetSpot: the weapon update runs the whole range gate
+  0x49aa80 at 0x49e3c8 (World::taRangeGate): the horizontal range from the
+  shooter's origin to the slot's target point (a unit's SweetSpot, 0x48a1e0
+  -> 0x43e3c0 -> 0x43e0b0's bounds centre, or its led point), the surfaced
+  and the arc tests. Why the first attempt left units standing: Attack_Chase
+  tests the target's ORIGIN (0x49abb0 at 0x4035d6 / 0x4037d7), but it does
+  not stop on that test -- stage 2 paths into the circle of the slot's range
+  round the target (0x438930, substate 0) and stage 3 re-tests only every 30
+  ticks without stopping the walk (0x4037fd), so retail ends inside the
+  range -- whereas World stops the walker the tick the origin test passes,
+  where a SweetSpot past the origin keeps the gate shut for good. An attack
+  free to move now keeps closing until its target point passes the gate too
+  (tickCombat, sweetShort). Evidence: sweetspot_gate (six walker / target
+  pairs from out of range: all fire, every shot's target point within
+  range); air-stack-barracks-5's hashes retaken (a Drake's run refuses a
+  shot whose target point is out of range).
+- Non-turret LOS / selfprop weapons (0x49d9c0): the world heading (0x49da11)
+  and the line-of-sight pitch (0x49da4d) from the QueryX point are tested by
+  0x49d880 against the body's heading +0x66 and pitch +0x68 (World's
+  groundPitch); a ballistic or selfprop weapon of that class takes the LOS
+  pitch too. (docs/retail-weapon-scripts.md 7.8.)
+- The cruise branch of 0x49b3e0 is tested: armsilo's nuclear_missile
+  (cruise=1) turns over above the cruise height after its vertical launch,
+  glides for its target at 700 px (+0x16 = 0x2bc) while more than 1024 px
+  out (never climbing, never below 700), dives inside 1024 px for the ground
+  at the target point and bursts within its area of it (stockpile). The port
+  needed no change.
+- Lightning strands (rendertype 7): TotalA.exe's CRT stream 0x4e4870 is
+  seeded with the clock at start (srand(time(0)), 0x49e8b2..0x49e8bb and
+  0x4971a5..0x4971ae) and shared by 61 call sites; the client keeps one such
+  stream (GameView::crtRand_, seeded from time(nullptr)) advanced by every
+  strand draw, frame after frame (was: reseeded per frame from the frame,
+  the shooter and the launch). Drawing only, it never reaches the lockstep
+  sim; the interleaving with retail's other CRT callers is not observable
+  under a clock seed.
+- D-gun pose (rendertype 3, 0x49c1f2..0x49c263): the model is drawn by
+  0x46bae0(surface, &position, weapon model +0x74, &local 0x38). Traced:
+  nothing in 0x49be60 writes locals 0x38..0x3d (rendertype 1 builds its
+  pose at local 0x30 from the shot's +0x34 / +0x36 / +0x38 plus 0x8000;
+  0x4b8500 and 0x46bae0 clean their own arguments, so the pointer is the
+  frame's local), so retail's D-gun pose is whatever the stack held: there
+  is no retail value to port. The client keeps drawing the model through
+  the generic model path, oriented along its flight.
+- The acos quirk (a target below a ballistic weapon at short range is aimed
+  with acos's unsigned angle, 0x49a9ce: the shell goes up and long) is
+  retail behaviour, ported.
+- ARMORED: SET 20 (0x480be3 -> 0x48b090(2, value); no call-in for that bit)
+  is stored (UnitScript::armored, hashed while set) and GET 20 answers it
+  (0x480aa9; sim host and the display VM through retailscriptget.h). Its
+  effect: 0x489bb0 scales a hit or record under 30000 by the type's
+  damagemodifier when +0x10e & 2 (0x489bcd..0x489bf1) -- the ARMORED bit, not
+  the activation (World applied Kingdoms' 51a16e rule, activated units);
+  so the Toaster (cortoast, 0.15) takes 15% while closed. SET 1 ACTIVATION
+  (0x480b49 -> 0x48b090(1)) now switches the script and starts Activate /
+  Deactivate on a change (armsolar's HitByWeapon closes and reopens it).
+  Evidence: armored (new), kill_credit, scenario_actions.
+- A passenger re-picked before its BeCarried wake: 0x4384a0 keeps the old
+  BeCarried (flag 4) and pushes a new one in front, whose schedule runs from
+  its first dispatch aboard (attachCargo resets Unit::beCarriedWake; after
+  the next drop the old one retires at once, 0x402fce). Evidence: transport
+  roster "re-picked".
+- The boom race (an unload given while TransportPickup still swings the
+  boom races it for the same pieces) is retail behaviour.
+- The watch / spectator harness checks were already on TA units (d1e1577);
+  the render study's churn now spawns armpw / corak / armrock / corstorm
+  (was Kingdoms' roster), and a stale Kingdoms capacity note went.
+- The script-less carrier stand-in is gone: TotalA.exe has no unit without
+  a script, so GROUND_PICKUP / GROUND_UNLOAD only call TransportPickup /
+  TransportDrop (0x40680f, 0x4069bf) and World now does the same (removed:
+  the fifteen-tick BUSY, the BoomCalc reach test in the sim, the hull-point
+  drop, retailSurfaceUnloadTransfer / retailHullPoint /
+  World::scriptedTransport). The engine-built fixture carriers carry a real
+  script (tools/test_carrier_script.h: armtship's BoomCalc reach, BUSY,
+  ATTACH_UNIT, the boom turned and run out to the point and DROP_UNIT on a
+  link piece). Legion classifies an unload approach that a TransportDrop
+  call has folded its unload into as the Unload mission still.
+- A hover pinned by a cliff with its crane astern: traced as retail. The
+  first TransportDrop is out of reach, so 0x406a23..0x406a5e installs the
+  drop-point circle of ftol(1.5 x footprintz x 16) = 96 px (armthovr); the
+  hover comes to rest against the cliff inside it (61.6 px from the point),
+  the navigator arrives, BoomCalc's 87.5 px boom does not reach; after the
+  third call 0x406a13 returns 9 and, with no next order, the dispatcher
+  calls again every 30 + rand(30) ticks with the count kept (0x43b8e5..
+  0x43b973) without a new circle -- retail stands too. Evidence: transport
+  roster "hover unload against a cliff".

@@ -96,42 +96,11 @@ constexpr int32_t retailUnloadCircleRadius(bool canHover,int16_t footZ) {
     return canHover ? int32_t(footZ)*16*3/2 : 0;
 }
 
-// The release point of a scripted drop. TransportDrop sets the boom in the
-// hull's frame (BoomCalc's XZ_ATAN of the turret-to-point offset) and
-// DROP_UNIT releases the passenger where the link piece then is
-// (0x4813b0 -> 0x47db70 mode 1 on the link's cell), so a hull that coasts or
-// turns during the animation carries the point with it: the offset from the
-// carrier at the call (16.16 world units), turned by the hull's heading
-// change since (retail BAM). No turn leaves it exact.
-inline std::pair<int32_t,int32_t> retailHullPoint(int32_t dx,int32_t dz,uint16_t turn) {
-    if (!turn) return {dx,dz};
-    return {retailScaledCosine(turn,dx)+retailScaledSine(turn,dz),
-            retailScaledCosine(turn,dz)-retailScaledSine(turn,dx)};
-}
-
-// GROUND_UNLOAD's transfer (TotalA.exe 0x406900 stages 1-2): the scripted
-// drop runs while BUSY holds (0x4069de; the engine's fifteen-tick beam), and
-// DROP_UNIT tests the link's cell once, at release (0x4813b0 -> 0x47db70
-// mode 1: any other body refuses). A refused drop leaves the passenger
-// aboard, so stage 2 (0x4069f0..0x406a13) goes on as after any failed call:
-// returned here as stage 0 of retailTransportUnloadApproach. 4 = release.
-template<class Placement,class Effects>
-int retailSurfaceUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t now,
-        bool passengerValid,Placement placement,Effects effects) {
-    if (m.stage!=2) return 7;
-    if (!passengerValid) { m.sleep(now,1);return 0; }
-    if (ticks<15) {
-        if (!ticks) effects();
-        ++ticks;m.sleep(now,1);return 2;
-    }
-    ticks=0;
-    if (placement()) { m.stage=4;return 4; }
-    m.stage=0;m.sleep(now,1);return 2;
-}
-
-// The same stages for a carrier whose TransportDrop runs: the script owns
-// the drop (DROP_UNIT, 0x4813b0, with its own placement test). The call's
-// sleep 15 (0x4069cf), the BUSY wait (0x4069de -> 0x438730), then stage 2
+// GROUND_UNLOAD's transfer (TotalA.exe 0x406900 stages 1-2) for the
+// carrier's TransportDrop: the script owns the drop (DROP_UNIT, 0x4813b0,
+// with its own placement test on the link's cell). TotalA.exe has no
+// script-less carrier, and neither does World. The call's sleep 15
+// (0x4069cf), the BUSY wait (0x4069de -> 0x438730), then stage 2
 // (0x4069f0): the passenger no longer aboard is the release (4); still
 // aboard goes on as after any failed call (stage 0 of
 // retailTransportUnloadApproach).

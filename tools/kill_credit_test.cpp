@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <iostream>
 #include <stdexcept>
+#include "test_carrier_script.h"
 using namespace ta::sim;
 namespace ta::sim { struct RetailReplayProbe {
     static void hit(World& w,const Weapon& weapon,float x,float z,int player,int from,Unit* victim) {
@@ -324,6 +325,7 @@ int main(int argc,char** argv) try {
         // a tick later sweeps. Another player's units are untouched.
         auto monarch=fighter("monarch");monarch.commander=true;
         auto boat=fighter("boat");boat.canTransport=true;boat.transportCap=4;boat.transportSizeCap=16;
+        ta::testfixture::giveCarrierScript(boat,150);
         for (const int carried:{0,1}) for (const int expendable:{0,1}) {
             World w;terrain(w);w.setMonarchExpendable(expendable!=0);
             const int m=w.spawn(&monarch,400,400,0,0),a=w.spawn(&t,500,400,0,0),b=w.spawn(&t,600,400,0,0);
@@ -394,6 +396,7 @@ int main(int argc,char** argv) try {
         // carrier's killer and lets it go; each dies at its own update (this
         // tick, in a later slot), credited to that killer's player.
         auto boat=fighter("boat");boat.canTransport=true;boat.transportCap=4;boat.transportSizeCap=16;
+        ta::testfixture::giveCarrierScript(boat,150);
         for (const bool shooterLives:{true,false}) {
             World w;terrain(w);
             const int ship=w.spawn(&boat,400,400,0,0),a=w.spawn(&t,410,400,0,0),b=w.spawn(&t,420,400,0,2);
@@ -485,6 +488,7 @@ int main(int argc,char** argv) try {
         // A self-destructing carrier (kind 3) hands its passengers kind 3
         // (0x4867da..0x4867ec): a loss for their owner, no kill for anyone.
         auto boat=fighter("boat");boat.canTransport=true;boat.transportCap=4;boat.transportSizeCap=16;
+        ta::testfixture::giveCarrierScript(boat,150);
         boat.selfDestructCountdown=0;
         World w;terrain(w);
         const int ship=w.spawn(&boat,400,400,0,0),b=w.spawn(&t,420,400,0,2);

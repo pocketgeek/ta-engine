@@ -50,6 +50,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include "test_carrier_script.h"
 
 using namespace ta;
 using sim::Fixed;
@@ -161,10 +162,12 @@ struct Fixture {
         // body, or the fire gate's surfaced test (TotalA.exe 0x49ab4d: origin
         // height plus model height above the sea) would hold every shot.
         for (const auto& [id, t] : reg.types()) const_cast<sim::UnitType&>(t).modelTop = 32 << 16;
-        // A surface carrier's transfer reach is its script's BoomCalc limit
-        // (cob::transportBoomReach); the fixture has no scripts, so give the
-        // wagon the reach of a boom.
-        if (auto* wagon = const_cast<sim::UnitType*>(reg.find("wagon"))) wagon->transportDist = 150;
+        // A surface carrier's transfer is its script's (TransportPickup /
+        // TransportDrop, BoomCalc's reach): give the wagon one.
+        if (auto* wagon = const_cast<sim::UnitType*>(reg.find("wagon"))) {
+            wagon->transportDist = 150;
+            ta::testfixture::giveCarrierScript(*wagon, 150);
+        }
     }
     ~Fixture() { std::error_code ec; std::filesystem::remove_all(root, ec); }
     const sim::UnitType* t(const char* name) const { return reg.find(name); }

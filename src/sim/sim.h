@@ -3676,7 +3676,6 @@ private:
     // A surface carrier's TransportPickup / TransportDrop (the call-in runs
     // at once, TotalA.exe 0x4b0a70 with its immediate flag); false without
     // such a script.
-    bool scriptedTransport(const Unit& carrier, bool drop) const;
     void startTransportScript(Unit& carrier, bool drop, uint32_t passenger, uint32_t point);
     bool scriptBusy(int unitId) const;
     // ATTACH_UNIT / DROP_UNIT (0x481340 / 0x4813b0) from the carrier's script.

@@ -24,6 +24,7 @@
 #include <cstring>
 #include <utility>
 #include <vector>
+#include "test_carrier_script.h"
 
 using namespace ta::sim;
 namespace net = ta::net;
@@ -73,6 +74,7 @@ struct Types {
 
         boat = sol; boat.id = boat.name = "boat"; boat.canTransport = true; boat.transportCap = 4;
         boat.transportSizeCap = 16; boat.maxTransportSize = 4; boat.transportDist = 150;
+        ta::testfixture::giveCarrierScript(boat,150);
         rider = sol; rider.id = rider.name = "rider"; rider.transportSize = 1; rider.transportLandEligible = true; rider.modelTop = 40 << 16;
     }
 };

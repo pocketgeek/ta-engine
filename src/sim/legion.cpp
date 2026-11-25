@@ -3673,9 +3673,13 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         if(o.transportUnloadApproach!=bool(own&WUnloadApproach)||bool(o.park)!=bool(own&WPark))return false;
         if(bool(o.productionExit)!=bool(own&WExit))return false;
         if(o.targetId&&!(own&(WLoad|WPickup)))return false;
-        return !o.unload&&!o.attackMove&&!o.patrol&&!o.guard&&!o.autoTarget&&!o.reclaimArea&&
-            !o.wait&&!o.waitAttack&&!o.landing&&!o.flightGoal&&!o.transportUnloadReleasePending&&
-            !o.transportUnloadTransferDeferred&&!o.transportPassenger;
+        // An unload approach a TransportDrop call has folded its unload into
+        // (World::completeUnloadApproach: the carrier's script was called)
+        // carries the unload and its passenger and is still the approach.
+        const bool folded=(own&WUnloadApproach)!=0;
+        return (folded||(!o.unload&&!o.transportPassenger))&&!o.attackMove&&!o.patrol&&!o.guard&&!o.autoTarget&&
+            !o.reclaimArea&&!o.wait&&!o.waitAttack&&!o.landing&&!o.flightGoal&&!o.transportUnloadReleasePending&&
+            !o.transportUnloadTransferDeferred;
     }
     // The work/logistics kind of a leg (None if it is not one).
     static Kind workKind(const Order& leg) {
