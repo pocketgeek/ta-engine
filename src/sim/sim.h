@@ -4293,6 +4293,7 @@ private:
     // answers whether the unit is now dying.
     bool selfDestructHit(Unit& u);
     bool tickSelfDestruct(Unit& u);
+    bool runSecondList(Unit& u);
 
     // 4d7de0 with explicit=0, auto=1: insert an auto attack, leashed with a
     // return move on the Maneuver/patrol path. Whether orders were inserted.

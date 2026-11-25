@@ -745,6 +745,35 @@ void wire() {
 }
 }  // namespace
 
+// The navigator's setGoal (0x44f2a0..0x44f3f0): SUPPRESS's approach circle is
+// installed on SUPPRESS's own mission. Without its flag 0x800000 the shooter
+// starts straight at the point on the provisional two-point route while the
+// search is queued; flagged (a return 9 left it, 0x43b8e5) it has no route and
+// brakes until the search delivers (0x44f3e9). Returns {braked on the approach
+// before a route came, ticks from the order to the first step}.
+std::pair<bool,int> approachStart(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitType& t,
+                                  bool flagged) {
+    Scene s;
+    build(s, vfs, reg);
+    const int shooter = s.w.spawn(&t, 300, 768, 1.5707963f, 0);
+    s.w.unit(shooter)->fireState = 0;
+    for (int i = 0; i < 30; ++i) s.w.tick(kTick);
+    const float x0 = s.w.unit(shooter)->x.toFloat();
+    attackGround(s.w, reg, shooter, 300 + float(t.weapons[0].range) + 300, 768);
+    if (flagged)
+        for (auto& o : s.w.unit(shooter)->orders) if (o.suppress) o.mission.flags |= 0x800000u;
+    bool awaited = false;
+    for (int i = 0; i < 300; ++i) {
+        s.w.tick(kTick);
+        const sim::Unit* u = s.w.unit(shooter);
+        if (!u->orders.empty() && u->orders.front().suppressApproach && u->orders.front().navigationExhausted &&
+            u->orders.size() == 2)
+            awaited = true;   // the approach leg alone, with no route: braking
+        if (std::abs(u->x.toFloat() - x0) > 0.5f) return {awaited, i};
+    }
+    return {awaited, -1};
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: suppress_test <retail-install-dir> [--legion]\n"); return 2; }
     for (int i = 2; i < argc; ++i)
@@ -799,6 +828,18 @@ int main(int argc, char** argv) {
         std::printf("  %s, point %.0f px off: %s\n", archer->id.c_str(), range + 300, describe(r).c_str());
         check(r.approach && r.moved > 250 && r.endDist <= range + 1, "out of reach it walks into reach", describe(r));
         check(r.shots >= 2 && r.orderAtEnd, "and fires from there", describe(r));
+    }
+
+    // 0x44f3e9: the provisional route only for a head mission without 0x800000.
+    if (mode == sim::PathfindingMode::Retail) {
+        const auto plain = approachStart(vfs, reg, *archer, false);
+        const auto flagged = approachStart(vfs, reg, *archer, true);
+        std::printf("  approach start: plain tick %d (braked %d), flagged tick %d (braked %d)\n",
+                    plain.second, int(plain.first), flagged.second, int(flagged.first));
+        check(!plain.first && plain.second >= 0 && plain.second < 10,
+              "unflagged, the approach starts straight at the point while the search runs (0x44f3f2)");
+        check(flagged.first && flagged.second > plain.second,
+              "flagged 0x800000, no provisional route: it waits for the search (0x44f3e9)");
     }
 
     // A tower: in reach it fires; out of reach it keeps the order and waits.

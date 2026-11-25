@@ -4,6 +4,7 @@
 #include "sim/retailpark.h"
 #include "sim/pathsearch.h"
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -289,6 +290,67 @@ int main(int argc, char** argv) {
         retailDispatchMissions(ground.tick,ground.events,ground);
         paths.tick(score,done);
         if (ground.resets!=1 || ground.radius!=64 || paths.pending(53) || delivered) return 1;
+    }
+    {
+        // The second list (0x43bad0): a sleeping mission whose deadline is
+        // ahead is passed over; a due one runs with no events; after each run
+        // the walk starts again from the head; 6/7 end the walk.
+        struct Second {
+            std::vector<RetailMissionState> states;
+            std::vector<int> list;
+            std::vector<std::pair<int,int>> runs;   // (mission, stage at the run)
+            std::function<int(int,RetailMissionState&)> act;
+            uint32_t seed=1;
+            RetailMissionState* head() { return list.empty() ? nullptr : &states[size_t(list.front())]; }
+            RetailMissionState* next(RetailMissionState& m) {
+                auto it=std::find(list.begin(),list.end(),int(&m-states.data()));
+                return it==list.end() || ++it==list.end() ? nullptr : &states[size_t(*it)];
+            }
+            uint32_t random(uint32_t n) { return retailRandom(seed,int(n)); }
+            void remove(RetailMissionState& m) { std::erase(list,int(&m-states.data())); }
+            int handle(RetailMissionState& m) {
+                const int id=int(&m-states.data());
+                runs.push_back({id,m.stage});
+                return act(id,m);
+            }
+        };
+        Second a;
+        uint32_t now=100;
+        a.states.resize(3); a.list={0,1,2};
+        a.states[0].sleep(100,10);   // asleep until 110
+        a.act=[&](int id,RetailMissionState& m) {
+            if (id==1) { if (m.stage<2) return 1; m.sleep(now,5); return 2; }
+            return 5;                // mission 2 finishes at once
+        };
+        retailDispatchSecondList(100,a);
+        // 1 runs stages 0,1,2 (restarting from the head each time, 0 passed
+        // over), then 2 runs once and is removed.
+        const std::vector<std::pair<int,int>> want{{1,0},{1,1},{1,2},{2,0}};
+        if (a.runs!=want || a.list!=std::vector<int>{0,1} || a.states[1].deadline!=105) return 1;
+        a.runs.clear();
+        now=105;
+        retailDispatchSecondList(now,a);   // 0 still asleep, 1 due
+        if (a.runs!=std::vector<std::pair<int,int>>{{1,2}} || a.states[1].deadline!=110) return 1;
+        Second b;
+        b.states.resize(2); b.list={0,1};
+        b.act=[&](int,RetailMissionState&) { return 7; };
+        retailDispatchSecondList(1,b);     // 7 removes the head and ends the walk
+        if (b.runs.size()!=1 || b.list!=std::vector<int>{1}) return 1;
+        Second c;
+        c.states.resize(1); c.list={0};
+        c.act=[&](int,RetailMissionState& m) { return m.waitMask ? 2 : 3; };
+        retailDispatchSecondList(50,c);    // 3: a 30 + rand(15) sleep
+        if (c.runs.size()!=1 || !(c.states[0].waitMask&1) || c.states[0].deadline<80 || c.states[0].deadline>94)
+            return 1;
+    }
+    // 0x44f3e9: the provisional route only without flag 0x800000.
+    static_assert(retailProvisionalRoute(0x3000400u) && !retailProvisionalRoute(0x800000u));
+    {
+        // Return 9 with no next mission flags the mission 0x800000 (0x43b8e5).
+        Fixture g;
+        g.states={{}}; g.queue={0}; g.actions={{9,-1,0,0,0,false},{2,-1,1,0,0,false}};
+        retailDispatchMissions(1,g.events,g);
+        if (!(g.states[0].flags&0x800000u) || g.states[0].stage!=0) return 1;
     }
     std::cout << "retail_mission_test: passed\n";
 }

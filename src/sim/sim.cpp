@@ -4175,7 +4175,10 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                         if(goal.controller && !goal.navigationExhausted)return;
                         w.cancelPath(u);
                         goal.controller=++w.nextMovementController_;
-                        goal.navigationExhausted=false;goal.navigationConsumed=false;
+                        goal.navigationConsumed=false;
+                        // 0x44f3e9: flagged 0x800000 (a return 9), no
+                        // provisional route: the hull waits for the search.
+                        goal.navigationExhausted=!retailProvisionalRoute(m.flags);
                         // A polled surface-unload retry re-anchors the navigator
                         // directly at the mission site while the replacement search
                         // runs. Keep the requested site separate from any partial
@@ -4246,7 +4249,12 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 goal.controller = ++w.nextMovementController_;
                 m.pending &= ~0x3700u;
                 const bool retain=currentLeg(u.orders)>0 && retainGroundRoute(u,goal);
-                const bool direct=!retain && (!(m.flags&0x10400000u) ||
+                // TA's head mission (0x44f3e9): SUPPRESS's for its approach
+                // (the circle is installed on SUPPRESS's own mission, 0x40392e).
+                const size_t leg=currentLeg(u.orders);
+                const uint32_t headFlags=goal.suppressApproach && leg+1<u.orders.size() &&
+                    u.orders[leg+1].suppress ? u.orders[leg+1].mission.flags : m.flags;
+                const bool direct=!retain && retailProvisionalRoute(headFlags) && (!(m.flags&0x10400000u) ||
                     (!wasActive && (m.flags&0x10000000u)));
                 goal.navigationExhausted=!retain && !direct;
                 if (direct) {
@@ -5742,7 +5750,10 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                     goal.missionRadius=uint32_t(0)-4u;
                     goal.controller=++w.nextMovementController_;
                     goal.transportMission.pending&=~0x3700u;
-                    goal.navigationExhausted=false;goal.navigationConsumed=false;
+                    goal.navigationConsumed=false;
+                    // 0x44f3e9: no provisional route once a return 9 flagged
+                    // the mission (0x800000): the hull waits for the search.
+                    goal.navigationExhausted=!retailProvisionalRoute(goal.transportMission.flags);
                     resetGroundSegment(u,goal);
                     w.cancelPath(u);
                     if (uint32_t(u.routeStamp)<=w.tickCounter_-10u) u.routeStamp=0;
@@ -6522,6 +6533,32 @@ bool World::selfDestructHit(Unit& u) {
 // rand(15) and waits that long (a draw of 0 hits in the same update, as
 // 4d85e0 takes the list from its head again); then the hit. A countdown of
 // 0 hits on the first run, with no draw.
+// The unit's second mission list (0x43bad0, retailDispatchSecondList): the
+// self-destruct countdown when armed. World keeps the countdown in
+// selfDestructT and steps it once a tick (tickSelfDestruct), so its mission
+// sleeps one tick at a time; the 30-tick steps and the rand(15) wait of
+// 0x402010 fall on the same ticks. True when the countdown's hit landed and
+// left the unit at or below zero hit points.
+bool World::runSecondList(Unit& u) {
+    struct Host {
+        World& w; Unit& u;
+        RetailMissionState countdown;
+        bool armed, died=false;
+        RetailMissionState* head() { return armed ? &countdown : nullptr; }
+        RetailMissionState* next(RetailMissionState&) { return nullptr; }
+        uint32_t random(uint32_t n) { return w.gameRand(n); }
+        void remove(RetailMissionState&) { armed=false; }
+        int handle(RetailMissionState& m) {
+            died=w.tickSelfDestruct(u);
+            if (u.selfDestructT==-1) return 5;   // the hit (0x402147) ends it
+            m.sleep(w.tickCounter_,1);
+            return 2;
+        }
+    } host{*this,u,{},u.selfDestructT!=-1};
+    retailDispatchSecondList(tickCounter_,host);
+    return host.died;
+}
+
 bool World::tickSelfDestruct(Unit& u) {
     if (u.selfDestructT==-1) return false;
     if (u.selfDestructT>0) { --u.selfDestructT; return false; }
@@ -20749,25 +20786,26 @@ void World::tick(float dt) {
                                        retailInverseBuildTime(u.type->buildTime), maxHp), maxHp);
             u.hp = fxMin(Fixed::fromInt(int32_t(maxHp)), u.hp + Fixed::fromInt(int32_t(healed) - whole));
         }
-        // Self-destruct (Ctrl+D): NOT an explosion. Its mission (4017e0, the
-        // handler behind UNITMISSIONCODE_SELFDESTRUCT) runs in the background
-        // list (4d85e0, after self-repair 429d90, the pool 401160 and the
-        // missions 4d8450) and ends by dealing 30000 damage of type 5 to the
-        // unit itself: no gibs, no wreck, nobody credited; it quietly leaves
-        // your command and fades. A lethal hit's death (512610) ends the same
-        // update (51e357..51e36c), as deadly water's does. World runs it before
-        // the unit's orders here, so a dying unit's orders get no last run.
-        if (tickSelfDestruct(u)) {
-            if (!(u.retailSite && u.underConstruction)) { sweepDeath(u); continue; }
-        }
         // A WANDERER keeps its spawn point as home -- that anchor is what stops its
         // stroll turning into a migration.
         if (u.orders.empty() && !u.type->wanders) { u.homeX = u.x; u.homeZ = u.z; }
         // Retail dispatches each unit's missions immediately before its mover,
         // not all ground missions before every other unit's activity.
-        if (u.constructionHolding && (u.buildSiteId || u.repairId)) continue;
-        if (u.legionLift && tickLegionLift(u)) continue;
-        if (tickHoldLift(u)) continue;
+        // TotalA.exe's second mission list (0x43bad0) runs after the main
+        // dispatcher (0x48af98 -> 0x48af9e), before the mover. Its one World
+        // mission is the self-destruct countdown (common row 10, 0x402010;
+        // the stockpile build, row 9, has no World counterpart): 0x402147's
+        // hit of 30000 is lethal to every TA unit, and World ends the update
+        // with the death there. The unit's own states that skip the main
+        // dispatch below still run it.
+        const auto secondList=[&] {
+            if (!runSecondList(u)) return false;
+            if (!(u.retailSite && u.underConstruction)) { sweepDeath(u); return true; }
+            return false;
+        };
+        if (u.constructionHolding && (u.buildSiteId || u.repairId)) { secondList(); continue; }
+        if (u.legionLift && tickLegionLift(u)) { secondList(); continue; }
+        if (tickHoldLift(u)) { secondList(); continue; }
         // MobileBuild/FlyingBuild standing (or hovering) at its site, waiting
         // out mobile units on it (405824..405911, 41f301..41f3e5): navigation
         // has stopped (tickNavigationMovement only brakes or holds it); only
@@ -20797,6 +20835,7 @@ void World::tick(float dt) {
             }
             tickGuardNoMove(u);
         }
+        if (secondList()) continue;
         // A captured MobileBuild waits for navigator arrival before creating
         // the site. Keep that rectangle attached to the owning goal across
         // every intermediate route, and hand construction over on the next tick.
