@@ -1381,7 +1381,11 @@ int main(int argc, char** argv) {
             if (tc == ta::TaFrontEnd::Choice::Menu) continue;   // back to the TA main menu
             if (tc == ta::TaFrontEnd::Choice::Intro) {          // the intro movie, then the title
                 std::fprintf(stderr, "front end: INTRO plays 1.zrb\n");
+                // The menu drone (BGM) hushes under the movie's own audio, as the
+                // campaign movies do, and comes back for the title screen.
+                menuMusic.setVolume(0, 0);
                 ta::MainMenu::playIntro(ren, dataRoot, "1.zrb");
+                menuMusic.setVolume(settings.masterVol, settings.bgmVol);
                 continue;
             }
             // SINGLE: the engine's single-player game (a local server, stopping in its
