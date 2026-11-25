@@ -857,8 +857,10 @@ int main(int argc, char** argv) {
         flyer.maxVel=Fixed::fromInt(4);flyer.accel=flyer.brake=Fixed::fromInt(1);
         flyer.turnRate=1200;flyer.cruiseAlt=80;flyer.footX=flyer.footZ=2;
         UnitType overhead=flyer;overhead.vtolStandby=false;
-        const int id=world.spawn(&flyer,256,256);
+        // The flyer overhead updates first, so it stamps the shared cells
+        // first: TotalA.exe's 0x47cc30 lets the first flyer keep a cell.
         const int above=world.spawn(&overhead,256,256);
+        const int id=world.spawn(&flyer,256,256);
         world.unit(above)->flightGroundMode=2;world.unit(above)->flightY=Fixed::fromInt(300);
         auto* u=world.unit(id);u->flightGroundMode=2;u->flightY=Fixed::fromInt(180);
         world.tick(1.0f/30.0f); // explore, then build the persistent airborne grid

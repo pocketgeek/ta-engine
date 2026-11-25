@@ -6,10 +6,12 @@
 // Retail admits a shot on range alone (52ae90/52fe30) and its projectile
 // collision (52a4d0) stops the shot at the first terrain or feature cell it
 // meets, so a retail cannon behind a hill crest empties its shells into the
-// hill. The engine's 2D sight test sees only cells the nav grid blocks; a
-// passable crest, water and tall scenery that does not block movement are
-// invisible to it. World::noteShotImpact counts those impacts and
-// World::repositionForShot moves the attacker (see sim.cpp).
+// hill. The engine's 2D sight test sees only the obstacle overlay
+// (buildings, blocking features, wrecks); terrain of any slope, water and
+// tall scenery that does not block movement are invisible to it.
+// World::noteShotImpact counts those impacts and World::repositionForShot
+// moves the attacker (see sim.cpp). A slope too steep to climb is no wall:
+// a Can below a plateau fires up it from its range.
 //
 // Shipped TA Hammers (armham, a Ballistic plasma cannon) against a Peewee
 // standing behind a passable ridge, in Retail and Legion pathfinding.
@@ -354,6 +356,72 @@ std::pair<int, int> runWalkOut(const hpi::Vfs& vfs, const sim::TypeRegistry& reg
     return {before, hits};
 }
 
+// An ordered attack up a slope it cannot walk (the watch_end stall,
+// 2026-11-24): a Can (corcan, a line-of-sight laser, range 200) 368 px west
+// of a Peewee standing on a plateau. Columns 0..26 lie at 30, the plateau
+// from column 27 at 80; the step between them (50, past every kbot's
+// maxslope and the sight grid's 30) is a wall to movement only. TotalA.exe's
+// Attack_Chase (0x4034a0) holds and fires once 0x49abb0 says the target is in
+// range (stage 1, 0x4035d0..0x40360b); the engine's 2D sight test took the
+// slope for a wall, so the Can walked on at the foot of it, never firing.
+struct PlateauOutcome {
+    int hits = 0;
+    int shots = 0;           // impacts anywhere
+    float damage = 0;
+    float startDistance = 0, endDistance = 0;
+    int firstHitTick = -1;
+};
+
+PlateauOutcome runPlateau(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, int ticks) {
+    tnt::Map map;
+    map.width = map.height = 64;
+    map.seaLevel = 0;
+    map.heights.assign(64 * 64, 30);
+    map.features.assign(64 * 64, 0xffff);
+    for (int z = 0; z < 64; ++z)
+        for (int x = 27; x < 64; ++x) map.heights[size_t(z) * 64 + size_t(x)] = 80;
+    sim::World w;
+    w.setPathfindingMode(mode);
+    w.setTerrain(map.heights, map.width, map.height, map.seaLevel, &map.features);
+    sim::registerMapFeatures(w, map, vfs, &reg);
+    w.setPathService(true);
+    const sim::UnitType* can = reg.find("corcan");
+    const sim::UnitType* peewee = reg.find("armpw");
+    if (!can || !peewee) { check(false, "shipped corcan and armpw load"); return {}; }
+    const float sx = 6 * 16, sz = 32 * 16, tx = 29 * 16, tz = 32 * 16;
+    // The laser draws 75 energy a shot.
+    w.setStartResources(0, 50000, 50000);
+    const int shooter = w.spawn(can, sx, sz, 0, 0);
+    const int target = w.spawn(peewee, tx, tz, 0, 1);
+    w.setStance(target, 2);
+    w.unit(target)->moveState = 0;
+    w.unit(target)->fireState = 0;
+    w.unit(target)->hp = sim::Fixed::fromInt(30000);
+    for (int i = 0; i < 30; ++i) w.tick(1.f / 30);
+    PlateauOutcome out;
+    out.startDistance = std::hypot(w.unit(shooter)->x.toFloat() - tx, w.unit(shooter)->z.toFloat() - tz);
+    const float hp0 = w.unit(target)->hp.toFloat();
+    w.attack(shooter, target, false);
+    for (int i = 0; i < ticks; ++i) {
+        w.tick(1.f / 30);
+        const sim::Unit* a = w.unit(shooter);
+        if (!a || !a->alive()) break;
+        for (const auto& h : w.hits()) {
+            if (h.fromPlayer != 0) continue;
+            ++out.shots;
+            if (h.victimId == target) {
+                ++out.hits;
+                if (out.firstHitTick < 0) out.firstHitTick = i;
+            }
+        }
+    }
+    const sim::Unit* a = w.unit(shooter);
+    const sim::Unit* t = w.unit(target);
+    out.damage = hp0 - (t && t->alive() ? t->hp.toFloat() : 0.f);
+    if (a && t) out.endDistance = std::hypot(a->x.toFloat() - t->x.toFloat(), a->z.toFloat() - t->z.toFloat());
+    return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -417,6 +485,18 @@ int main(int argc, char** argv) {
     check(blockedBefore >= 3 && hitsAfter > 0,
           "an idle Hold Position Hammer engages an enemy it found blocked once it walks into the open",
           "short=" + std::to_string(blockedBefore) + " hits=" + std::to_string(hitsAfter));
+    {
+        const PlateauOutcome up = runPlateau(vfs, reg, kTicks);
+        std::printf("  plateau:    start %.0fpx, end %.0fpx, %d impacts, %d hits (first at tick %d), damage %.0f\n",
+                    up.startDistance, up.endDistance, up.shots, up.hits, up.firstHitTick, up.damage);
+        const float range = float(reg.find("corcan")->weapons.empty() ? 0 : reg.find("corcan")->weapons[0].range);
+        // It stops at its range (0x49abb0 in range: stage 1 holds), not at
+        // the foot of the slope 63 px off, where the old sight test led it.
+        check(up.endDistance <= range && up.endDistance >= range - 48,
+              "plateau: the Can closes to its weapon's range below a slope it cannot climb");
+        check(up.hits > 0 && up.damage > 0 && up.firstHitTick >= 0 && up.firstHitTick < 450,
+              "plateau: and fires up the slope from there, hitting the Peewee");
+    }
     std::printf("%s\n", failures ? "FAILED" : "all passed");
     return failures ? 1 : 0;
 }

@@ -926,6 +926,7 @@ int World::spawn(const UnitType* type, float x, float z, std::optional<float> he
         initTaWeaponSlots(*unit(u.id),birthHeading);
     }
     groundStamp(*unit(u.id));   // 5122d9: creation places the body
+    stampAirOccupant(*unit(u.id));   // TotalA.exe 0x48610f / 0x48630c -> 0x47cc30
     if (finished) activateBuilt(u.id,false);   // 512301, after the script, weapons and stamp
     return u.id;
 }
@@ -1347,8 +1348,9 @@ void World::setTerrain(const std::vector<uint8_t>& heights, int w, int h, int se
         navHover_ = NavGrid(heights, w, h, seaLevel, hover);
         // Direct naval shots see the water surface, not the seabed. Flatten
         // submerged heights before computing slopes so even a steep seabed or
-        // shallow shoreline cannot become an artificial firing wall. Raised
-        // land and the shared feature/building overlay still block direct shots.
+        // shallow shoreline cannot become an artificial firing wall. The
+        // combat sight test reads only its obstacle overlay now
+        // (combatLineOfSight): raised land stops a shot by its impacts.
         auto surface=heights;
         for (auto& height:surface) height=uint8_t(std::max(int(height),seaLevel));
         NavGrid::Limits sight=hover;
@@ -1632,9 +1634,8 @@ bool NavGrid::segmentFits(float wx0, float wz0, float wx1, float wz1, int foot) 
     return false;
 }
 
-bool NavGrid::losBetween(float wx0, float wz0, float wx1, float wz1,
-                         int skip0, int skip1) const {
-    if (empty()) return true;
+template<class Wall>
+static bool losWalk(float wx0, float wz0, float wx1, float wz1, int skip0, int skip1, Wall wall) {
     int ex0 = int(wx0) / 16, ez0 = int(wz0) / 16;
     int ex1 = int(wx1) / 16, ez1 = int(wz1) / 16;
     int x0 = ex0, z0 = ez0;
@@ -1649,8 +1650,23 @@ bool NavGrid::losBetween(float wx0, float wz0, float wx1, float wz1,
         // Ignore cells inside either endpoint's own footprint (Chebyshev radius).
         if (std::max(std::abs(x0 - ex0), std::abs(z0 - ez0)) <= skip0) continue;
         if (std::max(std::abs(x0 - ex1), std::abs(z0 - ez1)) <= skip1) continue;
-        if (!walkable(x0, z0)) return false;       // a wall stands between them
+        if (wall(x0, z0)) return false;            // a wall stands between them
     }
+}
+
+bool NavGrid::losBetween(float wx0, float wz0, float wx1, float wz1,
+                         int skip0, int skip1) const {
+    if (empty()) return true;
+    return losWalk(wx0,wz0,wx1,wz1,skip0,skip1,[&](int x,int z) { return !walkable(x,z); });
+}
+
+bool NavGrid::obstacleLosBetween(float wx0, float wz0, float wx1, float wz1,
+                                 int skip0, int skip1) const {
+    if (empty()) return true;
+    return losWalk(wx0,wz0,wx1,wz1,skip0,skip1,[&](int x,int z) {
+        if (x < 0 || z < 0 || x >= w_ || z >= h_) return true;
+        return obst_ && (*obst_)[size_t(z) * size_t(w_) + size_t(x)] != 0;
+    });
 }
 
 
@@ -7404,14 +7420,16 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
 }
 
 
-// Naval shots cross both water and shore. Water depth is a movement restriction,
-// not a projectile blocker; sight grids still consult the shared obstacle overlay.
-// Ground-only combat retains its existing sight test and navigation is unchanged.
+// The engine's 2D sight test (slotClearShot): the shared obstacle overlay
+// alone (buildings, blocking features, wrecks) between the two bodies. Water
+// depth and slope are movement restrictions, not projectile blockers, for a
+// ground shot as for a naval one; terrain that does stop a shot is found by
+// its impacts (noteShotImpact).
 bool World::combatLineOfSight(const Unit& from,const Unit& to) const {
     TA_PROBE(++probe::tl.losCalls);
     const bool naval=from.type->domain==UnitType::Domain::Water ||
                      to.type->domain==UnitType::Domain::Water;
-    return (naval?navalSight_:nav_).losBetween(from.x.toFloat(),from.z.toFloat(),to.x.toFloat(),to.z.toFloat(),
+    return (naval?navalSight_:nav_).obstacleLosBetween(from.x.toFloat(),from.z.toFloat(),to.x.toFloat(),to.z.toFloat(),
         std::max(from.type->footX,from.type->footZ)/2,
         std::max(to.type->footX,to.type->footZ)/2);
 }
@@ -7710,7 +7728,15 @@ bool World::slotInRange(const Unit& u,const Unit& t,int slot) const {
 // Engine deviation shared with the scans (412620) and the order-driven fire test: a
 // ranged ground weapon whose shot flies the line (Weapon::needsClearLine: not
 // a plain Ballistic shell) needs a clear 2D line to its target (retail has no
-// such test; without it a unit would empty its auto slots into a wall). Part
+// such test; without it a unit would empty its auto slots into a wall). The
+// walls are the obstacle overlay's (buildings, blocking features, wrecks:
+// combatLineOfSight). Terrain the sight grid's movement class cannot cross --
+// a slope, a cliff face, deep water -- is not one: a laser fires up a slope
+// it cannot climb, as TotalA.exe's Attack_Chase fires once 0x49abb0 says the
+// target is in range (0x4035d0..0x40360b), and a crest that does stop the
+// shot is met by the impacts (noteShotImpact, below). Taking the slope for a
+// wall left the units below a plateau walking on its foot, never firing
+// (watch_end's stalled all-AI game, 2026-11-24). Part
 // of "in range" for the sweep, the weapon update and the hit response alike,
 // so a blocked target is never selected and then held. Decided by THIS slot's
 // weapon: a Ballistic slot of a unit whose other slot needs the line is free
@@ -8030,7 +8056,7 @@ bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
         const Fixed x=footprintWaypoint(cell%terW_,foot),z=footprintWaypoint(cell/terW_,foot);
         if (needLoS) {
             const bool naval=u.type->domain==UnitType::Domain::Water || t.type->domain==UnitType::Domain::Water;
-            if (!(naval?navalSight_:nav_).losBetween(x.toFloat(),z.toFloat(),t.x.toFloat(),t.z.toFloat(),
+            if (!(naval?navalSight_:nav_).obstacleLosBetween(x.toFloat(),z.toFloat(),t.x.toFloat(),t.z.toFloat(),
                     std::max(u.type->footX,u.type->footZ)/2,std::max(t.type->footX,t.type->footZ)/2)) continue;
         }
         ++tested;
@@ -17696,41 +17722,35 @@ void World::tickFlames(std::span<const int> airGrid) {
     std::erase_if(flames_,[](const auto& flame){return flame.expired;});
 }
 
-struct World::AirOccupancyHost {
-    World& w;
-    Unit* live(int id) {
-        Unit* u=w.unit(id);
-        return u && u->type && (u->alive() || id==w.airRetiring_) ? u : nullptr;
-    }
-    RetailAirOccupant* state(int id) { Unit* u=live(id); return u ? &u->airOccupant : nullptr; }
-    bool footprint(int id,int& x,int& z,int& fx,int& fz) {
-        const Unit* u=w.unit(id);
-        fx=u->type->footX;fz=u->type->footZ;
-        x=footprintOrigin(u->x,fx);z=footprintOrigin(u->z,fz);
-        return true;
-    }
-    bool airborne(int id) { const Unit* u=w.unit(id); return u->flightGroundMode==2 && !u->embarked(); }
-    template<class F> void forEachFlyer(F f) {
-        for (const auto& u:w.units_) if (u.type && u.type->canFly && (u.alive() || u.id==w.airRetiring_)) f(u.id);
-    }
-};
+// The flyers' cell grid (word +2) as TotalA.exe keeps it: each flyer moves
+// its own stamp when its position is set (0x48a9f0, from the mover's commit
+// 0x43d6d0 -> 0x43d775 / 0x43da0e, inside the unit's update in the units'
+// pass 0x48ad30), at its creation (0x486109 -> 0x47cc30, 0x48630c) and at
+// its death (0x48682d -> 0x47cbd0 -> 0x47d0e0). World calls this after each
+// unit's update and at those transitions: a flyer whose footprint origin and
+// layer (airborne or not) are unchanged keeps its stamp (0x48aa35..0x48aa56);
+// otherwise it leaves its recorded cells (0x47d0e0) and stamps the new ones
+// (0x47cc30), first come keeping a shared cell. No random draw.
+void World::stampAirOccupant(Unit& u) {
+    if (!u.type || !u.type->canFly || airOccupancy_.empty()) return;
+    const int fx=u.type->footX,fz=u.type->footZ;
+    const bool air=u.alive() && u.hp>Fixed() && u.flightGroundMode==2 && !u.embarked();
+    const int x=air ? footprintOrigin(u.x,fx) : -9999,z=air ? footprintOrigin(u.z,fz) : -9999;
+    auto& at=u.airOccupant;
+    if (at.recordedX==x && at.recordedZ==z) return;
+    if (at.recordedX>=0 && at.recordedZ>=0) airOccupancy_.taUnstamp(u.id,at.recordedX,at.recordedZ,fx,fz);
+    at.recordedX=at.recordedZ=-9999;
+    if (air && airOccupancy_.taStamp(u.id,x,z,fx,fz)) { at.recordedX=int16_t(x);at.recordedZ=int16_t(z); }
+}
 
-// 512ae0 -> 5066a0 -> 507050(unit,0): a retiring flyer hands each cell it
-// owns to a random overlapping list member. World retires a body from the
-// occupancy planes when it dies, so this runs at that transition.
+// 0x48682d -> 0x47cbd0 -> 0x47d0e0: a dying flyer leaves its cells; a cell
+// it shared with another flyer is left empty (no hand-over).
 void World::retireAirOccupant(Unit& u) {
     if (!u.type || !u.type->canFly || u.airOccupant.recordedX<0 || airOccupancy_.empty()) return;
-    AirOccupancyHost host{*this};
-    airRetiring_=u.id;
-    airOccupancy_.remove(u.id,host,[&](unsigned n){return gameRand(int32_t(n));});
-    airRetiring_=0;
+    airOccupancy_.taUnstamp(u.id,u.airOccupant.recordedX,u.airOccupant.recordedZ,u.type->footX,u.type->footZ);
     u.airOccupant.recordedX=u.airOccupant.recordedZ=-9999;
 }
 
-// 51da6a..51dbbe: after the unit updates, clear every live flyer's recorded
-// footprint (507050(unit,1)), then insert them all (506c40), each pass in
-// player/entity order. The grid persists between ticks: the landing predicate
-// and projectiles read it.
 void World::syncUnitLists() {
     // A restored retail world is re-sorted by id every tick: rebuild then.
     unitLists_.sync(units_,retailAllocation_);
@@ -17746,25 +17766,23 @@ void World::syncUnitLists() {
 #endif
 }
 
+// The grid persists between ticks and is written only by the flyers' own
+// stamps (stampAirOccupant): the landing predicate in the units' pass and the
+// projectile pass after it read it as the flyers left it. Here, before the
+// units, only a flyer that left the world without a death hook is retired.
 std::span<const int> World::updateAirOccupancy() {
-    if (airOccupancy_.width()!=hW_ || airOccupancy_.height()!=hH_) airOccupancy_.reset(hW_,hH_);
-    std::vector<Unit*> flyers;
+    if (airOccupancy_.width()!=hW_ || airOccupancy_.height()!=hH_) {
+        airOccupancy_.reset(hW_,hH_);
+        for (auto& u:units_) u.airOccupant={};
+    }
     syncUnitLists();
     for (const int id:unitLists_.flyers) {
         Unit& u=*unit(id);
-        if (u.alive()) flyers.push_back(&u);
-        else if (u.airOccupant.recordedX>=0) retireAirOccupant(u); // a removal path without a death hook
+        if (!u.alive() && u.airOccupant.recordedX>=0) retireAirOccupant(u);
     }
-    if (flyers.empty()) return airOccupancy_.cells();
-    std::sort(flyers.begin(),flyers.end(),[](const Unit* a,const Unit* b) {
-        return a->player!=b->player ? a->player<b->player : a->id<b->id;
-    });
-    AirOccupancyHost host{*this};
-    for (auto* u:flyers) airOccupancy_.clear(u->id,host);
-    for (auto* u:flyers) airOccupancy_.insert(u->id,host,[&](unsigned n){return gameRand(int32_t(n));});
-    // No air-traffic counter: Kingdoms stepped one per flyer from these lists
-    // (51dc4b..51dce4) for its step-outs; TotalA.exe has no step-out mission
-    // (no VTOL_StepOut row in 0x4fca18's table) and no TA mission reads one.
+    // No air-traffic counter: Kingdoms stepped one per flyer from its overlap
+    // lists (51dc4b..51dce4) for its step-outs; TotalA.exe has no step-out
+    // mission (no VTOL_StepOut row in 0x4fca18's table) and no lists.
     return airOccupancy_.cells();
 }
 
@@ -20361,11 +20379,10 @@ void World::tick(float dt) {
 
 
 
-    // The flyers' persistent cell grid (word +2): rebuilt here, before the
-    // units, as it always was. The landing-site predicate reads it in the
-    // units' pass and the projectile pass after them reads it too (rebuilding
-    // it again after the units moved changes the landing reservations and
-    // the air-stack scenarios; docs/ta-port-plan.md Open (b)).
+    // The flyers' persistent cell grid (word +2). Each flyer moves its own
+    // stamp as its update in the units' pass ends (stampAirOccupant, as
+    // TotalA.exe's position setter 0x48a9f0 does), so the landing-site
+    // predicate and the projectile pass read it as the flyers left it.
     const auto projectileAircraft=updateAirOccupancy();
 
     // The spatial hash for this tick (the scans + separation), and who is
@@ -20604,6 +20621,14 @@ void World::tick(float dt) {
             }
         }
 #endif
+        // TotalA.exe moves a flyer's word +2 stamp inside its own update (the
+        // mover's commit 0x43d6d0 -> 0x48a9f0): stamp it as the update ends,
+        // whichever way it ends, so the units after it and the projectile
+        // pass see it where it now is.
+        struct AirStampAtEnd {
+            World& w; size_t i;
+            ~AirStampAtEnd() { if (i<w.units_.size()) w.stampAirOccupant(w.units_[i]); }
+        } airStampAtEnd{*this,unitIndex};
         if (!units_[unitIndex].type) continue;
         if (units_[unitIndex].alive() && units_[unitIndex].constructionEmitter)
             units_[unitIndex].constructionEmitter->advance();
@@ -21092,8 +21117,8 @@ void World::tick(float dt) {
     // and then the projectiles (0x495513 -> 0x49b720), so every shot the
     // units launched this tick takes its first step and test in this tick,
     // against the bodies where the units' pass left them. The flyers' cell
-    // grid (word +2, read by 0x49b222) is the one rebuilt before the units
-    // (projectileAircraft, above): a flyer is met in the cells it held then.
+    // grid (word +2, read by 0x49b222) holds each flyer where its own update
+    // left it (stampAirOccupant): a flyer is met in the cells it holds now.
     tickWeaponBursts();
     tickFlames(projectileAircraft);
     tickStraightProjectiles(projectileAircraft);

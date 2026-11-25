@@ -63,6 +63,40 @@ public:
     int at(int x,int z) const { return cells_[size_t(z)*width_+x]; }
     bool empty() const { return cells_.empty(); }
 
+    // TotalA.exe's flyer layer. The position setter 0x48a9f0 (the mover's
+    // commit 0x43d6d0 -> 0x43d775, and 0x43da0e) compares the new footprint
+    // origin ((x - footx << 19) + 0x80000) >> 20 and layer (+0x110 & 3) with
+    // the recorded ones (+0x76 / +0x78, 0x48aa35..0x48aa56); on a change it
+    // leaves the old cells (0x47d0e0) and takes the new ones (0x47cc30). There
+    // are no overlap lists and no random owner: the Kingdoms passes above are
+    // not TA's.
+    //
+    // 0x47d0e0, layer 2 (0x47d23b..0x47d284): every cell of the recorded
+    // footprint still holding this unit's index is cleared; one another flyer
+    // holds stays its. Not run when the last stamp was off the map (+0x82 is
+    // the sentinel G+0x142b7, 0x47d0f7..0x47d0ff).
+    void taUnstamp(int id,int x,int z,int fx,int fz) {
+        for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
+            int& cell=cells_[size_t(z+r)*width_+x+c];
+            if (cell==id) cell=0;
+        }
+    }
+    // 0x47cc30, layer 2 (0x47cf98..0x47d042): an origin off the map stamps
+    // nothing (0x47cc57..0x47cca3: x or z negative, x + footx or z + footz past
+    // the last cell); else an empty cell takes the unit, and an occupied one
+    // keeps its flyer unless that flyer's owner is a remote player (player
+    // +0x73 == 3, 0x47cfda..0x47cfe9). Every owner the engine runs is local to
+    // the simulation (lockstep: no peer's view of "remote" may decide it), so
+    // the cell's flyer is kept. Returns whether the footprint was on the map.
+    bool taStamp(int id,int x,int z,int fx,int fz) {
+        if (x<0 || z<0 || x+fx>=width_ || z+fz>=height_) return false;
+        for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
+            int& cell=cells_[size_t(z+r)*width_+x+c];
+            if (!cell) cell=id;
+        }
+        return true;
+    }
+
     // 507050(unit,1): the end-of-update pass clears the recorded footprint
     // unconditionally and resets the overlap list.
     template<class Host> void clear(int id,Host& host) {

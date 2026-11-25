@@ -140,8 +140,23 @@ int main(int argc,char**argv) {
             const int a=w.spawn(&type,800,800,1.570796327f,0),b=w.spawn(&victim,1000,800,0,1);
             if (attack) w.attack(a,b,false);
             bool fired=false;
-            for (int tick=0;tick<300;++tick) { w.tick(1.f/30.f);fired|=w.unit(a)->justFired; }
-            check(!fired,cliff?"raised land blocks naval acquisition and fire":"explicit wall blocks naval acquisition and fire");
+            int shots=0,lastShot=-1;
+            const float hp0=w.unit(b)->hp.toFloat();
+            for (int tick=0;tick<(cliff?900:300);++tick) {
+                w.tick(1.f/30.f);fired|=w.unit(a)->justFired;
+                if (w.unit(a)->justFired) { ++shots;lastShot=tick; }
+            }
+            if (cliff) {
+                // Raised land is no wall to the 2D sight test (only the
+                // obstacle overlay is; World::combatLineOfSight): TotalA.exe
+                // fires on range alone and its shots stop on the land
+                // (0x49b090). Three of them on the cliff write the target off
+                // from here (noteShotImpact), and the ship fires no more.
+                std::printf("cliff attack=%d: %d shots, last at tick %d, target hp lost %.0f, blocked=%d\n",attack,shots,
+                            lastShot,hp0-w.unit(b)->hp.toFloat(),int(w.unit(a)->blockedShots));
+                check(shots<=3 && lastShot<300 && w.unit(b)->hp.toFloat()==hp0 && w.unit(a)->blockedShots>=3,
+                      "raised land stops the naval shots, and three on it write the target off");
+            } else check(!fired,"explicit wall blocks naval acquisition and fire");
             if (!cliff) {
                 w.blockCells(53,0,6,128,false);
                 for (int tick=0;tick<600 && !fired;++tick) { w.tick(1.f/30.f);fired=w.unit(a)->justFired; }
