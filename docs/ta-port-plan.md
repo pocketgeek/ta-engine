@@ -265,9 +265,9 @@ What these entries describe is ported; what is left of each is under "Open".
   it, the 90-degree turn, back to stage 2) and AirToGroundHover 0x413470 (the
   hold two thirds of the range out on the near side, 45 degrees either side of
   the bearing in turn), both on slot 0's range (retailairground.h,
-  World::tickTaAirAttack). No air-traffic counter (TA has no step-out); the
-  occupancy grid and its overlap lists stay (TA's landing test 0x47e2d0 reads
-  cell word +2; projectiles read the grid).
+  World::tickTaAirAttack). No air-traffic counter (TA has no step-out). The
+  flyers' cell grid (word +2) is TotalA.exe's (below, "Flyer cell grid");
+  TA's landing test 0x47e2d0 and the projectiles read it.
 - Repair pads (retailairpad.h): VTOL_Landing 0x4118e0 and SelfRepair 0x402430
   run, with the under-3/4-health detours of VTOL_Patrol (0x410f3e),
   VTOL_RepairPatrol (0x415397), VTOL_SeekAttack (0x410518), VTOL_SeekGuard
@@ -361,8 +361,8 @@ What these entries describe is ported; what is left of each is under "Open".
   to now + lifetime (LOS / selfprop 0x49cb5f..0x49cb65, vlaunch
   0x49ccf6..0x49cd17, ballistic and dropped from the fire tick); burst clones
   join after the pass's count (0x49b720 reads it once) and move from the next
-  tick. The ground bodies are met where the units' pass left them; the
-  flyers' cell grid is still the one rebuilt before the units (Open (b)).
+  tick. The ground bodies and the flyers (word +2, "Flyer cell grid"
+  below) are met where the units' pass left them.
   Every shot kind tests a point with 0x49b090 (World::projectileCollision):
   off the map gone (0x49b0ac), the cell's body (word +0) when not the shot's
   owner's and the point is below its y + model height (0x49b1c7..0x49b211,
@@ -394,6 +394,46 @@ What these entries describe is ported; what is left of each is under "Open".
   major axis, through the guipal -> palette.pal map 0x4ac7d0) and rendertype
   7 as 0x49c48c's two jittered strands of 5 px steps (`client/tabeamdraw.h`,
   `GameView::drawTaLineShot`). Evidence: ta_beam, beam_fx (debug).
+- Flyer cell grid (2026-11-24; World::stampAirOccupant,
+  RetailAirOccupancy::taStamp / taUnstamp). TotalA.exe writes cell word +2
+  from the position setter 0x48a9f0, which the mover's commit calls inside
+  the unit's own update (0x43d6d0 -> 0x43d775, and 0x43da0e): when the
+  footprint origin ((x - footx << 19) + 0x80000) >> 20 or the layer
+  (+0x110 & 3, 2 = airborne) changes (0x48aa35..0x48aa56), 0x47d0e0 clears
+  the recorded cells still holding the unit's index (0x47d23b..0x47d284;
+  skipped after an off-map stamp, +0x82 = G+0x142b7) and 0x47cc30 stamps the
+  new ones (0x47cf98..0x47d042): off the map nothing, an empty cell takes the
+  unit, an occupied one keeps its flyer unless that flyer's owner is remote
+  (player +0x73 == 3, 0x47cfda..0x47cfe9; every owner is local to the
+  lockstep simulation, so the first flyer keeps it). Creation stamps
+  (0x48610f, 0x48630c) and death unstamps (0x48682d -> 0x47cbd0). World
+  stamps each flyer as its update in the units' pass ends, at its spawn and
+  at its death: the units after it, the landing test and the projectile pass
+  meet it where it now is. No overlap lists and no random owner (Kingdoms'
+  506c40 / 507050 rebuild and hand-over, with their gameRand draws, no longer
+  run in a TA game). retail_motion's overhead-flyer case spawns the flyer
+  overhead first, as 0x47cc30 lets the first stamp keep the shared cells.
+  Legion baselines retaken for the air-stack fixtures and air-guard-lost.
+- Combat sight test (2026-11-24; World::combatLineOfSight,
+  NavGrid::obstacleLosBetween). The engine's 2D line test for line-of-fire
+  weapons (an engine deviation: TotalA.exe admits a shot on range alone)
+  takes only the obstacle overlay (buildings, blocking features, wrecks) as
+  a wall, no longer the sight grid's terrain: a slope too steep to climb,
+  a cliff face or deep water is a movement limit, and terrain that does stop
+  a shot is found by its impacts (noteShotImpact / repositionForShot, which
+  test the 3D chord). TotalA.exe's Attack_Chase (0x4034a0) holds and fires
+  once 0x49abb0 says the target is in range (stage 1, 0x4035d0..0x40360b);
+  World's sight test had kept a ground unit with a laser in range of a
+  target on a plateau walking at the foot of the slope, never firing. That
+  was watch_end's all-AI stall: after the shot-pass change its stress game
+  ended with ~73 Core units below Arm's last units on the Ashap plateau,
+  299 of 338 in-range samples of the line-of-fire ones refused for no line
+  of sight; it is decided now (tick 49687). Evidence: blocked_shot
+  (plateau: a Can stops at its range below a 50-high step and hits the
+  Peewee above it within 15 s), naval_combat (a ship behind raised land puts
+  three shots on it, which write the target off), watch_end; legion
+  baselines retaken for attackring-river-64 (the bank strip fires across the
+  river: damage was 0; fewer ever reach the ring, licensed).
 
 ## Open
 
@@ -433,27 +473,17 @@ data (cleanup, no gameplay).
 - (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
   the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
   loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
-- (b) Shot pass (see Ported): World rebuilds the flyers' cell grid
-  (updateAirOccupancy, word +2) once a tick, before the units' pass, and the
-  projectile pass after the units reads that grid: a shot meets a flyer in
-  the cells it held before it moved this tick (ground bodies are current).
-  Where TotalA.exe writes word +2 is not traced. Rebuilding the grid after
-  the units instead (tried 2026-11-24) leaves a flyer spawned this tick out
-  of the landing-site predicate's grid (retail_motion: two flyers landing on
-  one footprint) and moves the air-stack scenarios; rebuilding it twice
-  draws extra gameRand for overlapping flyers. Settle it with the writer of
-  word +2 (the Kingdoms analogue is 51da6a..51dbbe, after the unit updates).
-- (c) watch_end's allai case (debug ctest) has not ended since the shot pass
-  moved after the units (2026-11-24): the stress game (Ashap Plateau, two AIs,
-  TA_STRESS) is decided at tick 26520 before it and still undecided at the
-  test's 54003-tick limit after. At the end ~73 Core units hold attack
-  orders on an Arm armyork on the plateau at (3024, 586) and stand in the
-  lowland and on the slope below it ((2600..3200, 800..1500), y 0..180),
-  never reaching it; Arm keeps 25 units in its base. The stall is in the
-  approach (orders and navigation), not in the shots, but it is this
-  change's trajectory that reaches it: find why the approach stops short.
-  0x49b090's interceptor test (+0x56 target shot within weapon +0xd6,
-  0x49b106..0x49b1a9) bursts and goes on to the body tests; World's
+- (b) Flyer cell grid (see Ported): World stamps a flyer as its update
+  ends; TotalA.exe stamps it inside the mover's commit (0x43d775), so the
+  unit's own later steps in that update (its weapons, 0x48adda) run with
+  the stamp already moved. Nothing in a unit's own update reads its own
+  stamp. The stamp's overlap flags (+0x110 0x4000000 / 0x8000000,
+  0x47cfeb..0x47d02d) are not kept: no TA reader is traced.
+- (d) RetailAirOccupancy's Kingdoms passes (insert / clear / remove, the
+  overlap lists in Unit::airOccupant's count / links) are left for
+  retail_visual_test's Kingdoms fixtures; World no longer runs them.
+- (b) Shot pass leftovers: 0x49b090's interceptor test (+0x56 target shot
+  within weapon +0xd6, 0x49b106..0x49b1a9) bursts and goes on to the body tests; World's
   optional targetShot returns at once (no TA shot passes one). The Kingdoms
   kinds left in the pass (guided3d without taSelfProp, straight, flames,
   the 2D fallback) keep their own launch delays and are tested by the same

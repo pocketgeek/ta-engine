@@ -2055,6 +2055,11 @@ public:
     // building footprint doesn't block the shot, but a wall between them does.
     bool losBetween(float wx0, float wz0, float wx1, float wz1,
                     int skip0 = 0, int skip1 = 0) const;
+    // The same walk over the shared obstacle overlay alone (buildings, blocking
+    // features, wrecks): the walls of the combat sight test. Terrain the grid's
+    // movement class cannot cross -- a slope, deep water -- does not stop a shot.
+    bool obstacleLosBetween(float wx0, float wz0, float wx1, float wz1,
+                            int skip0 = 0, int skip1 = 0) const;
 
     // Can a `foot`-cell body travel the straight line between two WORLD points?
     //
@@ -3091,13 +3096,13 @@ public:
     int projectileEnvironment(const std::array<int32_t,3>& point,int32_t& verticalSpeed,
                               uint32_t weaponFlags) const;
     // Retail's persistent secondary (airborne) occupant grid, map word +2.
-    // Rebuilt once per tick in player/entity order (51da76/51db36), after the
-    // units' pass and before the projectiles' (World::tick); read by the
-    // projectiles (TotalA.exe 0x49b222) and by the landing-site predicate.
+    // Each flyer moves its own stamp when its position is set (TotalA.exe
+    // 0x48a9f0 -> 0x47d0e0 / 0x47cc30; stampAirOccupant, after each unit's
+    // update in the units' pass); read by the projectiles (0x49b222) and by
+    // the landing-site predicate (0x47e2d0).
     RetailAirOccupancy airOccupancy_;
-    int airRetiring_=0;
-    struct AirOccupancyHost;
     std::span<const int> updateAirOccupancy();
+    void stampAirOccupant(Unit& u);
     void retireAirOccupant(Unit& u);
     // TotalA.exe 0x49b090, every shot kind's test of one point: 0 clear (or a
     // bounce), 1 off the map, 2 a burst (unitId the body struck, or 0).
