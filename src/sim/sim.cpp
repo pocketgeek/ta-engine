@@ -5387,12 +5387,24 @@ void World::attachCargo(Unit& carrier,Unit& passenger,int piece) {
     groundRemove(passenger);
     passenger.inTransport=carrier.id;
     carrier.cargo.insert(carrier.cargo.begin(),passenger.id);
-    // 0x4384a0 (any carrier but an air base, flagsA bit 9): every mission goes
-    // but the descriptor-flag-4 ones, and BeCarried (0x402fc0) holds the unit;
-    // its stage 0 makes every slot automatic (0x4898b0(3)).
-    passenger.orders.clear();passenger.speed=Fixed();
+    passenger.speed=Fixed();
     passenger.standbyActive=false;
-    setSlotsAuto(passenger);
+    // 0x48ad09..0x48ad1f: an air base (flagsA bit 9, +0x241 & 0x200) leaves
+    // its passengers' missions alone. Any other carrier calls 0x4384a0: every
+    // mission goes but those whose descriptor carries flag 4 (0x4384c3; of
+    // the ground rows BuildingBuild, Paralyze, GetBuilt, BeCarried,
+    // MakeSelectable, Wait, WaitForAttack, AttackUType, SelfRepair -- the
+    // VTOL rows have none), and BeCarried (0x402fc0) goes in front
+    // (0x438537..0x438569); its stage 0 makes every slot automatic
+    // (0x4898b0(3)) and its stage 1 sleeps (beCarriedWake).
+    if (!carrier.type->isAirBase) {
+        std::erase_if(passenger.orders,[&](const Order& o) {
+            const ScriptedOrder* s=scriptedOrder(o);
+            return !(o.wait>0 || o.waitAttack || (s && s->kind!=ScriptedOrder::Kind::SelfDestruct &&
+                                                  s->kind!=ScriptedOrder::Kind::BuildWeapon));
+        });
+        setSlotsAuto(passenger);
+    }
     passenger.x=carrier.x;passenger.z=carrier.z;
     updateBodyIndex(passenger);refreshMovingSearchBody(passenger);
     noteOrders(passenger.id);
@@ -5469,6 +5481,14 @@ void World::releaseCargo(Unit& carrier,Unit& c,Fixed x,Fixed z) {
     groundStamp(c);
     rebuildOccupancy();
     std::erase(carrier.cargo,c.id);
+}
+
+// 0x44e3c0's unit branch: the followed unit's point (0x43e060; piece -1 is
+// its origin, +0x6a) with the offset 0x44e6c0 set (+0xc, whole px) added to
+// its y and the sum capped at 511 px (0x44e4ee). No ground or sea term.
+int32_t World::followHeight(const Unit& target,int32_t offset) const {
+    const int32_t y=(target.type && target.type->canFly) ? target.flightY.v : target.groundY.v;
+    return std::min(std::bit_cast<int32_t>(uint32_t(y)+uint32_t(offset)),int32_t(0x1ff0000));
 }
 
 int32_t World::transportGoalHeight(Fixed x,Fixed z,int altitude) const {
@@ -5662,10 +5682,11 @@ bool World::tickVtolPickup(Unit& u,size_t leg) {
                     return true;
                 }
                 void pursue() {
-                    // 0x44e190 at cruisealt, radius 0x30: arrival while within
-                    // 48 px of the passenger (it follows it).
+                    // 0x44e190 at cruisealt (0x44e6c0), radius 0x30: arrival while
+                    // within 48 px of the passenger (it follows it), at its own y
+                    // plus cruisealt (0x44e3c0, followHeight).
                     goal.transportTicks=1;
-                    goal.flightGoal=RetailFlightGoal{{p->x.v,w.transportGoalHeight(p->x,p->z,u.type->cruiseAlt),p->z.v},
+                    goal.flightGoal=RetailFlightGoal{{p->x.v,w.followHeight(*p,u.type->cruiseAlt*65536),p->z.v},
                         0x18,0,0x30};
                 }
                 void query() {
@@ -5687,7 +5708,7 @@ bool World::tickVtolPickup(Unit& u,size_t leg) {
                     const int altitude=-int(int16_t(uint32_t(linkY)>>16));
                     goal.transportY=Fixed::fromInt(altitude);
                     goal.transportTicks=2;
-                    goal.flightGoal=RetailFlightGoal{{p->x.v,satAdd32(p->groundY.v,altitude*65536),p->z.v},0x28,0,0};
+                    goal.flightGoal=RetailFlightGoal{{p->x.v,w.followHeight(*p,altitude*65536),p->z.v},0x28,0,0};
                 }
                 void endTransport() { w.notifyUnitScript(u,"EndTransport"); }
                 // 0x4114a0..0x4114a6: ATTACH_UNIT at the piece QueryTransport
@@ -5708,8 +5729,8 @@ bool World::tickVtolPickup(Unit& u,size_t leg) {
     if (goal->transportTicks && goal->flightGoal) {
         if (const Unit* p=unit(goal->targetId); p && p->alive()) {
             goal->flightGoal->point.x=p->x.v;goal->flightGoal->point.z=p->z.v;
-            goal->flightGoal->point.y=goal->transportTicks==1 ?
-                transportGoalHeight(p->x,p->z,u.type->cruiseAlt) : satAdd32(p->groundY.v,goal->transportY.v);
+            goal->flightGoal->point.y=followHeight(*p,goal->transportTicks==1 ?
+                u.type->cruiseAlt*65536 : goal->transportY.v);
         }
     }
     flyTransportGoal(u,*goal,goal->transportMission);
@@ -6043,6 +6064,63 @@ void World::orderTrain(int factoryId, const UnitType* type, int count, bool queu
     u->orders.push_back(o);
 }
 
+// TotalA.exe 0x43b0b0(BUILDWEAPON, unit, slot, count), from the build menu's
+// MAKENUKE / MAKEANTI button (0x419b00: slot 0; left click +1, right -1,
+// Shift five). A positive count joins the LAST mission of the list when it
+// is a BuildWeapon on the same slot (0x43b0ed..0x43b10c), else a new one is
+// appended (0x43adc0 mode 1: no clear). Zero or less takes the count off the
+// last BuildWeapon on that slot anywhere in the list; one whose count it
+// covers is removed and the rest comes off the one before it
+// (0x43b149..0x43b1dc). Retail checks no weapon; the button exists only on
+// the stockpile units' pages, and a slot with no weapon would crash the
+// handler (0x402b89), so the engine refuses a slot without a stockpile weapon.
+void World::orderBuildWeapon(int unitId, int slot, int count) {
+    OrdersNote note{*this,unitId};
+    Unit* u = unit(unitId);
+    if (!u || !u->alive() || !u->type || u->underConstruction || slot < 0 || slot > 2 ||
+        size_t(slot) >= u->type->weapons.size() || !u->type->weapons[size_t(slot)].hasTaFlag(kWStockpile))
+        return;
+    auto matches = [&](const Order& o) {
+        const ScriptedOrder* s = scriptedOrder(o);
+        return s && s->kind == ScriptedOrder::Kind::BuildWeapon && s->slot == slot;
+    };
+    if (count > 0) {
+        if (!u->orders.empty() && matches(u->orders.back())) {
+            scriptedOrders_[u->orders.back().scripted - 1u].count += count;
+            return;
+        }
+        ScriptedOrder s;
+        s.kind = ScriptedOrder::Kind::BuildWeapon;
+        s.slot = slot;
+        s.count = count;
+        Order o;
+        o.x = u->x;
+        o.z = u->z;
+        o.scripted = addScriptedOrder(s);
+        if (!o.scripted) return;
+        u->orders.push_back(o);
+        return;
+    }
+    for (;;) {
+        auto last = std::find_if(u->orders.rbegin(), u->orders.rend(), matches);
+        if (last == u->orders.rend()) return;
+        ScriptedOrder& s = scriptedOrders_[last->scripted - 1u];
+        if (s.count > -count) { s.count += count; return; }
+        count += s.count;
+        const bool head = last.base() - 1 == u->orders.begin();
+        u->orders.erase(last.base() - 1);
+        if (head) cancelPath(*u);
+    }
+}
+
+int World::queuedStock(const Unit& u, int slot) const {
+    int queued = 0;
+    for (const Order& o : u.orders)
+        if (const ScriptedOrder* s = scriptedOrder(o); s && s->kind == ScriptedOrder::Kind::BuildWeapon && s->slot == slot)
+            queued += s->count;
+    return queued;
+}
+
 void World::orderSelfDestruct(int unitId, bool queue) {
     OrdersNote note{*this,unitId};
     Unit* u = unit(unitId);
@@ -6091,7 +6169,9 @@ bool World::embarkInto(int passengerId, int transportId) {
     // and BeCarried goes in front; every clause after the `i` queues behind it.
     std::erase_if(p->orders, [&](const Order& o) {
         const ScriptedOrder* s = scriptedOrder(o);
-        return !(o.wait > 0 || o.waitAttack || (s && s->kind != ScriptedOrder::Kind::SelfDestruct));
+        // BuildWeapon's row (0xc0140) has no flag 4 either.
+        return !(o.wait > 0 || o.waitAttack || (s && s->kind != ScriptedOrder::Kind::SelfDestruct &&
+                                                s->kind != ScriptedOrder::Kind::BuildWeapon));
     });
     cancelPath(*p);
     if (p->scriptAimTarget) clearScriptWeaponTarget(*p);
@@ -6132,6 +6212,7 @@ void World::scriptKills(int unitId, int kills) {
 void World::tickScriptedOrder(Unit& u) {
     if (u.orders.empty() || !u.orders.front().scripted) return;
     if (!u.alive() || !u.type || u.underConstruction || u.incapacitated() || u.embarked()) return;
+    if (u.beCarriedWake && tickCounter_<u.beCarriedWake) return;   // BeCarried heads the list
     const uint16_t index = u.orders.front().scripted;
     if (index > scriptedOrders_.size()) return;
     ScriptedOrder& s = scriptedOrders_[index - 1u];
@@ -6167,6 +6248,61 @@ void World::tickScriptedOrder(Unit& u) {
         if (s.count <= 0 || std::find(u.buildQueue.begin(), u.buildQueue.end(), s.type) == u.buildQueue.end())
             done();
         return;
+    }
+    case ScriptedOrder::Kind::BuildWeapon: {
+        // TotalA.exe BuildWeapon (0x402b70, descriptor 0x4fc571: "Nanolathing",
+        // flags 0xc0140, so a plain order clears it), one stock at a time. The
+        // dispatcher (0x43b7c0) runs it again at once on 0 / 1 and waits on 2.
+        Order& o = u.orders.front();
+        if (o.mission.deadline != 0xffffffffu) {
+            if (tickCounter_ < o.mission.deadline) return;
+            o.mission.deadline = 0xffffffffu;
+        }
+        const int slot = std::clamp(s.slot, 0, 2);
+        if (size_t(slot) >= u.type->weapons.size()) { done(); return; }
+        const Weapon& w = u.type->weapons[size_t(slot)];
+        for (;;) {
+            if (o.mission.stage == 0) {
+                // 0x402cb4: none left to build ends it (5); a full slot (200,
+                // 0x402cca) sleeps 300 ticks and looks again; else a fresh
+                // stock starts (+0x3e = 0) at stage 1 at once.
+                if (s.count <= 0) { done(); return; }
+                if (u.stock[size_t(slot)] >= 200) { o.mission.deadline = tickCounter_ + 300u; return; }
+                s.progress = 0;
+                o.mission.stage = 1;
+                continue;
+            }
+            if (o.mission.stage == 1) {
+                // 0x402bd4..0x402c9c: five more ticks of the weapon's
+                // reloadtime (+0xe4, ticks), capped at it; the step's share of
+                // metalpershot and energypershot, each trunc(next*cost/reload)
+                // less trunc(progress*cost/reload) (x87 at 53 bits: exact in
+                // double for these magnitudes), requested from the unit's own
+                // books (0x4011c0, as construction pays). Paid: progress moves
+                // on and, short of the reload, it sleeps 5 ticks; done, stage 2
+                // at once. Refused (the unit is in debt): a 10-tick sleep.
+                const int32_t reload = int32_t(w.reloadTicks);
+                const int32_t next = std::min(s.progress + 5, reload);
+                const auto share = [&](float cost, int32_t at) {
+                    return reload ? int32_t(std::trunc(double(at) * double(cost) / double(reload))) : 0;
+                };
+                const int32_t dM = share(w.metalPerShot, next) - share(w.metalPerShot, s.progress);
+                const int32_t dE = share(w.energyPerShot, next) - share(w.energyPerShot, s.progress);
+                if (!econ::requestBoth(u.books, float(dE), float(dM))) {
+                    o.mission.deadline = tickCounter_ + 10u;
+                    return;
+                }
+                s.progress = next;
+                if (next < reload) { o.mission.deadline = tickCounter_ + 5u; return; }
+                o.mission.stage = 2;
+                continue;
+            }
+            // 0x402bb3: one more in the slot's stock, one fewer to build, and
+            // back to stage 0 at once (0). 0x41c150 refreshes the build menu.
+            u.stock[size_t(slot)] = uint8_t(u.stock[size_t(slot)] + 1);
+            --s.count;
+            o.mission.stage = 0;
+        }
     }
     case ScriptedOrder::Kind::AttackType: {
         Order& o = u.orders.front();
@@ -6938,7 +7074,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // pays nothing (0x49e441). The paths after the TA ones below are the
     // synthetic test armies' (no TA record, taAim None).
     if (w.taAim!=Weapon::TaAim::None && !taLaunchClaimed(w)) return false;
-    if (!tweak.free && !tweak.capture && !econPayShot(u, w)) return false;
+    if (!tweak.free && !tweak.capture && !payShot(u, w, slot)) return false;
     // Every shot keeps the shooter visible for 600 ticks (icd 0x52af41, set just
     // before the release 0x530220).
     blockCloak(u, 600);
@@ -6969,6 +7105,16 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         const auto target=scriptTriggered && !tweak.free ? u.weaponAimPoints[size_t(slot)] :
             tu ? taTargetPoint(u,t,w) : t.point;
         const bool vlaunch=w.taAim==Weapon::TaAim::VLaunch;
+        // 0x49dc17..0x49dc36: an interceptor's vlaunch routine asks the scan
+        // (0x49d120) again; with no quarry it does not fire (0: nothing is
+        // spent and the aim stays ready). The spawner hands the shot it found
+        // to the new one (0x49cc20's sixth argument, +0x56 at 0x49cd25).
+        uint32_t quarry=0;
+        if(vlaunch && w.hasTaFlag(kWInterceptor) && !tweak.free && !tweak.capture) {
+            const int found=interceptorScan(u,slot);
+            if(found<0)return false;
+            quarry=projectiles_[size_t(found)].serial;
+        }
         // 0x49cc95: a vertical launch leaves straight up with no velocity;
         // the selfprop update gives it one on its first tick.
         uint16_t heading=0,pitch=0x4000;
@@ -7014,8 +7160,9 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
             p.life=std::numeric_limits<int32_t>::max();
         }
         p.taHeading=heading;p.taPitch=pitch;p.taTargetPoint=target;p.taSpeed=speed;   // +0x36/+0x38/+0x28/+0x3a
+        p.targetShot=quarry;
         if(tweak.capture)*tweak.capture=p;
-        else projectiles_.push_back(p);
+        else pushShot(p);
         return true;
     }
     // TotalA.exe's ballistic spawner 0x49cde0, from the turret routine when
@@ -7053,7 +7200,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         const int32_t horizontal=std::max(1,std::abs(retailScaledCosine(pitch,w.velocityFx)));
         p.flight=int32_t(std::max<uint64_t>(1,isqrt64(uint64_t(dx*dx)+uint64_t(dz*dz))/uint64_t(horizontal)));
         if(tweak.capture)*tweak.capture=p;
-        else projectiles_.push_back(p);
+        else pushShot(p);
         return true;
     }
     // Dropped: the bomb is RELEASED, not fired, and has no weaponvelocity, so
@@ -7080,7 +7227,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         b.flight=int32_t(retailDroppedFallTicks(muzzle[1],int32_t(uint32_t(ground)<<16),ballisticGravityRaw_));
         // No expiry: terrain, a feature or a unit retires it.
         b.life=std::numeric_limits<int32_t>::max();
-        projectiles_.push_back(b);
+        pushShot(b);
         return true;
     }
     if (w.beam || w.projVel <= 0) {
@@ -7173,7 +7320,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // and can expire a pitched shot in midair.
     if (p.ballistic3d) p.life = std::numeric_limits<int32_t>::max();
     p.flight = int32_t(dist / vel * kTick + 0.5f);
-    projectiles_.push_back(p);
+    pushShot(p);
     return true;
 }
 
@@ -7335,8 +7482,13 @@ void World::syncSlotMode(Unit& u) {
     const bool airPoint=front && front->airPoint;
     const bool suppressing=u.slotPoint && front &&
         ((behind ? behind->suppress : u.orders[currentLeg(u.orders)].suppress) || airPoint);
+    // An auto interceptor slot's point is the sweep's own (tickFireSweep,
+    // 0x408b57), not a mission's: it stays.
     if (u.slotPoint && !suppressing)
-        for (int s=0;s<3;++s) dropSlotPoint(u,s);
+        for (int s=0;s<3;++s)
+            if (!((u.slotAuto>>s&1) && size_t(s)<u.type->weapons.size() &&
+                  u.type->weapons[size_t(s)].hasTaFlag(kWInterceptor)))
+                dropSlotPoint(u,s);
     const bool attack=front && ((front->targetId!=0 && !front->guard && !front->load) ||
         (suppressing && u.slotPoint) || airPoint);
     const bool work=u.buildSiteId || u.repairId || u.reclaimId || u.reviveTarget || u.workScriptWorking;
@@ -8197,6 +8349,19 @@ void World::tickFireSweep(int player) {
                         if (t && sweepKeepsTarget(*u,s,*t)) continue;
                         // 51a9a0 retires a dead or invalid target.
                         if (!t || !t->alive() || t->hp<=Fixed()) dropSlotTarget(*u,s);
+                    }
+                    if (w.hasTaFlag(kWInterceptor)) {
+                        // 0x408b38..0x408b5c: an interceptor slot asks 0x49d120 for
+                        // a shot to chase and takes the point where that shot is
+                        // now (its +0x04, 0x48a0a0: whole px, a z of 0x8000 as
+                        // 0x8001); none clears the slot (0x48a0f0).
+                        const int shot=interceptorScan(*u,s);
+                        if (shot<0) { dropSlotTarget(*u,s);continue; }
+                        const auto& head=projectiles_[size_t(shot)].position;
+                        int16_t pz=int16_t(head[2]>>16);
+                        if (uint16_t(pz)==0x8000u) pz=int16_t(0x8001);
+                        setSlotPoint(*u,s,{int16_t(head[0]>>16),pz});
+                        continue;
                     }
                     const int found=retailSelectTarget(*u,s,true);
                     if (found>0) setSlotTarget(*u,s,found);
@@ -17236,17 +17401,68 @@ void World::tickTaLineOfSight(Projectile& p,std::span<const int> airGrid) {
 // any other coasts and falls under gravity until it strikes something, and a
 // twophase shot starts its second stage for flighttime ticks (dropping its
 // target unit unless it tracks).
+const Projectile* World::shotBySerial(uint32_t serial) const {
+    if(!serial)return nullptr;
+    for(const auto& q:projectiles_)
+        if(q.serial==serial)return q.spent || q.life<=0 ? nullptr : &q;
+    return nullptr;
+}
+
+int World::interceptorScan(const Unit& u,int slot) const {
+    if(!u.type || slot<0 || slot>2 || size_t(slot)>=u.type->weapons.size())return -1;
+    // 0x49d13c: no stock in the slot, no quarry.
+    if(!u.stock[size_t(slot)])return -1;
+    const uint32_t cover=uint32_t(u.type->weapons[size_t(slot)].coverage)<<16;
+    for(size_t i=0;i<projectiles_.size();++i) {
+        const Projectile& q=projectiles_[i];
+        if(q.spent || q.life<=0 || !q.wsrc)continue;
+        // 0x49d170..0x49d18b: another player's shot (+0x66 against the unit's
+        // +0xff: an ally's too) of a targetable weapon (bit 29).
+        if(q.fromPlayer==u.player || !q.wsrc->hasTaFlag(kWTargetable))continue;
+        // 0x49d18d..0x49d1a6: its target point (+0x28 / +0x30) within the
+        // coverage of the unit's x and z, unsigned (a square, edges in).
+        if(uint32_t(u.x.v)-uint32_t(q.taTargetPoint[0])+cover>cover+cover)continue;
+        if(uint32_t(u.z.v)-uint32_t(q.taTargetPoint[2])+cover>cover+cover)continue;
+        // 0x49d1a8..0x49d1c3: and no shot chases it yet (+0x56).
+        if(std::any_of(projectiles_.begin(),projectiles_.end(),
+                       [&](const Projectile& r) { return r.targetShot==q.serial; }))continue;
+        return int(i);
+    }
+    return -1;
+}
+
+void World::burstTaShot(size_t index,int hitUnit) {
+    if(index>=projectiles_.size() || !projectiles_[index].wsrc)return;
+    Projectile& p=projectiles_[index];
+    const Weapon& w=*p.wsrc;
+    const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
+    p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+    const auto at=p.position;
+    // 0x499ede: a noexplode shot is not retired by its burst.
+    if(!w.hasTaFlag(kWNoExplode)) {p.spent=true;p.life=0;}
+    applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),at,{},p.slot);
+    noteShotImpact(p.fromId,p.targetId,w,at,hitUnit,shotHp);
+    if(!w.hasTaFlag(kWInterceptor))return;
+    // 0x49a664..0x49a7ee: an interceptor's area damage bursts every other
+    // live shot -- any owner's, targetable or not -- whose head is within
+    // its areaofeffect in 3D (the 64-bit squares' high dwords, as
+    // 0x49b106), each through its own 0x499eb0 with no unit struck.
+    const uint16_t radius=uint16_t(w.aoe);
+    for(size_t j=0;j<projectiles_.size();++j) {
+        if(j==index)continue;
+        const Projectile& q=projectiles_[j];
+        if(q.spent || q.life<=0 || !q.wsrc)continue;
+        if(!retailProjectileProximity(q.position,at,radius))continue;
+        burstTaShot(j,0);
+    }
+}
+
 void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
     if(p.life<=0 || !p.wsrc)return;
     if(tickCounter_<p.start)return;   // a burst clone joins the pool after the pass's count
     const Weapon& w=*p.wsrc;
-    const auto burst=[&](int hitUnit) {   // 0x499eb0
-        const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
-        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-        applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),p.position,{},p.slot);
-        noteShotImpact(p.fromId,p.targetId,w,p.position,hitUnit,shotHp);
-        p.spent=true;p.life=0;
-    };
+    const size_t index=size_t(&p-projectiles_.data());
+    const auto burst=[&](int hitUnit) { burstTaShot(index,hitUnit); };   // 0x499eb0
     // 0x49b3e0: what a steering shot turns toward.
     const auto aimPoint=[&]()->std::array<int32_t,3> {
         if(w.hasTaFlag(25)) {
@@ -17265,6 +17481,10 @@ void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
             aim[1]=int32_t(uint32_t(std::max(ground,int(uint8_t(seaLevel_))))<<16);
             return aim;
         }
+        // 0x49b47a: an interceptor's quarry is chased at its head (+0x04).
+        // Engine deviation: a quarry that is gone is let go (retail keeps a
+        // stale +0x56, which the compaction 0x49ae20 does not clear).
+        if(const Projectile* q=shotBySerial(p.targetShot))return q->position;
         // A live target unit is chased at its origin (unit+0x6a).
         if(const Unit* t=unit(p.targetId);t && t->alive() && t->hp>Fixed() && t->type)
             return {t->x.v,(t->type->canFly ? t->flightY : t->groundY).v,t->z.v};
@@ -17304,7 +17524,13 @@ void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
     p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
     p.age=int32_t(tickCounter_-p.start)+1;
     const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
-    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
+    std::optional<std::array<int32_t,3>> chased;
+    if(const Projectile* q=shotBySerial(p.targetShot))chased=q->position;
+    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid,
+                                       chased,uint16_t(w.aoe));
+    // 0x49b1a9: within its areaofeffect of the quarry it bursts; the body
+    // tests run on (0x49b1ae), and a body struck there bursts it again.
+    if(hit.intercepted)burst(0);
     if(hit.code==2)burst(hit.unitId);
     else if(hit.code==1) {   // off the map: gone, a miss
         if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
@@ -17688,6 +17914,31 @@ void World::attachToPad(Unit& pad,Unit& u,int piece) {
     noteOrders(u.id);
 }
 
+void World::noteCloaked(const Unit& u) {
+    for (auto& c : units_) {
+        if (!c.alive() || c.id==u.id || !c.type || !c.type->canFly) continue;
+        for (auto& o : c.orders)
+            if (o.transportPickup && o.targetId==u.id) o.transportMission.pending|=kTargetCloakedEvent;
+    }
+}
+
+// 0x43d78e -> 0x43e180, every mover tick of a carried unit (0x43d6d0's
+// attached branch, a repair pad's rider and a transport's cargo alike): its
+// orientation words are the carrier's plus its attach piece's own turns
+// (piece record +0x10 / +0x12 / +0x14, read at the list's +0x32 / +0x34 /
+// +0x36): +0x66 the heading gets the y turn, +0x68 the pitch the x turn,
+// +0x64 the roll the z turn. So it leaves on the carrier's heading plus the
+// piece's. Piece -1 (the carrier's own point) reads the words in front of
+// the piece list in retail; the engine takes no turn there.
+void World::carriedOrientation(Unit& u,const Unit& carrier,int piece) {
+    std::array<uint16_t,3> turn{};
+    if (const auto it=unitScript(carrier.id); it && piece>=0 && size_t(piece)<it->peek().pieces.size())
+        for (size_t i=0;i<3;++i) turn[i]=uint16_t(it->peek().pieces[size_t(piece)].turn[i]);
+    u.heading=retailHeadingToPort(uint16_t(portHeadingToRetail(carrier.heading)+turn[1]));
+    u.groundPitch=uint16_t(carrier.groundPitch+turn[0]);
+    u.groundRoll=uint16_t(carrier.groundRoll+turn[2]);
+}
+
 // 0x48aac0(unit, 0, -1, 2), every flyer mission's stage 0 (0x40f221,
 // 0x40fb48, 0x4102a1, 0x4107a1, 0x411112, 0x411979, ...): back on the map
 // where it sits (0x47cb40), airborne.
@@ -18069,7 +18320,9 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
     if(!aim.requested()) {
         std::optional<std::array<uint16_t,2>> angles;
         if(w.taAim==Aim::Turret)angles=taAimAngles(u,w,aimFromPoint(u.id,slot),target);
-        else if(w.taAim==Aim::VLaunch)angles=std::array<uint16_t,2>{0,0};
+        // 0x49e33d..0x49e357: a stockpile vlaunch aims only with stock.
+        else if(w.taAim==Aim::VLaunch && (!w.hasTaFlag(kWStockpile) || u.stock[size_t(slot)]))
+            angles=std::array<uint16_t,2>{0,0};
         if(angles) {
             aim.heading=(*angles)[0];aim.pitch=(*angles)[1];
             aim.flags=ta::TaAimState::kRequested;   // ready = 0
@@ -18135,7 +18388,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
     if(w.burst>0) {
         // 0x49cb79: a burst shot becomes an emitter (tickWeaponBursts) that
         // releases `burst` shots, the first burstrate ticks from now.
-        if(!econPayShot(u,w))return true;
+        if(!payShot(u,w,slot))return true;
         blockCloak(u,600);
         u.justFired=true;u.firedWeapons|=uint32_t(1)<<slot;
         BurstEmitter b;
@@ -18163,12 +18416,19 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
     u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,native,uint16_t(aim.heading+tweak.heading));
     // 0x49d78e: the shot consumes the aim; AimX runs again before the next.
     aim.flags=0;
-    // 0x49e468..0x49e4ee: no random term. k = min(kills/5, 5), h = 20ths of
-    // health left; reload = (ticks*(100-6k)/100)*(120-h)/100.
-    const int32_t k=std::min<int32_t>(u.kills/5,5);
-    const int32_t h20=int32_t(int64_t(hp)*20/maxHp);
-    const int32_t ticks=w.reloadTicks ? int32_t(w.reloadTicks) : int32_t(w.reload*kTick+0.5f);
-    u.reloads[size_t(slot)]=(ticks*(100-6*k)/100)*(120-h20)/100;
+    if(w.hasTaFlag(kWStockpile)) {
+        // 0x49e447..0x49e463: a stockpile shot spends one of the slot's
+        // stock and sets no reload (its reloadtime is BuildWeapon's build
+        // time); it pays no energy or metal (0x49e518).
+        u.stock[size_t(slot)]=uint8_t(u.stock[size_t(slot)]-1);
+    } else {
+        // 0x49e468..0x49e4ee: no random term. k = min(kills/5, 5), h = 20ths of
+        // health left; reload = (ticks*(100-6k)/100)*(120-h)/100.
+        const int32_t k=std::min<int32_t>(u.kills/5,5);
+        const int32_t h20=int32_t(int64_t(hp)*20/maxHp);
+        const int32_t ticks=w.reloadTicks ? int32_t(w.reloadTicks) : int32_t(w.reload*kTick+0.5f);
+        u.reloads[size_t(slot)]=(ticks*(100-6*k)/100)*(120-h20)/100;
+    }
     // The slot fired (SUPPRESS waits on it); a command-fire shot at a point
     // raises 0x40000 instead.
     u.missionEvents|=!t.unit && w.commandFire ? 0x40000u : 0x10000u;
@@ -18217,7 +18477,7 @@ void World::tickWeaponBursts() {
             // 0x49b7e1 refreshes only the head).
             c.taLaunch=tickCounter_;
             if(c.taSelfProp || c.taLineOfSight)c.flight=int32_t(lifetime);
-            projectiles_.push_back(c);
+            pushShot(c);
             // 0x49b8f1..0x49b94b: sprayangle turns the EMITTER's horizontal
             // velocity for the next clone, from its stored heading and pitch.
             if(w.sprayAngle) {
@@ -20612,6 +20872,7 @@ void World::tick(float dt) {
                 const auto p=unitPiecePoint(*pad,u.padPiece,false);
                 u.x=Fixed::raw(p[0]);u.z=Fixed::raw(p[2]);
                 if (u.type->canFly) u.flightY=Fixed::raw(p[1]); else u.groundY=Fixed::raw(p[1]);
+                carriedOrientation(u,*pad,u.padPiece);
                 updateBodyIndex(u);
                 // The attached branch's setter (0x43d775 -> 0x48a9f0) commits
                 // the pad's layer 0 (0x48ab70 put it in mover +0x2e): the
@@ -20633,11 +20894,26 @@ void World::tick(float dt) {
                 const auto point=retailAttachedPosition(cargoAttachPoint(*t,u),
                     u.type->floater,uint8_t(u.type->waterline),uint8_t(seaLevel_));
                 u.x=Fixed::raw(point[0]);u.groundY=Fixed::raw(point[1]);u.z=Fixed::raw(point[2]);
+                carriedOrientation(u,*t,u.attachPiece);
                 updateBodyIndex(u);
                 stampAirOccupant(u);   // 0x43d775 -> 0x48a9f0 (a carried flyer holds no cell)
+                // BeCarried's dispatch (0x402fc0): stage 0 at its first wake aboard
+                // goes straight on to stage 1's 10-tick sleep; each wake with the
+                // carrier there sleeps 10 more.
+                if (!t->type->isAirBase && (!u.beCarriedWake || tickCounter_>=u.beCarriedWake))
+                    u.beCarriedWake=tickCounter_+10u;
             }
             else { if (mission_ || scenario_) justDied_.push_back(u.id); retireAirOccupant(u); u.deadFor = 0; noteOrders(u.id); }  // transport lost with all hands
             continue;
+        }
+        if (u.beCarriedWake) {
+            // Dropped: BeCarried still heads the list until its wake finds no
+            // carrier (0x402fc4..0x402fce: 5), and the next mission (or the
+            // default one) starts then. Meanwhile only the weapons work
+            // (0x49e1a0 reads no mission; BeCarried made the slots automatic).
+            if (tickCounter_<u.beCarriedWake) { tickSlotWeapons(u);tickPointWeapons(u);continue; }
+            u.beCarriedWake=0;
+            noteOrders(u.id);
         }
         // Frozen / petrified / paralyzed: the unit is inert this tick.
         if (u.incapacitated()) { u.speed = Fixed(); if (u.type->canFly) u.flightVelocity={}; continue; }
@@ -21732,6 +22008,7 @@ uint64_t World::stateHash() const {
                     mix(uint8_t(s->kind)); mix(uint32_t(s->count)); mix(uint32_t(s->watched));
                     mix(s->heard); mix(uint32_t(s->radius));
                     if (s->type) { mix(s->type->id.size()); for (unsigned char c : s->type->id) mix(c); }
+                    if (s->kind == ScriptedOrder::Kind::BuildWeapon) { mix(uint32_t(s->slot)); mix(uint32_t(s->progress)); }
                 }
                 mix(order.mission.stage); mix(order.mission.deadline); mix(uint32_t(order.wait));
             }
@@ -21976,6 +22253,9 @@ uint64_t World::stateHash() const {
             mix(0x534c4f54504f4954ull);mix(u.slotPoint);
             for (const auto& p : u.slotPointAt) mix(uint32_t(uint16_t(p.x))|uint32_t(uint16_t(p.z))<<16);
         }
+        if (u.stock!=std::array<uint8_t,3>{})
+            {mix(0x53544f434bull);mix(uint32_t(u.stock[0])|uint32_t(u.stock[1])<<8|uint32_t(u.stock[2])<<16);}
+        if (u.beCarriedWake) { mix(0x4245434152524945ull); mix(u.beCarriedWake); }
         mix(uint32_t(u.faceRequest));
         if (u.aimWait!=std::array<uint8_t,3>{})
             {mix(0x41494d57u);mix(uint32_t(u.aimWait[0])|uint32_t(u.aimWait[1])<<8|uint32_t(u.aimWait[2])<<16);}
@@ -22098,6 +22378,7 @@ uint64_t World::stateHash() const {
             if(p.taSelfProp) {
                 mix(0x54415350u);mix(uint32_t(p.taSpeed));mix(uint32_t(p.taHeading)|uint32_t(p.taPitch)<<16);
                 mix(p.taPhase);for(int32_t value:p.taTargetPoint)mix(uint32_t(value));
+                if(p.targetShot) {mix(0x51554152u);mix(p.targetShot);mix(p.serial);}
             }
         }
         if(p.taLineOfSight) {

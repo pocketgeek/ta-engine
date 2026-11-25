@@ -1187,6 +1187,8 @@
         s.standingOrder = u.standingOrder;
         for(size_t w=0;w<s.weaponReloads.size();++w)
             s.weaponReloads[w]=u.reloads[w];
+        s.stock=u.stock;
+        s.stockQueued=u.orders.empty() ? 0 : world_.queuedStock(u,0);
         s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
         s.selectable = u.selectable;
         s.replacementModel=nullptr;s.replacementOpacity=-1;

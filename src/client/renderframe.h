@@ -85,6 +85,8 @@ struct UnitR {
     int8_t outputStance = -1;   // a producer's stance for its output (-1: none chosen)
     uint8_t standingOrder = 3;
     std::array<int32_t,3> weaponReloads{};
+    std::array<uint8_t,3> stock{};   // sim Unit::stock (stockpile weapons)
+    int stockQueued = 0;             // World::queuedStock(slot 0): the build button's " +N"
     bool underConstruction = false, buildBegun = false;
     bool selectable = true;     // retail +0x130 & 0x20: false while a mission script runs it
     bool cloaked = false, cloakOn = true, active = true;

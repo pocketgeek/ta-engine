@@ -21,6 +21,9 @@ namespace ta::sim {
 // client AND the server's referee sim, so they mutate identically). Enforces
 // per-unit ownership against Command::player.
 void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command& c);
+// A Train / Unqueue whose type is the build menu's stockpile button
+// (MAKENUKE / MAKEANTI, any case): BUILDWEAPON on slot 0 (TotalA.exe 0x419b00).
+bool stockpileButton(const char* type);
 
 // Apply one sequenced lifecycle event (Forfeit/Leave -> the player's units go
 // inert; AiTakeover -> the player becomes computer-owned). Symmetric across peers so

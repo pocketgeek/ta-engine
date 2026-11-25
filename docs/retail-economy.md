@@ -127,7 +127,7 @@ A negative `amt` (deconstruct) runs the frame backwards and credits `BuildCostMe
 - If `0x401180(e)` succeeds, heal `h` (`0x489bb0` type 10, capped at MaxDamage, `0x489d59`).
 - In practice that is **1 E and 1 HP per tick whatever the WorkerTime** (emulated with three very different units). The repairer can't cloak for 150 ticks.
 
-**Stockpile weapons** pay `energypershot` / `metalpershot` gradually through `0x4011c0` (`0x402bf3..0x402c6b`) **[S, not detailed]**.
+**Stockpile weapons** pay `energypershot` / `metalpershot` gradually through `0x4011c0` (`0x402bf3..0x402c6b`) **[S]**: BuildWeapon (`0x402b70`) requests, every 5 ticks, `trunc(next·cost/reload) − trunc(prev·cost/reload)` with `next = min(prev+5, reloadtime ticks)`; a refused request (debt) sleeps 10 ticks. A stock takes `(ceil(reload/5)−1)·5` ticks and exactly the per-shot cost. The shot itself then pays nothing (`0x49e518`).
 
 ## 4. Weapons, sharing, HUD
 

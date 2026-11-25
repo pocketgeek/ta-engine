@@ -405,8 +405,7 @@ Implemented (`World::tickScriptWeapon`, `taAimAngles`, `aimFromPoint`, `taWeapon
   piece when burstrate >= 5 or the count is odd), velocity and angles; sprayangle turns the
   emitter's horizontal velocity for the next clone (0x49b8f1); randomdecay jitters a clone's
   expiry. The emitter is the spawner's own record.
-- Non-turret LOS weapons compare only the heading with the body (no body-pitch test); a
-  stockpile weapon's stock is not checked for vlaunch.
+- Non-turret LOS weapons compare only the heading with the body (no body-pitch test).
 - Sign check (`ta_weapon_script_test`): with d = P - T the AimPrimary heading plus the body
   heading points from the turret at targets ahead, behind and to both sides, in the
   mover's own convention (a body with heading h steps along (-sin h, -cos h)).

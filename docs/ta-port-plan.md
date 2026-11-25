@@ -213,6 +213,58 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 
 What these entries describe is ported; what is left of each is under "Open".
 
+- Stockpiles and interceptors (stockpile_test). The build menu's MAKENUKE /
+  MAKEANTI button (0x419b00: left +1, right -1, Shift 5; Cmd::Train /
+  Unqueue with that name, matchsetup stockpileButton) gives BUILDWEAPON slot
+  0 through 0x43b0b0 (joins the last BuildWeapon on the slot, else appends;
+  a negative count takes back from the last ones). BuildWeapon (0x402b70,
+  row 0x4fc571 "Nanolathing", flags 0xc0140, no flag 4: a plain order clears
+  it) is ScriptedOrder::Kind::BuildWeapon: stage 0 ends at count 0, sleeps
+  300 at 200 stock (0x402cca), else stage 1: five more ticks of reloadtime
+  (+0xe4), metal/energy step trunc(next*cost/reload) - trunc(prev*cost/reload)
+  requested from the unit's books (0x4011c0; refused: 10-tick sleep, else 5),
+  stage 2 stock++ (S+0x1a, Unit::stock), count--, back to stage 0. A stock
+  takes (ceil(reload/5)-1)*5 ticks (armsilo: 5395 for 180000 E / 2000 M).
+  Fire: a stockpile weapon needs stock (0x49e3e2; vlaunch aim too,
+  0x49e33d), spends one (0x49e455), sets no reload and pays nothing
+  (0x49e463 -> 0x49e4f2, 0x49e518). The build button shows "<stock> +<queued>"
+  (0x4199b0, 0x439d80). Interceptors: the fire sweep (0x408b38..0x408b5c)
+  asks 0x49d120 for an interceptor slot -- stock in the slot; the first live
+  shot of another player, targetable (bit 29), whose target point (+0x28/+0x30)
+  lies in the unsigned coverage square of the unit, chased by no shot -- and
+  sets the slot's point to that shot's head (0x48a0a0); an auto interceptor
+  slot keeps that point (syncSlotMode). The vlaunch routine scans again
+  (0x49dc17..0x49dc36; none: no shot) and the spawner hands the quarry over
+  (+0x56, 0x49cd25; Projectile::targetShot by serial). The rocket steers at
+  the quarry's head (0x49b47a), bursts within its areaofeffect of it
+  (0x49b106..0x49b1a9), and its burst bursts every other live shot within
+  that radius (0x49a664..0x49a7ee, World::burstTaShot). Engine deviation: a
+  quarry that is gone is let go (retail keeps a stale +0x56). With it the
+  shot environment test is retail's (0x49b28a..0x49b3cd): feature and
+  ground strike only strictly above the shot, a groundbounce bounce takes
+  -(vy sar 2) (it was KINGDOMS.icd 0x52a6f3's <=, which burst a vlaunch
+  rocket leaving at ground level).
+- Carried units' orientation (sim): 0x43d78e -> 0x43e180 every mover tick
+  of an attached unit, pad rider and transport cargo alike: heading = the
+  carrier's + the attach piece's y turn, pitch + x turn, roll + z turn
+  (World::carriedOrientation; piece -1 takes no turn, retail reads the words
+  in front of the piece list). A flyer leaves its pad on the pad's heading.
+- Transports: 0x48ab70 calls 0x4384a0 only for a carrier without isairbase
+  (0x48ad19, flagsA bit 9); 0x4384a0 keeps the descriptor-flag-4 missions
+  (0x4384c3: ground rows BuildingBuild, Paralyze, GetBuilt, BeCarried,
+  MakeSelectable, Wait, WaitForAttack, AttackUType, SelfRepair; no VTOL row)
+  and puts BeCarried in front. BeCarried (0x402fc0): stage 0 at its first
+  dispatch aboard, stage 1 a 10-tick sleep per wake (Unit::beCarriedWake);
+  after a drop the unit holds (weapons only) until that wake, then its
+  next mission or the default one starts. VTOL_PICKUP: event 0x10000 is the
+  passenger cloaking (0x48b16e..0x48b195 through the mission listener's
+  0x438870; kTargetCloakedEvent), waited on by stages 1..3 (0x100e8 /
+  0x100ea) and failing the pickup (0x10048); event 2 is never posted in
+  TotalA.exe (writer survey in retailtransport.h). The unit controllers'
+  height (0x44e3c0 + 0x44e6c0): the passenger's own y plus the offset
+  (cruisealt for stage 1, the link's negated height for stage 3), capped at
+  0x1ff0000 (World::followHeight). transport_roster's retailBeCarried.
+
 - Nanoframe (client/nanoraster.h): drawn as retail's height-buffered object
   bitmap, one texel per game pixel -- whole-pixel vertices, retail's polygon
   walk (0x4c0820 / 0x4c8760: left chain backward, rows [ymin, ymax), the walk
@@ -543,29 +595,11 @@ data (cleanup, no gameplay).
   for that part and runs the surfaced and arc tests in the fire path.
   A target below a ballistic weapon at short range is aimed with acos's
   unsigned angle (0x49a9ce): the shell goes up and long, as in retail.
-- (b) Transports: BeCarried (0x402fc0: no carrier -> 5; stage 0 every
-  slot automatic, 0x4898b0(3); stage 1 a 10-tick sleep, 0x439e80(10), 2)
-  is not a mission here, so after a drop the default mission (and any order
-  queued aboard) starts at once rather than at the passenger's next 10-tick
-  BeCarried wake. Untraced: the flag-4 missions BeCarried keeps
-  (0x4384a0), the air base exemption (flagsA bit 9),
-  VTOL_PICKUP's event 2 / 0x10000 bits and the unit-follow controllers' exact
-  altitude rule (0x44e190 / 0x44e250) are untraced. GET 20 ARMORED answers 0
-  (SET 20, 0x48b090(2), is not stored). An unload given while
-  TransportPickup still swings the boom races it for the same pieces, as in
-  retail.
-- (b) Interceptors and stockpiles are not modelled: no shot is ever handed
-  a target shot (0x49b090's +0x56; interceptor / targetable flags bits 30 /
-  29), so anti-nuke weapons never intercept, and a stockpile weapon (bit 28)
-  fires and pays per shot instead of building stock (0x49e3e2..0x49e41e,
-  0x41c150; the gradual payment 0x4011c0, docs/retail-economy.md). The
-  collision side is ported (projectileCollision's `intercepted`).
-- (b) Repair pads (sim): the rider's own orientation words are not set while
-  it is parked (0x43d78e -> 0x43e180 writes +0x64/+0x66/+0x68 every mover
-  tick), so it leaves the pad on the heading it landed with rather than the
-  pad's plus the pad piece's y turn. The client draws the retail pose (see
-  "Repair pads (client)"); the sim's heading is hashed, so this is a sim
-  change with baselines to retake.
+- (b) Transports: GET 20 ARMORED answers 0 (SET 20, 0x48b090(2), is not
+  stored). An unload given while TransportPickup still swings the boom races
+  it for the same pieces, as in retail. A dropped passenger re-picked before
+  its BeCarried wake keeps that wake's schedule (retail would push a second
+  BeCarried, 0x4384a0).
 - (b, cosmetic) Unit speech: RECLAIMUNIT's "Reclaiming" status line, its
   speech lines (0x47f780; they would join the speech queue, client/
   speechqueue.h) and work sound (0x47f780(unit, 0xb)); the cursor over a
@@ -643,8 +677,8 @@ data (cleanup, no gameplay).
 - 0x49b090's interceptor test: within reach of the shot it chases (+0x56,
   weapon word +0xd6) the shot bursts (0x49b1a9 -> 0x499eb0) and the body
   tests still run (0x49b1ae): ProjectileCollisionResult::intercepted beside
-  the body struck (ta_shot_test). No TA shot is handed a target yet (see
-  Open, interceptors).
+  the body struck (ta_shot_test). Shots are handed targets now (see Ported,
+  "Stockpiles and interceptors").
 - Kingdoms projectile kinds: no TA weapon reaches them -- every weapon some
   unit fires is claimed by a TA spawner (scan of every weapons/*.tdf in the
   GOG install: lineofsight / selfprop -> 0x49c9c0, turret ballistic ->

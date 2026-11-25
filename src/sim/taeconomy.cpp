@@ -3,6 +3,7 @@
 // every 30 ticks; all arithmetic is float32 in the spec's order.
 #include "sim/sim.h"
 #include "sim/taeconomy.h"
+#include "sim/taweapons.h"
 
 #include <algorithm>
 #include <cmath>
@@ -86,6 +87,13 @@ bool World::econPayShot(Unit& u, const Weapon& w) {
     return true;
 }
 
+bool World::payShot(Unit& u, const Weapon& w, int slot) {
+    // 0x49e3d5..0x49e41e: a stockpile weapon fires only with stock in its
+    // slot (S+0x1a); what it spends is that stock (0x49e455), never storage.
+    if (w.hasTaFlag(kWStockpile)) return slot >= 0 && slot < 3 && u.stock[size_t(slot)] > 0;
+    return econPayShot(u, w);
+}
+
 void World::econCredit(int player, float energy, float metal) {
     if (player < 0 || player >= numPlayers()) return;
     auto& p = players_[size_t(player)].books;
@@ -153,6 +161,7 @@ void World::taSettle(int player) {
                 if (cost <= P.stored[E]) {
                     P.stored[E] -= cost;
                     b.r[E].req += cost;
+                    if (!u.cloaked) noteCloaked(u);   // 0x48b090(1, 4): status bit 2 newly set
                     u.cloaked = true;
                 } else {
                     u.cloaked = false;

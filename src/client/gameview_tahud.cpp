@@ -84,7 +84,16 @@ std::string upperStr(std::string s) {
                         const bool allowed = worldTables().buildAllowed(t);
                         page->setGrayed(g.name, !allowed);
                     }
-                    (void)n;
+                    // The stockpile button's caption (0x4199b0, gadget flag 8):
+                    // the slot-0 stock ("%d", when there is any) then the stock
+                    // still queued (" +%d", 0x439d80).
+                    if (n.size() >= 8 && (n.compare(n.size() - 8, 8, "MAKENUKE") == 0 ||
+                                          n.compare(n.size() - 8, 8, "MAKEANTI") == 0)) {
+                        std::string caption;
+                        if (u->stock[0]) caption = std::to_string(int(u->stock[0]));
+                        if (u->stockQueued) caption += " +" + std::to_string(u->stockQueued);
+                        page->setText(g.name, caption);
+                    }
                 }
                 page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "BUILD", true);
                 page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "ORDERS", false);
@@ -178,6 +187,31 @@ std::string upperStr(std::string s) {
         const bool mouse = e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP;
         if (mouse && !page->at(float(e.button.x), float(e.button.y), taHudLayout_)) return false;
         if (watchOnly()) return mouse;
+        // The stockpile button (MAKENUKE / MAKEANTI, TotalA.exe 0x41abd9..0x41ac3c ->
+        // 0x419b00): a left click asks for one more stock, a right click for one
+        // fewer, Shift five; every selected unit gets it.
+        if (e.type == SDL_MOUSEBUTTONDOWN && taBuildTab_ &&
+            (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT)) {
+            if (const auto* g = page->at(float(e.button.x), float(e.button.y), taHudLayout_);
+                g && g->type == ta::tagui::Type::Button) {
+                const std::string name = upperStr(g->name);
+                const size_t at = name.size() >= 8 ? name.size() - 8 : 0;
+                const std::string tail = name.substr(at);
+                if (tail == "MAKENUKE" || tail == "MAKEANTI") {
+                    playClickTone();
+                    const bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+                    for (int id : selection_) {
+                        ta::net::Command c;
+                        c.kind = e.button.button == SDL_BUTTON_LEFT ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
+                        c.unitId = id;
+                        c.targetId = shift ? 5 : 1;
+                        std::snprintf(c.type, sizeof c.type, "%s", tail.c_str());
+                        issue(c);
+                    }
+                    return true;
+                }
+            }
+        }
         const std::string hit = page->handle(e, taHudLayout_);
         if (hit.empty()) return mouse;
         playClickTone();

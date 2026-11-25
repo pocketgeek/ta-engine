@@ -8,17 +8,24 @@
 #include <algorithm>
 
 namespace ta::sim {
-// 52a6f3: environmental part of the projectile cell test. Feature height
-// is relative to the cell minimum; callers resolve multi-cell feature anchors.
+// TotalA.exe 0x49b28a..0x49b3cd: environmental part of the projectile cell
+// test, on the whole-px height (the y word +0xa). unitsonly skips it
+// (0x49b294). A feature strikes when its height over the cell minimum is
+// above the shot (0x49b32a..0x49b33f, strict); the ground when the cell
+// minimum is (0x49b36d..0x49b37d, strict: a shot level with it flies on), a
+// groundbounce shot bouncing there with its vertical speed sar 2, negated
+// (0x49b38c..0x49b392); then water below the sea, unless waterweapon or the
+// map's no-sea-level-trigger (0x49b3a1..0x49b3c8). Feature height is
+// relative to the cell minimum; callers resolve multi-cell feature anchors.
 inline bool retailProjectileHitsEnvironment(int32_t y,int32_t& verticalSpeed,
         uint32_t flags,uint8_t minimum,uint8_t sea,std::optional<uint8_t> featureHeight,
         bool waterPass) {
     if(flags&0x800)return false;
     const int height=std::bit_cast<int16_t>(uint16_t(uint32_t(y)>>16));
-    if(featureHeight && height<=int(minimum)+*featureHeight)return true;
-    if(height<=minimum) {
+    if(featureHeight && int(minimum)+*featureHeight>height)return true;
+    if(int(minimum)>height) {
         if(!(flags&0x1000))return true;
-        verticalSpeed=-(verticalSpeed/4);
+        verticalSpeed=std::bit_cast<int32_t>(0u-uint32_t(verticalSpeed>>2));
         return false;
     }
     return !(flags&0x2000) && height<sea && !waterPass;

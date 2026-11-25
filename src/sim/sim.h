@@ -652,13 +652,18 @@ inline constexpr uint32_t kVtolMoveFlags = 0x1000402u;
 inline constexpr int kGoneUnit = -1;
 
 struct ScriptedOrder {
-    enum class Kind : uint8_t { AttackType, Train, WaitAttack, WaitNear, SelfDestruct, MakeSelectable };
+    enum class Kind : uint8_t { AttackType, Train, WaitAttack, WaitNear, SelfDestruct, MakeSelectable, BuildWeapon };
     Kind kind = Kind::AttackType;
     const UnitType* type = nullptr;
     int32_t count = 0;
     int32_t watched = 0;
     uint32_t heard = 0;
     int32_t radius = 0;
+    // BuildWeapon (TotalA.exe 0x402b70): the weapon slot it stocks (mission
+    // +0x36) and the ticks of the weapon's reloadtime paid for so far (+0x3e);
+    // `count` is the stock still to build (+0x3a).
+    int32_t slot = 0;
+    int32_t progress = 0;
 };
 
 // Field placement is part of the design (WE D2), checked by the static_asserts
@@ -1636,6 +1641,19 @@ struct alignas(64) Unit {
     // ballistic shell's launch takes gravity times this over the velocity
     // off its vertical speed (0x49ce6a). Set at creation (initTaWeaponSlots).
     std::array<int32_t,3> taBarrel{};
+    // TotalA.exe's slot stock byte (S+0x1a = unit +0x1e + 0x1c*slot): a
+    // stockpile weapon's (flag bit 28) built missiles. BuildWeapon (0x402b70)
+    // adds one per reloadtime it has paid for, up to 200 (0x402cca); a shot
+    // spends one (0x49e455) and nothing else -- no reload, no energy or metal
+    // (0x49e463 -> 0x49e4f2, 0x49e518). A new unit has none. Hashed when set.
+    std::array<uint8_t,3> stock{};
+    // TotalA.exe BeCarried (0x402fc0), which 0x4384a0 puts at the head of a
+    // carried unit's list (any carrier but an air base, 0x48ad19): stage 0 on
+    // its first dispatch aboard, then a 10-tick sleep at every wake (stage 1,
+    // 0x402fef). The tick of its next wake, 0 when it is not there. After a
+    // drop it stays until that wake (no carrier: 5), so the unit's other
+    // missions and its default one wait for it. Hashed when set.
+    uint32_t beCarriedWake = 0;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -1879,6 +1897,14 @@ struct Projectile {
     int fromId = 0;        // firing unit id (for kill attribution / veterancy)
     const Weapon* wsrc = nullptr;   // source weapon (splash + per-category damage)
     WeaponFx fx = WeaponFx::Arrow;   // how the viewer draws it
+    // World::nextShotSerial_ at the launch: the shot's identity for another
+    // shot's chase (targetShot). 0 for a capture (a burst emitter's record).
+    uint32_t serial = 0;
+    // +0x56: the targetable shot an interceptor chases (its serial; 0 none),
+    // given by the vlaunch spawner (0x49cc20, 0x49cd25) from the scan
+    // 0x49d120. The steering aims at its head (0x49b47a) and the collision
+    // test bursts within areaofeffect of it (0x49b106..0x49b1a9).
+    uint32_t targetShot = 0;
 };
 
 // Walkability grid derived from TNT heights: a cell is blocked when the
@@ -2767,6 +2793,14 @@ public:
     bool taProductionWork(Unit& worker, Unit& producer, Unit& site);
     bool econRepairStep(Unit& builder, Unit& target);
     bool econPayShot(Unit& u, const Weapon& w);
+    // A shot's price: a stockpile weapon spends one of its slot's stock
+    // (0x49e3e2 / 0x49e455), any other pays econPayShot.
+    bool payShot(Unit& u, const Weapon& w, int slot);
+    // TotalA.exe 0x49d120: an interceptor slot's quarry, the first live enemy
+    // targetable shot whose target point lies within the weapon's coverage
+    // of the unit (a square, 0x49d18d..0x49d1a6) and that no shot chases yet;
+    // none while the slot has no stock. The shot's index, or -1.
+    int interceptorScan(const Unit& u, int slot) const;
     // A reclaim target's yield (feature or corpse type): metal and energy paid in full
     // when the reclaim ends (docs/retail-economy.md section 8).
     bool reclaimYield(int target, float& energy, float& metal) const;
@@ -3306,6 +3340,15 @@ public:
     // 401c20): when it comes up, `count` of `type` join the build queue, and the
     // order holds the queue behind it until they are built. 0 builds nothing.
     void orderTrain(int factoryId, const UnitType* type, int count, bool queue);
+    // The build menu's MAKENUKE / MAKEANTI button (TotalA.exe 0x419b00 ->
+    // SetMission "BUILDWEAPON" slot 0, count, through 0x43b0b0): a positive
+    // count joins the last BuildWeapon mission on that slot, or appends a new
+    // one; a negative one takes stock orders back from the last ones. Refused
+    // for a unit whose slot has no stockpile weapon.
+    void orderBuildWeapon(int unitId, int slot, int count);
+    // The stock a unit's BuildWeapon missions on `slot` still have to build
+    // (0x439d80: the queued count the build button shows after the stock).
+    int queuedStock(const Unit& u, int slot) const;
     // Queue a self-destruct (SetMission "d", SelfDestructFG): when it comes up
     // the unit dies as a Ctrl+D countdown ends, with no wreck and no credit.
     void orderSelfDestruct(int unitId, bool queue);
@@ -3717,6 +3760,7 @@ private:
     void flyTransportGoal(Unit& u, Order& o, RetailMissionState& mission);
     // 0x44e6c0: a point controller's height, `altitude` px over the ground or
     // the sea at (x, z) (0x485070), at most 511.
+    int32_t followHeight(const Unit& target,int32_t offset) const;
     int32_t transportGoalHeight(Fixed x, Fixed z, int altitude) const;
     // Drop a queued path search whose orders have been replaced. See the definition.
     void cancelPath(Unit& u);
@@ -4582,6 +4626,18 @@ private:
     void tickFeatureDeaths();   // seqnamedie playback ends: featuredead (495ef7)
     std::unordered_map<int, size_t> featureIdx_;   // feature id -> index in features_
     std::vector<Projectile> projectiles_;
+    uint32_t nextShotSerial_ = 0;
+    void pushShot(Projectile p) { p.serial=++nextShotSerial_; projectiles_.push_back(p); }
+    // 0x499eb0 for a TA shot: its area damage at its head (0x49a120) with
+    // the unit it struck, and -- for an interceptor -- every other live shot
+    // within its areaofeffect bursts too (0x49a664..0x49a7ee).
+    void burstTaShot(size_t index,int hitUnit);
+    void carriedOrientation(Unit& u,const Unit& carrier,int piece);
+    // 0x48b16e..0x48b195: a unit whose cloak bit (+0x10e & 4) comes on posts
+    // 0x10000 to the missions listening to it (those that target it, through
+    // the mission vtable's 0x438870); VTOL_PICKUP waits on it and fails.
+    void noteCloaked(const Unit& u);
+    const Projectile* shotBySerial(uint32_t serial) const;
     std::vector<BurstEmitter> bursts_;
     // TotalA.exe 0x49b9c2..0x49bb5b plus the collision test 0x49b090: one
     // selfprop/vlaunch shot's tick.

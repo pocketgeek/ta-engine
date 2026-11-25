@@ -164,6 +164,11 @@ inline int retailScriptedUnloadTransfer(RetailMissionState& m,int32_t& ticks,uin
 // / 0x400 (Kingdoms' numbering, kept engine-wide); 8 (a referenced unit
 // died, 0x406791 / 0x4111c9) and 4 (BUSY changed, 0x438730's wait) are TA's.
 constexpr uint32_t kTransportNavEvents=0x700u;
+// TotalA.exe's mission event 0x10000: the unit a mission targets cloaked
+// (0x48b16e..0x48b195 posts it through the listener's 0x438870 into the
+// mission's +0x4e). The engine's 0x10000 is a slot's shot (World's unit event
+// word), so this one is 0x20000000, posted only into a pickup's own state.
+constexpr uint32_t kTargetCloakedEvent=0x20000000u;
 
 // TotalA.exe GROUND_PICKUP (0x406780), the carrier's only mission: the
 // passenger is given none. The referenced passenger gone, or event 8, fails
@@ -214,8 +219,9 @@ int retailGroundPickup(RetailMissionState& m,uint32_t& calls,uint32_t now,uint32
 
 // TotalA.exe VTOL_PICKUP (0x4111b0). No boom: the carrier flies onto the
 // passenger and attaches it at the piece QueryTransport names. Every wake
-// fails (8) without a passenger, on 8 or the navigator's failure (0x10048;
-// its 0x10000 bit is not modelled), when the passenger's top (y + its type
+// fails (8) without a passenger, on 8, the navigator's failure or the
+// passenger cloaking (0x10048: 0x10000 is kTargetCloakedEvent; stages 1..3
+// wait on it, 0x100e8 / 0x100ea), when the passenger's top (y + its type
 // +0x16e, the model height) is not above the sea (0x4111d5..0x4111f9), or --
 // with no message -- while the carrier holds anyone (+0x8a, 0x41121a: one
 // passenger per air carrier). Stage 0 (0x411241): canfly, the size test,
@@ -229,11 +235,20 @@ int retailGroundPickup(RetailMissionState& m,uint32_t& calls,uint32_t now,uint32
 // on the passenger (0x44e250) holds the hull where the piece (0x43def0) meets
 // it, wait 0x100ea. Stage 4 (0x411479): a failed approach (0x42) runs
 // EndTransport and fails; else ATTACH_UNIT at the piece (0x48aac0), and back
-// to its own point at cruisealt (0xe0). Stage 5 (0x4114fe): done.
+// to its own point at cruisealt (0xe0). Stage 5 (0x4114fe): done. Event 2
+// (in 0x100ea and 0x42) is never posted in TotalA.exe: the unit event word's
+// writers set only 4, 0x400/0x800, 0x1000..0x8000 (0x480b57, 0x49e50b,
+// 0x49d664, 0x49e53a, 0x406f6a, 0x406f74, 0x41ba9d) and a mission's +0x4e
+// gets the timer's 1 (0x43b7fb), the navigator's 0x20..0x200 (0x44ced0) and
+// its listeners' 8, 0x10 and 0x10000 (0x489762, 0x4897ce, 0x48b195).
+// The unit controllers' height (0x44e3c0 with 0x44e6c0's offset, +0xc):
+// the passenger's own y (piece -1: its origin, 0x43e060) plus the offset,
+// capped at 0x1ff0000 (0x44e4ee) -- cruisealt for stage 1, the link's
+// negated height for stage 3.
 template<class Host>
 int retailVtolPickup(RetailMissionState& m,uint32_t events,bool passenger,bool submerged,
         bool carrying,Host& host) {
-    if(!passenger || (events&0x208u) || submerged || carrying) return 8;
+    if(!passenger || (events&(0x208u|kTargetCloakedEvent)) || submerged || carrying) return 8;
     switch(m.stage) {
     case 0:
         if(!host.canFly()) return 7;
@@ -241,11 +256,11 @@ int retailVtolPickup(RetailMissionState& m,uint32_t events,bool passenger,bool s
         if(host.prepare()) m.waitMask|=kTransportNavEvents;
         return 1;
     case 1:
-        host.pursue();m.waitMask=kTransportNavEvents|8u;return 1;
+        host.pursue();m.waitMask=kTransportNavEvents|8u|kTargetCloakedEvent;return 1;
     case 2:
-        host.query();m.waitMask=kTransportNavEvents|8u;return 1;
+        host.query();m.waitMask=kTransportNavEvents|8u|kTargetCloakedEvent;return 1;
     case 3:
-        host.descend();m.waitMask=kTransportNavEvents|0xau;return 1;
+        host.descend();m.waitMask=kTransportNavEvents|0xau|kTargetCloakedEvent;return 1;
     case 4:
         if(events&0x202u) { host.endTransport();return 8; }
         host.attach();host.climb();m.waitMask|=kTransportNavEvents;return 1;

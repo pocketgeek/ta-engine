@@ -1091,6 +1091,95 @@ static void airPickupTransfer() {
           [](const ta::sim::Order& o){return o.transportPickup;}),"the second pickup fails while it carries one");
 }
 
+// TotalA.exe BeCarried (0x402fc0) and VTOL_PICKUP (0x4111b0) on retail data:
+//  - 0x4384a0 keeps a passenger's descriptor-flag-4 missions (a Wait) and
+//    BeCarried heads its list: stage 0 at its first wake aboard, then a
+//    10-tick sleep per wake. After the drop its next wake finds no carrier
+//    (5) and only then does the next mission start: a move queued aboard
+//    waits for that wake, at most 10 ticks.
+//  - A passenger that cloaks while an Atlas comes for it posts 0x10000
+//    (0x48b16e..0x48b195) and VTOL_PICKUP fails (0x10048); one that does not,
+//    boards.
+//  - The unit controllers follow the passenger at its own y plus cruisealt
+//    (0x44e3c0, 0x44e6c0).
+static void retailBeCarried(const char* root) {
+    std::printf("BeCarried and VTOL_PICKUP on retail data:\n");
+    auto vfs=ta::hpi::mountRetailRoot(root);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
+    const auto* atlas=registry.find("armatlas");
+    const auto* foot=registry.find("armpw");
+    const auto* com=registry.find("armcom");
+    check(atlas && foot && com,"armatlas, armpw and armcom are available");
+    if(!atlas || !foot || !com)return;
+    {
+        World w;
+        w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,40);
+        w.buildNavClasses(registry);w.setPathService(true);
+        const int tid=w.spawn(atlas,900,700);
+        const int pid=w.spawn(foot,832,620);
+        w.orderWait(pid,30.f,false);   // a Wait (flag 4) the pickup keeps
+        w.loadInto(pid,tid);
+        uint32_t firstWake=0;
+        for(int tick=0;tick<3000 && w.unit(pid)->inTransport!=tid;++tick)w.tick(1.f/30);
+        check(w.unit(pid)->inTransport==tid,"the Atlas boards the infantry");
+        w.tick(1.f/30);
+        firstWake=w.unit(pid)->beCarriedWake;
+        const auto& kept=w.unit(pid)->orders;
+        check(!kept.empty() && kept.front().wait>0,"0x4384a0 keeps the passenger's Wait (descriptor flag 4)");
+        check(firstWake>w.tickCount() && firstWake<=w.tickCount()+10,"BeCarried sleeps 10 ticks at a time aboard");
+        w.unit(pid)->orders.clear();
+        w.order(pid,600,600,true);   // queued aboard: waits behind BeCarried
+        w.unloadAt(tid,880,780);
+        uint32_t dropped=0,wake=0,moved=0;
+        float dropX=0,dropZ=0;
+        for(int tick=0;tick<3000 && !moved;++tick) {
+            w.tick(1.f/30);
+            const auto& u=*w.unit(pid);
+            if(!dropped && u.inTransport==0) {
+                dropped=w.tickCount();dropX=u.x.toFloat();dropZ=u.z.toFloat();
+                // The wake that retires it: the one still pending, or (a wake
+                // falling on the drop tick, the passenger updated after its
+                // carrier) the drop tick itself.
+                wake=u.beCarriedWake ? u.beCarriedWake : dropped;
+            }
+            if(dropped && !moved && (u.x.toFloat()!=dropX || u.z.toFloat()!=dropZ)) moved=w.tickCount();
+        }
+        std::printf("  aboard wake %u, dropped at %u, BeCarried wake %u, first step at %u\n",firstWake,dropped,wake,moved);
+        check(dropped && wake>=dropped && wake<=dropped+10 && (wake-firstWake)%10==0,
+              "after the drop BeCarried stays until its next 10-tick wake");
+        check(moved && moved>=wake,"the queued move starts only at that wake");
+    }
+    for(bool cloak:{false,true}) {
+        World w;
+        w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,40);
+        w.buildNavClasses(registry);w.setPathService(true);
+        w.setStartResources(0,1e5f,1e5f);
+        const int tid=w.spawn(atlas,600,600);
+        const int pid=w.spawn(com,1400,1300);
+        w.loadInto(pid,tid);
+        bool followed=false;
+        for(int tick=0;tick<1500 && !w.unit(pid)->embarked();++tick) {
+            if(cloak && tick==20)w.setCloak(pid,true);
+            w.tick(1.f/30);
+            const auto& t=*w.unit(tid);
+            if(!t.orders.empty() && t.orders.front().transportTicks==1 && t.orders.front().flightGoal) {
+                const auto& p=*w.unit(pid);
+                followed=t.orders.front().flightGoal->point.y==
+                    std::min<int32_t>(p.groundY.v+atlas->cruiseAlt*65536,0x1ff0000);
+            }
+            if(t.orders.empty())break;
+        }
+        const bool boarded=w.unit(pid)->embarked();
+        std::printf("  %s: boarded %d, cloaked %d\n",cloak?"cloaking commander":"commander",int(boarded),
+                    int(w.unit(pid)->cloaked));
+        if(cloak) check(!boarded,"VTOL_PICKUP fails when its passenger cloaks (0x10000)");
+        else {
+            check(boarded,"VTOL_PICKUP boards a passenger that does not cloak");
+            check(followed,"the pursuit holds the passenger's own y plus cruisealt");
+        }
+    }
+}
+
 static void retailRoster(const char* root) {
     auto vfs=ta::hpi::mountRetailRoot(root);
     {
@@ -2749,7 +2838,7 @@ int main(int argc,char** argv) {
     passengerMissionSchedule();
     passengerCancellationWait();
     groundPickupApproach();
-    if(argc==2) { retailRoster(argv[1]);scriptedTransfer(argv[1]); }
+    if(argc==2) { retailRoster(argv[1]);scriptedTransfer(argv[1]);retailBeCarried(argv[1]); }
     boardingLimits();
     transferLifecycle();
     ordinaryFlightMoves();

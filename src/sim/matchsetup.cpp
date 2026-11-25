@@ -100,6 +100,18 @@ static void applySelectionOrder(World& world, const TypeRegistry& reg, const ta:
     world.endOrder();
 }
 
+bool stockpileButton(const char* type) {
+    // 0x419b3c / 0x419b4e: _stricmp against "MAKENUKE" and "MAKEANTI".
+    auto same = [&](const char* name) {
+        for (size_t i = 0;; ++i) {
+            const char a = char(std::tolower(static_cast<unsigned char>(type[i]))), b = name[i];
+            if (a != b) return false;
+            if (!a) return true;
+        }
+    };
+    return same("makenuke") || same("makeanti");
+}
+
 void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command& c) {
     using ta::net::Cmd;
     if (c.kind == Cmd::Order) { applySelectionOrder(world, reg, c); return; }
@@ -273,9 +285,13 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
             if (owns(c.unitId)) { world.cancelBuilds(c.unitId); world.stop(c.unitId); }
             break;
         case Cmd::Train:
+            // The build menu's stockpile button (TotalA.exe 0x419b00: MAKENUKE
+            // or MAKEANTI -> BUILDWEAPON slot 0): `type` carries its name.
+            if (owns(c.unitId) && stockpileButton(c.type)) { world.orderBuildWeapon(c.unitId, 0, std::max(1, c.targetId)); break; }
             if (owns(c.unitId) && admits()) world.train(c.unitId, reg.find(c.type), c.targetId);
             break;
         case Cmd::Unqueue:
+            if (owns(c.unitId) && stockpileButton(c.type)) { world.orderBuildWeapon(c.unitId, 0, -std::max(1, c.targetId)); break; }
             if (owns(c.unitId)) world.dequeue(c.unitId, reg.find(c.type), std::max(1, c.targetId));
             break;
         case Cmd::Build:
