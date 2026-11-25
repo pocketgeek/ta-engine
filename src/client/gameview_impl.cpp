@@ -2259,6 +2259,14 @@
                         [&](const char* name) { a.vm->start(name); });
                 },
                 [&](uint32_t surface) { a.vm->start("setSFXoccupy",{int32_t(surface)}); });
+            // TotalA.exe 0x437910: when the wind changes, a wind generator's script gets
+            // SetDirection(wind heading, game+0x37ed8) then SetSpeed(wind speed << 4,
+            // game+0x37eda) -- its post turns into the wind and its blades spin.
+            if (u.type && u.type->windGenerator > 0 && a.windGen != front().wind.generation) {
+                a.windGen = front().wind.generation;
+                a.vm->start("SetDirection", {int32_t(front().wind.heading)});
+                a.vm->start("SetSpeed", {int32_t(front().wind.speed) << 4});
+            }
             // The simulation owns readiness and callback order. Do not recompute
             // aim from interpolated render poses or a separate display handshake.
             if (const auto callbacks=weaponAnimations.find(u.id);callbacks!=weaponAnimations.end())
@@ -3155,6 +3163,21 @@
             // Install effect sinks before immediate retail notifications run.
             st.vm->start("Create");
             st.vm->start("SetMaxReloadTime",{type->maxWeaponReloadMs});
+            // TotalA.exe 0x437840, run at the unit's creation: an extractor's script gets
+            // SetSpeed(sum over its footprint of (cell metal + 1)) (0x4378eb..0x437902),
+            // the value its arms spin from. Footprint as the settle reads it (taeconomy.cpp).
+            if (type->extractsMetal > 0)
+                if (const auto* unit = world_.unit(id)) {   // the frame may not hold it yet
+                    const int cx = int(unit->x.toFloat()) / 16 - type->footX / 2;
+                    const int cz = int(unit->z.toFloat()) / 16 - type->footZ / 2;
+                    int32_t sum = 0;
+                    for (int dz = 0; dz < type->footZ; ++dz)
+                        for (int dx = 0; dx < type->footX; ++dx) sum += world_.cellMetal(cx + dx, cz + dz) + 1;
+                    st.vm->start("SetSpeed", {int32_t(int16_t(sum))});
+                }
+            // A wind generator hears of the wind at its next change (0x437910 runs on
+            // the change flag only), not at its creation.
+            st.windGen = front().wind.generation;
         }
         unitType_.set(id, typeId);
     }

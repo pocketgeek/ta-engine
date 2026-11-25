@@ -3718,6 +3718,12 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         //                           types), on a grid centred dx,dz from the army centre:
         //                           long queues, mostly off screen at zoom >= 0.5
         // All of them only shape the local harness scene; none run in a real game.
+        // TA_BENCH_WIND=min,max: a bench world gets the map's wind (the match setup
+        // that normally sets it does not run here), for wind generator animation checks.
+        if (const char* w=ta::devEnv("TA_BENCH_WIND")) {
+            int lo=100,hi=2000; std::sscanf(w,"%d,%d",&lo,&hi);
+            writableWorld().setWindRange(lo,hi);
+        }
         if (const char* countText=ta::devEnv("TA_SHADOW_BENCH")) {
             const int count=std::clamp(std::atoi(countText),1,16000);
             // The army stands at 5000,5000 (the render study's camera points and the

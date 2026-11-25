@@ -1346,6 +1346,9 @@ private:
     struct EffectAnim;   // defined below; Anim only needs the pointer type
     struct Anim {
         std::unique_ptr<ta::cob::Vm> vm;
+        // The wind change (RetailWind::generation) this unit's SetDirection/SetSpeed
+        // last reported (TotalA.exe 0x437910, wind generators only).
+        uint32_t windGen = 0;
         // Points at the shared per-TYPE CobCache.pieceNames (node-stable in cobCache_,
         // which outlives every Anim), not a per-unit copy -- ~25 MB saved at 38k units.
         const std::vector<std::string>* pieceNames = nullptr;
