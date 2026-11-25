@@ -4183,6 +4183,17 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 command.unitId=id;command.targetId=targetId;command.player=localPlayer_;
                 ta::sim::applyCommand(writableWorld(),registry_,command);
                 std::printf("repair capture: worker #%d -> target #%d\n",id,targetId);
+            } else if (const char* value=ta::devEnv("TA_CONJURE_REMAINING")) {
+                // TA_CONJURE_REMAINING=<f>: the site placed at once with that much of
+                // it left to build (1 = just placed), so --shot catches the nanoframe
+                // at a chosen stage (client/nanoframe.h) without waiting for the walk.
+                float remaining=1;
+                if (!parseFloat("TA_CONJURE_REMAINING",value,remaining) || remaining<=0 || remaining>1) return;
+                const int siteId=writableWorld().startBuild(id,targetType,siteX,siteZ);
+                if (auto* site=siteId>0 ? writableWorld().unit(siteId) : nullptr) {
+                    site->buildRemaining=remaining;site->buildStarted=site->buildBegun=true;
+                }
+                std::printf("conjure fixture: site #%d at %.3f remaining\n",siteId,remaining);
             } else writableWorld().queueBuild(id,targetType,siteX,siteZ,false);
             // TA_CONJURE_METAL=<n>: start the local metal and energy at n, so a capture
             // can show the bars short of resources.

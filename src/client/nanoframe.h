@@ -18,7 +18,9 @@
 //     where each band is either keep the textured pixel (-1), make it
 //     transparent (-2), or a flat palette index.
 //  2. 0x458fa0 outlines every primitive of every visible piece (primitive 0
-//     excepted when the piece has a selection primitive, 0x45908a) in the
+//     excepted when the piece has a selection primitive, 0x45908a: the load
+//     swapped the selection primitive there, 0x4cb370 -- client/primitivedraw.h,
+//     which also gives the drawing order) in the
 //     second shimmer green, depth-tested against the same height buffer and
 //     writing it (span edges only, 0x4c0820 / 0x4c0a90: the left and right
 //     pixel of each row, a polygon facing away drawing none).

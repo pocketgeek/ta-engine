@@ -3382,6 +3382,25 @@
                 }
             } catch (const std::exception&) {}
         }
+        // A flat swatch per palette index for the untextured (and unresolved)
+        // primitives, which retail fills with the raw index, unshaded (0x4c06e0):
+        // they go through the atlas like any texture, never through the shaded
+        // palette sheets (client/primitivedraw.h).
+        for (int index = 0; index < 256; ++index) {
+            const std::string name = ta::primitivedraw::flatTextureName(index);
+            if (textures_.count(name)) continue;
+            constexpr int side = 8;
+            const auto* e = pals.at("ta").rgba[index];
+            std::array<uint8_t, side * side * 4> pixels;
+            for (size_t at = 0; at < pixels.size(); at += 4) {
+                pixels[at] = e[0]; pixels[at + 1] = e[1]; pixels[at + 2] = e[2]; pixels[at + 3] = 255;
+            }
+            SDL_Texture* t = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, side, side);
+            if (!t) continue;
+            SDL_UpdateTexture(t, nullptr, pixels.data(), side * 4);
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+            textures_[name] = {t};
+        }
     }
 
     GameView::ShadowMaskFrame GameView::addShadowMask(std::span<const uint8_t> rgba,
@@ -4568,6 +4587,12 @@
             } else meta.animationFrameMasks[size_t(at-meta.animationFrames.begin())]|=uint8_t(masked);
         };
         pieceMetaFor(o, isRoot, m);
+        // A texture name found in no bank is drawn flat in colour 0xd1 (0x42a204),
+        // once the table is loaded (the swatches are its last entries).
+        if (textures_.count(ta::primitivedraw::flatTextureName(0)))
+            for (auto& name : m.primTex)
+                if (ta::primitivedraw::flatColourOf(name) < 0 && !textures_.count(name))
+                    name = ta::primitivedraw::flatTextureName(ta::primitivedraw::kMissingTextureColour);
         m.primAtlas.reserve(m.primTex.size());
         for (const auto& name : m.primTex) {
             auto it = atlasRect_.find(name);

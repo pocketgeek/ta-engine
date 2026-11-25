@@ -8730,9 +8730,16 @@
         if (!shadow && !nano && cachedPiece && meta->stillTwin) meta = meta->stillTwin;
         if (nano) ++nano->pieces;
         float cy = std::cos(heading), sy = std::sin(heading);
-        for (size_t pi = 0; pi < o.primitives.size(); ++pi) {
+        // The body and the nanoframe take retail's primitive order (sorted at load,
+        // selection primitive left out: client/primitivedraw.h); the shadow keeps
+        // the file order its fast path (buildUnitShadow) reproduces.
+        const bool retailOrder = !shadow && meta->drawOrder.size() + (o.selectionPrimitive != -1 &&
+            !o.primitives.empty() ? 1 : 0) == o.primitives.size();
+        const size_t drawn = retailOrder ? meta->drawOrder.size() : o.primitives.size();
+        for (size_t slot = 0; slot < drawn; ++slot) {
             if (groundPlate) break;
-            if (int32_t(pi) == o.selectionPrimitive) continue;
+            const size_t pi = retailOrder ? size_t(meta->drawOrder[slot]) : slot;
+            if (!retailOrder && int32_t(pi) == o.selectionPrimitive) continue;
             const auto& p = o.primitives[pi];
             if (p.indices.size() < 3) continue;
             SDL_Texture* tex = nullptr;
@@ -8850,6 +8857,8 @@
                     prim.piece = nano->pieces;
                     for (const auto& vo : vcache) nano->points.push_back({vo.px, vo.py, vo.pz});
                     if (name.empty()) prim.colorIndex = int32_t(p.colorIndex & 0xff);
+                    else if (const int flat = ta::primitivedraw::flatColourOf(name); flat >= 0)
+                        prim.colorIndex = flat;
                     else if (const auto source = paletteTextureSources_.find(name);
                              source != paletteTextureSources_.end() && !source->second.frames.empty()) {
                         const auto& frames = source->second.frames;
@@ -8872,7 +8881,10 @@
                     nano->prims.push_back(prim);
                 }
             }
-            for (size_t i = 1; i + 1 < p.indices.size(); ++i) {
+            // A textured primitive is drawn only as a quad (0x4585e2, 0x459b1a); a
+            // flat one with any count. (The nanoframe outline above takes it still.)
+            const bool drawsBody = shadow || p.indices.size() == 4 || ta::primitivedraw::flatColourOf(name) >= 0;
+            for (size_t i = 1; drawsBody && i + 1 < p.indices.size(); ++i) {
                 size_t idx[3] = {0, i, i + 1};
                 Tri tri{};
                 tri.tex = tex;

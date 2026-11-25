@@ -6,6 +6,7 @@
 #include "client/areadrag.h"
 #include "client/emotetiming.h"
 #include "client/retailmodellighting.h"
+#include "client/primitivedraw.h"
 
 // GameView -- the in-world game client: rendering, input, the retail HUD, fog,
 // minimap, the COB animation VM host, benchmark, lobby, and the
@@ -1235,7 +1236,12 @@ private:
         // only recolours the body (ta::render::shadowInputsEqual).
         std::vector<uint8_t> animationFrameMasks;
         bool skip = false;                  // ground plate / *off duplicate: draws nothing
-        std::vector<std::string> primTex;   // lowercased per primitive ("" = untextured)
+        // Lowercased per primitive; an untextured one names its flat palette
+        // swatch (client/primitivedraw.h: "#pal<index>").
+        std::vector<std::string> primTex;
+        // The primitives drawn, in TotalA.exe's order (0x4cb370 at load, the
+        // draw loops from 1: client/primitivedraw.h).
+        std::vector<uint16_t> drawOrder;
         std::vector<const SDL_Rect*> primAtlas; // immutable atlas layout; shared by all colour slots
         std::vector<const std::vector<ShadowMaskFrame>*> primShadowMasks;
         std::vector<bool> primAnimated;
@@ -1257,8 +1263,12 @@ private:
         for (const auto& p : o.primitives) {
             std::string n = p.texture;
             std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+            // No name: a flat polygon in the primitive's palette index (0x42a140
+            // keeps the file's flag bit 0; 0x4c1000 / 0x4c0310 fill it).
+            if (n.empty()) n = ta::primitivedraw::flatTextureName(int(p.colorIndex & 0xff));
             m.primTex.push_back(std::move(n));
         }
+        m.drawOrder = ta::primitivedraw::drawOrder(o);
     }
     // Precompute the whole tree for a model (once, at registration).
     void buildPieceMeta(const ta::tdo::Object& o, PieceMeta& m, bool isRoot = true);
