@@ -1,7 +1,6 @@
 // Landing must not turn ordinary flyers into powered-down combat units.
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
-#include "sim/retailhweffectdata.h"
 #include "sim/retailaim.h"
 #include <cstdio>
 #include <cmath>
@@ -75,7 +74,7 @@ int main(int argc,char** argv) {
         for(const char* name:{"armpw","armflash","armrock","corstorm","armmav","armanac"}) {
             const auto* definition=registry.find(name);
             if(!definition || definition->weapons.empty() ||
-               !(definition->weapons[0].straight || definition->weapons[0].hasTaFlag(20))) {
+               !(definition->weapons[0].hasTaFlag(0) || definition->weapons[0].hasTaFlag(20))) {
                 check(false,"straight roster definition exists with a straight slot 0");continue;
             }
             auto type=*definition;
@@ -94,7 +93,7 @@ int main(int argc,char** argv) {
                 // selfprop motion, which takes precedence over the
                 // line-of-sight one (docs/retail-data.md 3.3, rule 1); a
                 // line-of-sight shot flies rule 2 (taLineOfSight).
-                for(const auto& shot:world.projectiles())if(shot.fromId==from && (shot.straight || shot.taSelfProp || shot.taLineOfSight)) {
+                for(const auto& shot:world.projectiles())if(shot.fromId==from && (shot.taSelfProp || shot.taLineOfSight)) {
                     launched=true;moved=moved || shot.age>0;
                 }
                 hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();

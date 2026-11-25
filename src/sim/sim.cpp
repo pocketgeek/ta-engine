@@ -4,8 +4,6 @@
 #include "sim/retailtransport.h"
 #include "sim/retailanimationqueries.h"
 #include "sim/retailaim.h"
-#include "sim/retailhweffectdata.h"
-#include "sim/retailguided.h"
 #include "sim/retailtashot.h"
 #include "sim/retailinstantcorpse.h"
 #include "sim/retailsplash.h"
@@ -1034,7 +1032,6 @@ void World::compactRetiredUnits() {
     std::unordered_set<int> referenced;
     for(const auto& p:projectiles_) {referenced.insert(p.fromId);referenced.insert(p.targetId);}
     for(const auto& b:bursts_) {referenced.insert(b.fromId);referenced.insert(b.targetId);}
-    for(const auto& f:flames_)referenced.insert(f.fromId);
     for(const auto& blast:deathBlasts_)referenced.insert(blast.fromId);
     size_t write=0;
     TA_PASS();
@@ -3034,7 +3031,7 @@ bool World::tickLegionLift(Unit& u) {
     // it landed again.
     const bool reloadAll=u.type->weapons.size()>1;
     for (size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
-        if ((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0) --u.reloads[slot];
+        if ((reloadAll || slot==0) && u.reloads[slot]>0) --u.reloads[slot];
     return true;
 }
 
@@ -3129,7 +3126,7 @@ bool World::tickHoldLift(Unit& u) {
     // the weapon timers still count down and the auto slots fire (52ae90).
     const bool reloadAll=u.type->weapons.size()>1;
     for (size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
-        if ((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0) --u.reloads[slot];
+        if ((reloadAll || slot==0) && u.reloads[slot]>0) --u.reloads[slot];
     tickSlotWeapons(u);
     return true;
 }
@@ -3206,7 +3203,7 @@ uint32_t World::retailOrderFlags(const Unit& u,const Order& o) const {
         if (t && t->type && (o.guard || t->type->canFly)) return o.mission.flags|0x1000200u;
         if (t && t->type) {
             const int n=int(u.type->weapons.size());
-            const bool strike=n && u.type->weapons[size_t(std::clamp(u.weaponSlot,0,n-1))].cursorAirstrike;
+            const bool strike=n && u.type->weapons[0].cursorAirstrike;
             return o.mission.flags|(strike ? 0x1000600u : 0x1000200u);
         }
     }
@@ -5861,7 +5858,12 @@ bool World::tickVtolPickup(Unit& u,size_t leg) {
                     goal.flightGoal=RetailFlightGoal{{p->x.v,satAdd32(p->groundY.v,altitude*65536),p->z.v},0x28,0,0};
                 }
                 void endTransport() { w.notifyUnitScript(u,"EndTransport"); }
-                void attach() { if (w.canAttachCargo(u,*p)) w.attachCargo(u,*p); }
+                // 0x4114a0..0x4114a6: ATTACH_UNIT at the piece QueryTransport
+                // named (+0x36); the passenger then rides that piece (0x43d6d0's
+                // attached branch, cargoAttachPoint).
+                void attach() {
+                    if (w.canAttachCargo(u,*p)) w.attachCargo(u,*p,int(int32_t(goal.transportApproachAttempts)));
+                }
                 void climb() { point(u.type->cruiseAlt); }
             } ops{w,u,goal,p};
             return retailVtolPickup(m,events,live,submerged,carrying,ops);
@@ -7070,6 +7072,17 @@ static std::array<uint16_t,2> storedLaunch(const Unit& u,int slot,bool ballistic
     return {uint16_t(aim.heading+0x8000u),ballistic ? aim.pitch : uint16_t(0u-aim.pitch)};
 }
 
+// Does one of TotalA.exe's spawners take this weapon (fire below)? The
+// direct one 0x49c9c0 a lineofsight or selfprop shot (from the turret
+// routine 0x49d775, the non-turret 0x49d9c0 and, for vlaunch, 0x49cc20),
+// the ballistic 0x49cde0 a turret's ballistic one (0x49d76e), the bomb
+// release 0x49dd60 a dropped one.
+static bool taLaunchClaimed(const Weapon& w) {
+    if (w.kind==Weapon::Kind::Dropped || w.taAim==Weapon::TaAim::Dropped) return true;
+    if ((w.hasTaFlag(20) || w.hasTaFlag(0)) && w.velocityFx>0) return true;
+    return w.taAim==Weapon::TaAim::Turret && w.hasTaFlag(1) && w.velocityFx>0;
+}
+
 // A point target (t.unit null: SUPPRESS) gives every class its aim point in
 // place of the unit's position or led SweetSpot, and a shot that carries no
 // target unit (51a9a0 gives 0): it flies to the point and bursts where it
@@ -7086,6 +7099,13 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // TA: a weapon fires only when storage holds both energypershot and
     // metalpershot, which are then taken at once (docs/retail-economy.md).
     // A burst clone was paid for with its emitter.
+    // A TotalA.exe weapon fires through its fire routine's spawner (0x49e43c
+    // -> [weapon+0x60]); one no spawner takes -- a turret neither
+    // lineofsight, selfprop nor ballistic (0x49d74b..0x49d783), or (ours) a
+    // shot with no weaponvelocity; no shipped weapon is either -- fires and
+    // pays nothing (0x49e441). The paths after the TA ones below are the
+    // synthetic test armies' (no TA record, taAim None).
+    if (w.taAim!=Weapon::TaAim::None && !taLaunchClaimed(w)) return false;
     if (!tweak.free && !tweak.capture && !econPayShot(u, w)) return false;
     // Every shot keeps the shooter visible for 600 ticks (icd 0x52af41, set just
     // before the release 0x530220).
@@ -7101,31 +7121,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // spread (ShotTweak). The slot's aim record holds AimX's TA angles,
     // which are not these launch angles.
     const bool solveAtRelease=true;
-    if(w.flameKind>=0) {
-        const int32_t raw=int32_t(double(w.projVel)*2184.5333333333333);
-        if(raw<=0)return true;
-        FlameShot flame;flame.weapon=&w;flame.owner=u.player;flame.fromId=u.id;flame.slot=slot;
-        flame.targetId=tu ? tu->id : 0;
-        flame.position=queryUnitScriptPoint(u.id,false,slot);
-        flame.muzzle=flame.position;
-        flame.aimPoint=scriptTriggered ? u.weaponAimPoints[size_t(slot)] : !tu ? t.point :
-            std::array<int32_t,3>{tu->x.v,(tu->type->canFly ? tu->flightY : tu->groundY).v,tu->z.v};
-        flame.substeps=std::max(1u,(uint32_t(raw)+0xfffffu)>>20);
-        flame.speed=uint32_t(raw)/flame.substeps;
-        auto [heading,pitch]=storedLaunch(u,slot,false);
-        if(solveAtRelease)if(const auto aim=queryWeaponAim(u,t,slot)) {
-            heading=aim->heading;pitch=aim->pitch;flame.aimPoint=aim->target;
-        }
-        heading=uint16_t(heading+tweak.heading);pitch=uint16_t(pitch+tweak.pitch);
-        heading=uint16_t(heading+portHeadingToRetail(u.heading));
-        const int32_t horizontal=retailScaledCosine(pitch,int32_t(flame.speed));
-        flame.velocity={retailScaledSine(heading,horizontal),
-            std::bit_cast<int32_t>(0u-uint32_t(retailScaledSine(pitch,int32_t(flame.speed)))),
-            retailScaledCosine(heading,horizontal)};
-        flame.start=tickCounter_+1;flame.end=flame.start+uint32_t(w.emitTime);
-        flames_.push_back(std::move(flame));
-        return true;
-    }
     // TotalA.exe's line-of-sight / self-propelled spawner 0x49c9c0 (from the
     // turret routine at 0x49d775 and the non-turret one 0x49d9c0) and the
     // vlaunch spawner 0x49cc20 (retailtashot.h). The shot starts at the QueryX
@@ -7137,8 +7132,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // does (0x49b8f1). A beamweapon is one of these shots (0x49c9c0 has no
     // beam case): its tail starts at the muzzle too (0x49c761).
     const bool taSelfProp=w.hasTaFlag(20);   // selfprop
-    if((taSelfProp || (w.hasTaFlag(0) && !w.lightning && w.losStatus==Weapon::LosStatus::None)) &&
-       w.velocityFx>0) {
+    if((taSelfProp || w.hasTaFlag(0)) && w.velocityFx>0) {
         const auto muzzle=queryUnitScriptPoint(u.id,false,slot);
         const auto target=scriptTriggered && !tweak.free ? u.weaponAimPoints[size_t(slot)] :
             tu ? taTargetPoint(u,t,w) : t.point;
@@ -7228,70 +7222,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         p.flight=int32_t(std::max<uint64_t>(1,isqrt64(uint64_t(dx*dx)+uint64_t(dz*dz))/uint64_t(horizontal)));
         if(tweak.capture)*tweak.capture=p;
         else projectiles_.push_back(p);
-        return true;
-    }
-    if(w.kind==Weapon::Kind::Guided && w.projVel>0) {
-        const int32_t raw=int32_t(double(w.projVel)*2184.5333333333333);
-        if(raw<=0)return true;
-        Projectile p;p.guided3d=true;p.wsrc=&w;p.fromId=u.id;p.fromPlayer=u.player;
-        p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
-        p.position=queryUnitScriptPoint(u.id,false,slot);p.muzzle=p.position;
-        p.substeps=std::max(1u,(uint32_t(raw)+0xfffffu)>>20);
-        const int32_t speed=int32_t(uint32_t(raw)/p.substeps);
-        auto [heading,pitch]=storedLaunch(u,slot,false);
-        std::optional<WeaponAimSolution> aim;
-        if(solveAtRelease)aim=queryWeaponAim(u,t,slot);
-        if(aim) {heading=aim->heading;pitch=aim->pitch;}
-        heading=uint16_t(heading+tweak.heading);pitch=uint16_t(pitch+tweak.pitch);
-        const auto launch=retailGuidedLaunch(p.position,portHeadingToRetail(u.heading),heading,pitch,speed);
-        p.position=launch.position;p.velocity=launch.velocity;p.angles=launch.angles;
-        // The native base mover observes this new shot again in the firing tick
-        // and adds the body heading to the relative BAM yaw before its start tick.
-        p.angles[1]=uint16_t(p.angles[1]+portHeadingToRetail(u.heading));
-        const int32_t horizontal=retailScaledCosine(pitch,speed);
-        const int32_t product=std::bit_cast<int32_t>(uint32_t(w.range)*uint32_t(speed));
-        const int32_t denominator=horizontal ? horizontal : speed;
-        const int64_t quotient=int64_t(product)/denominator;
-        const uint32_t perTick=p.substeps*uint32_t(speed);
-        const uint32_t lifetime=((uint32_t(quotient)<<16)+perTick)/perTick;
-        p.start=tickCounter_+1;
-        if(w.nimbus && u.type->hasNimbusArt)p.start+=uint32_t(w.nimbusTicks);
-        p.end=p.start+lifetime;p.life=int32_t(lifetime);p.flight=int32_t(lifetime);
-        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-        projectiles_.push_back(p);
-        return true;
-    }
-    // The status classes (mind control, stone, freeze) share this launch
-    // (52c540); tickStraightProjectiles flies them with their own update.
-    if((w.straight || w.lightning || w.losStatus!=Weapon::LosStatus::None) && w.projVel>0) {
-        const int32_t raw=int32_t(double(w.projVel)*2184.5333333333333);
-        if(raw<=0)return true;
-        Projectile p;p.straight=true;p.wsrc=&w;p.fromId=u.id;p.fromPlayer=u.player;
-        p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
-        p.position=queryUnitScriptPoint(u.id,false,slot);
-        p.muzzle=p.position;
-        if(w.lightningEffect)p.lightningEffect=w.lightningEffect->initial;
-        p.substeps=std::max(1u,(uint32_t(raw)+0xfffffu)>>20);
-        const int32_t speed=int32_t(uint32_t(raw)/p.substeps);
-        auto [heading,pitch]=storedLaunch(u,slot,false);
-        if(solveAtRelease)if(const auto aim=queryWeaponAim(u,t,slot)) {
-            heading=aim->heading;pitch=aim->pitch;
-        }
-        heading=uint16_t(heading+tweak.heading);pitch=uint16_t(pitch+tweak.pitch);
-        p.angles={0,heading,uint16_t(0u-pitch)};
-        heading=uint16_t(heading+portHeadingToRetail(u.heading));
-        const int32_t horizontal=retailScaledCosine(pitch,speed);
-        p.velocity={retailScaledSine(heading,horizontal),
-            std::bit_cast<int32_t>(0u-uint32_t(retailScaledSine(pitch,speed))),
-            retailScaledCosine(heading,horizontal)};
-        const int32_t product=std::bit_cast<int32_t>(uint32_t(w.range)*uint32_t(speed));
-        const int64_t quotient=int64_t(product)/(horizontal ? horizontal : speed);
-        const uint32_t perTick=p.substeps*uint32_t(speed);
-        p.start=tickCounter_+1;
-        if(w.nimbus && u.type->hasNimbusArt)p.start+=uint32_t(w.nimbusTicks);
-        p.end=p.start+((uint32_t(quotient)<<16)+perTick)/perTick;
-        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);p.life=1;
-        projectiles_.push_back(p);
         return true;
     }
     // Dropped: the bomb is RELEASED, not fired, and has no weaponvelocity, so
@@ -7498,6 +7428,19 @@ void World::dropSlotTarget(Unit& u,int slot) {
     }
 }
 
+// TotalA.exe's out-of-range event, unit word +0xba bit 0x1000 (World's
+// 0x100000, as tickPointWeapons raises it for a point): 0x49e1a0 raises it
+// for a loaded slot (reload 0, 0x49e3ae) whose range gate 0x49aa80 refuses
+// (0x49e3cf -> 0x49e53a), and the turret routine for an aim with no
+// solution (0x49d664). Suppress waits on it (0x1c00, World's 0x150000);
+// a new slot target clears it (0x48a060 / 0x48a0a0: setSlotTarget,
+// setSlotPoint). A synthetic weapon (no TA record) raises nothing here.
+void World::noteSlotOutOfRange(Unit& u,int slot) {
+    if (slot<0 || slot>=3 || size_t(slot)>=u.type->weapons.size()) return;
+    if (u.type->weapons[size_t(slot)].taAim==Weapon::TaAim::None || u.reloads[size_t(slot)]>0) return;
+    u.missionEvents|=0x100000u;
+}
+
 void World::setSlotTarget(Unit& u,int slot,int id) {
     // 51a700: record +0x10 = target, +0x12 = 0x8000, and the slot's fire and
     // aim events are cleared from the unit's mission event word.
@@ -7658,7 +7601,7 @@ bool World::chasesOnOrderSlot(const Unit& u) {
 
 int World::approachSlot(const Unit& u) const {
     if (u.type->weapons.empty()) return -1;
-    int s=std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
+    int s=0;
     // TotalA.exe Attack_Chase (0x4034a0, docs/retail-weapon-scripts.md "Attack_Chase"):
     // stage 0 takes the order's slot (+0x36: 2 for a D-gun order, AttackSpecial
     // 0x403190), else 0x4897e0's first slot with a weapon; stages 1/3 test THAT
@@ -7815,12 +7758,11 @@ bool World::impactIndestructible(const Weapon& w,int cx,int cz) const {
 }
 
 
-void World::noteShotImpact(int fromId,int targetId,const Weapon& w,const std::array<int32_t,3>& impact,int hitUnit,Fixed targetHp,
-                           bool refused) {
+void World::noteShotImpact(int fromId,int targetId,const Weapon& w,const std::array<int32_t,3>& impact,int hitUnit,Fixed targetHp) {
     Unit* u=unit(fromId);
     const Unit* t=unit(targetId);
     if (!u || !u->alive() || !u->type || !t || !t->alive() || !t->type || targetId==fromId) return;
-    if (hitUnit && !refused) {
+    if (hitUnit) {
         // The target itself: the line is open. Any other body neither opens
         // nor blocks it (it can be killed, or it moves).
         // A hit also renews the walk budget: the line it opened is spent once
@@ -7829,7 +7771,7 @@ void World::noteShotImpact(int fromId,int targetId,const Weapon& w,const std::ar
         return;
     }
     const int64_t sx=u->x.floorInt(),sz=u->z.floorInt(),tx=t->x.floorInt(),tz=t->z.floorInt();
-    if (!refused) {
+    {
         // Short of the target and clear of it, in whole px: in front of the
         // target's projection on the line of fire and outside its body (its
         // footprint, nearBody), a body of slack and the weapon's splash. A miss
@@ -8450,7 +8392,8 @@ void World::tickSlotWeapons(Unit& u) {
         if (!t || !t->alive() || t->hp<=Fixed() || !t->type) { dropSlotTarget(u,s);continue; }
         // 52fe30 refuses to aim inside minrange or out of range; the target
         // is kept either way.
-        if (slotInsideMinRange(u,*t,s) || !slotInRange(u,*t,s) || !slotClearShot(u,*t,s)) continue;
+        if (!slotInRange(u,*t,s)) { noteSlotOutOfRange(u,s);continue; }
+        if (slotInsideMinRange(u,*t,s) || !slotClearShot(u,*t,s)) continue;
         aiming=true;
         // The request points where the slot aims: the led SweetSpot
         // (retailSlotFacing).
@@ -8783,8 +8726,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         u.routeStamp = -1;
         return;
     }
-    int slot = u.type->weapons.empty()
-                   ? 0 : std::clamp(u.weaponSlot, 0, int(u.type->weapons.size()) - 1);
+    int slot = 0;
     // TotalA.exe AttackSpecial (0x403190, docs/retail-weapon-scripts.md 8.2): a
     // D-gun order fights with the commandfire slot -- its range is the chase's.
     const bool dgunOrder = u.orders.front().dgun;
@@ -8859,6 +8801,11 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     const Weapon* approach = cr.weapon;
     const bool arcApproach = cr.arc;
     const bool inReach = cr.in;
+    // The fire gate's out-of-range event for each manual slot the attack gave
+    // this target (0x49e1a0, noteSlotOutOfRange), however the order goes on.
+    for (int s=0;s<int(std::min<size_t>(3,u.type->weapons.size()));++s)
+        if (!(u.slotAuto>>s&1) && u.slotTarget[size_t(s)]==target->id && !slotInRange(u,*target,s))
+            noteSlotOutOfRange(u,s);
     // Just inside the origin arc's reach the muzzle-to-SweetSpot solve can
     // still fail (queryWeaponAim launches nothing then): a unit free to move
     // keeps closing there rather than stand without a shot. That solve
@@ -9263,7 +9210,8 @@ void World::tickAttackWalkWeapons(Unit& u,Unit& target) {
         if ((u.slotAuto>>s&1) || u.slotTarget[size_t(s)]!=target.id) continue;
         const Weapon& w=u.type->weapons[size_t(s)];
         if ((w.noAir && target.flightGroundMode==2) || (w.toAir && target.flightGroundMode!=2)) continue;
-        if (slotInsideMinRange(u,target,s) || !slotInRange(u,target,s) || !slotClearShot(u,target,s)) continue;
+        if (!slotInRange(u,target,s)) { noteSlotOutOfRange(u,s);continue; }
+        if (slotInsideMinRange(u,target,s) || !slotClearShot(u,target,s)) continue;
         const auto solution=queryWeaponAim(u.id,target.id,s);
         const Bam desired=solution ? retailHeadingToPort(solution->facing) : retailDirection(target.x-u.x,target.z-u.z);
         if (facing) u.faceRequest=desired.v&0xffff;
@@ -9314,7 +9262,7 @@ World::SuppressRule World::suppressRule(const UnitType& t, int) {
 bool World::suppressAccepts(int unitId, float, float) const {
     const Unit* u=unit(unitId);
     if (!u || !u->alive() || !u->type) return false;
-    switch (suppressRule(*u->type,u->weaponSlot)) {
+    switch (suppressRule(*u->type,0)) {
     case SuppressRule::Fire: return true;
     default: return false;
     }
@@ -9747,7 +9695,7 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     // check_change_owner.py unfinished).
     u.siteTimer = {}; u.siteWorkLate = false; u.beingBuilt = false; u.siteGetBuilt = false;
     // 52aae0, 51a880, 519b10: fresh weapon records, every slot auto.
-    u.weaponSlot = 0; u.weaponAuto = true;
+    u.weaponAuto = true;
     u.reloads[0] = u.reloads[1] = u.reloads[2] = 0;
     u.slotTarget = {}; u.slotAuto = 7; u.slotManual = 0; u.slotPoint = 0; u.slotPointAt = {};
     u.aimWait = {}; u.faceRequest = -1; u.scriptAimTarget = 0;
@@ -9937,7 +9885,6 @@ void World::missionKillAll() {
     }
     std::erase_if(projectiles_, [&](const Projectile& p) { return killed.contains(p.fromId); });
     std::erase_if(bursts_, [&](const BurstEmitter& b) { return killed.contains(b.fromId); });
-    std::erase_if(flames_, [&](const FlameShot& f) { return killed.contains(f.fromId); });
 }
 
 // Stamp every PARKED ground unit into the occupancy layer. O(n), one cell each:
@@ -14957,7 +14904,7 @@ bool World::seekLostTarget(Unit& u,const Unit* target,bool targetLive) {
     const bool airToAir=o.airToAir || (target && target->type && target->type->canFly);
     bool hover=false;
     if (!airToAir) {
-        const int slot=u.type->weapons.empty() ? 0 : std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
+        const int slot=0;
         const Weapon* sel=slot<int(u.type->weapons.size()) ? &u.type->weapons[size_t(slot)] : nullptr;
         hover=u.type->hoverAttack || (sel && sel->hoverAttack);
     }
@@ -15634,7 +15581,7 @@ void World::tickRetailAiStrike(int owner,unsigned index) {
         const unsigned divisor=pathRand(3)+3;
         if (uint32_t(int32_t(int16_t(u->hp.floorInt())))<type->construction->type.maxHp/divisor)
             unsupported("injured member withdrawal");
-        const auto& weapon=u->type->weapons[size_t(std::clamp(u->weaponSlot,0,int(u->type->weapons.size())-1))];
+        const auto& weapon=u->type->weapons[0];
         if (!u->orders.empty() && u->orders[currentLeg(u->orders)].controller && pathRand(20)==0) {
             const auto* nav=&navFor(u->type);
             const auto plane=std::find_if(searchGrades_.begin(),searchGrades_.end(),[&](const auto& p) {
@@ -17417,93 +17364,6 @@ struct World::ScriptHost {
     }
 };
 
-void World::tickStraightProjectiles(std::span<const int> airGrid) {
-    for(auto& p:projectiles_) {
-        if(!p.straight || p.life<=0)continue;
-        const auto& w=*p.wsrc;
-        if(w.losStatus!=Weapon::LosStatus::None) {
-            // The status classes' updates (52d8d0 mind control, 52db40 stone,
-            // 52dda0 freeze; tools/re/probe_los_status.py runs all three). The
-            // shot flies like the ordinary one, but: a caster dead or dying
-            // retires a mind-control shot at any time, after that update's flight
-            // (which can still land), while stone and freeze check only up to
-            // activation; activation adds no body heading; the expiry tick still
-            // flies; and the first unit struck goes to the class's callback
-            // (applyHit -> hurt), the shot retiring at once (529c10's destroy flag).
-            // A caster that changed sides is gone too: retail's ownership change
-            // (514da0) kills the old object and gives the new owner a new one.
-            const auto* owner=unit(p.fromId);
-            const bool ownerGone=!owner || !owner->alive() || owner->hp<=Fixed() || owner->player!=p.fromPlayer;
-            if(ownerGone && tickCounter_<=p.start) {p.life=0;continue;}
-            if(tickCounter_<=p.start)continue;
-            const bool retire=ownerGone && w.losStatus==Weapon::LosStatus::MindControl;
-            p.age=int32_t(tickCounter_-p.start);
-            const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
-            bool struck=false;
-            for(uint32_t step=0;step<p.substeps && !struck;++step) {
-                for(unsigned axis=0;axis<3;++axis)p.angles[axis]=uint16_t(p.angles[axis]+w.shotSpin[axis]);
-                for(unsigned axis=0;axis<3;++axis)p.position[axis]=std::bit_cast<int32_t>(
-                    uint32_t(p.position[axis])+uint32_t(p.velocity[axis]));
-                const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
-                if(hit.code!=2)continue;
-                struck=true;
-                p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-                const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
-                const bool refused=statusShotRefused(w,p.fromPlayer,p.targetId,hit.unitId);
-                applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hit.unitId),p.position,{},p.slot);
-                noteShotImpact(p.fromId,p.targetId,w,p.position,hit.unitId,shotHp,refused);
-            }
-            p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-            // A shot that runs out without striking anything missed its
-            // target as surely as one that landed past it.
-            if(!struck && !retire && tickCounter_>=p.end)
-                if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
-            if(struck || retire || tickCounter_>=p.end) {p.spent=true;p.life=0;}
-            continue;
-        }
-        if(w.lightning) {
-            const auto* owner=unit(p.fromId);
-            if(!owner || !owner->alive() || owner->hp<=Fixed()) {p.life=0;continue;}
-            p.muzzle=queryUnitScriptPoint(p.fromId,false,p.slot);
-        }
-        if(tickCounter_<=p.start) {
-            const auto* owner=unit(p.fromId);
-            if(!owner || !owner->alive() || owner->hp<=Fixed()) {p.life=0;continue;}
-            if(tickCounter_==p.start)
-                p.angles[1]=uint16_t(p.angles[1]+portHeadingToRetail(owner->heading));
-            continue;
-        }
-        const bool emitting=!p.spent && tickCounter_<p.end;
-        bool effectAlive=false;
-        if(p.lightningEffect)
-            effectAlive=p.lightningEffect->tick(emitting,[&]{return crtRand(0x4f3e3f);});
-        p.age=int32_t(tickCounter_-p.start);
-        if(!emitting) {
-            // Emitted to the end without striking: a miss, as a straight shot's.
-            if(!p.spent && tickCounter_==p.end)
-                if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
-            if(!effectAlive)p.life=0;
-            continue;
-        }
-        const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
-        for(uint32_t step=0;step<p.substeps;++step) {
-            for(unsigned axis=0;axis<3;++axis)p.angles[axis]=uint16_t(p.angles[axis]+w.shotSpin[axis]);
-            for(unsigned axis=0;axis<3;++axis)p.position[axis]=std::bit_cast<int32_t>(
-                uint32_t(p.position[axis])+uint32_t(p.velocity[axis]));
-            const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
-            if(hit.code==2) {
-                const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
-                applyHit(w,Fixed::raw(p.position[0]).toFloat(),Fixed::raw(p.position[2]).toFloat(),
-                    p.fromPlayer,p.fromId,unit(hit.unitId),p.position,{},p.slot);
-                noteShotImpact(p.fromId,p.targetId,w,p.position,hit.unitId,shotHp);
-                p.spent=true;break;
-            }
-        }
-        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-        p.age=int32_t(tickCounter_-p.start);
-    }
-}
-
 // TotalA.exe's ballistic and dropped motion (docs/retail-data.md 3.3 rules 3
 // and 4): a ballistic weapon with a weapontimer checks its expiry first
 // (0x49bc19..0x49bc35) -- burnblow bursts where it is (0x49bc70 -> 0x499eb0),
@@ -17661,55 +17521,6 @@ void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
     }
 }
 
-void World::tickFlames(std::span<const int> airGrid) {
-    for(auto& flame:flames_) {
-        const auto& w=*flame.weapon;
-        auto* source=unit(flame.fromId);
-        const bool alive=source && source->alive() && source->hp>Fixed();
-        auto advanceParticles=[&] {
-            std::erase_if(flame.particles,[](auto& particle){return !particle.tick();});
-        };
-        if(!alive) {
-            advanceParticles();flame.expired=flame.particles.empty();continue;
-        }
-        if(tickCounter_<flame.start)continue;
-        const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
-        auto collision=[&](const auto& position) {
-            return projectileCollision(position,flame.velocity[1],flags,flame.owner,airGrid);
-        };
-        if(tickCounter_==flame.start) {
-            const auto scan=ta::retailFlameScan(flame.position,flame.velocity,uint32_t(w.range),
-                flame.speed,flame.substeps,[&](const auto& point){return collision(point).code;});
-            flame.endpoint=scan.endpoint;flame.lifetime=scan.lifetime;flame.impacted=false;
-            continue;
-        }
-        if(tickCounter_>=flame.end) {
-            advanceParticles();flame.expired=flame.particles.empty();continue;
-        }
-        const auto muzzle=queryUnitScriptPoint(flame.fromId,false,flame.slot);
-        flame.muzzle=muzzle;
-        if(!flame.impacted)for(uint32_t step=0;step<flame.substeps;++step) {
-            for(unsigned axis=0;axis<3;++axis)flame.position[axis]=std::bit_cast<int32_t>(
-                uint32_t(flame.position[axis])+uint32_t(flame.velocity[axis]));
-            const auto hit=collision(flame.position);
-            if(hit.code==2) {
-                const Fixed shotHp=unit(flame.targetId) ? unit(flame.targetId)->hp : Fixed();
-                applyHit(w,Fixed::raw(flame.position[0]).toFloat(),Fixed::raw(flame.position[2]).toFloat(),
-                    flame.owner,flame.fromId,unit(hit.unitId),flame.position,{},flame.slot);
-                noteShotImpact(flame.fromId,flame.targetId,w,flame.position,hit.unitId,shotHp);
-                flame.impacted=true;break;
-            }
-        }
-        const std::array<uint16_t,3> rolls{uint16_t(crtRand(0x52d5d7)),uint16_t(crtRand(0x52d627)),uint16_t(crtRand(0x52d675))};
-        const auto velocity=ta::retailFlameVelocity(muzzle,flame.endpoint,int32_t(flame.lifetime),rolls);
-        // Native updates the existing emitter before inserting this tick's particle.
-        advanceParticles();
-        if(flame.particles.size()<500)flame.particles.push_back({muzzle,velocity,int32_t(flame.lifetime),
-            int32_t(flame.lifetime),uint32_t(w.flameKind)});
-    }
-    std::erase_if(flames_,[](const auto& flame){return flame.expired;});
-}
-
 // The flyers' cell grid (word +2) as TotalA.exe keeps it: each flyer moves
 // its own stamp when its position is set (0x48a9f0, from the mover's commit
 // 0x43d6d0 -> 0x43d775 / 0x43da0e, inside the unit's update in the units'
@@ -17836,7 +17647,10 @@ World::ProjectileCollisionResult World::projectileCollision(const std::array<int
         std::optional<std::array<int32_t,3>> targetShot,uint16_t proximityRadius) const {
     const int x=point[0]>>20,z=point[2]>>20;
     if(x<0 || z<0 || x>=hW_ || z>=hH_)return {1,0};
-    if(targetShot && retailProjectileProximity(point,*targetShot,proximityRadius))return {2,0};
+    // 0x49b106..0x49b1a9: an interceptor within its reach of the shot it
+    // chases bursts there and goes on to the body tests (no return).
+    const bool intercepted=targetShot && retailProjectileProximity(point,*targetShot,proximityRadius);
+    auto result=[&](int code,int unitId) { return ProjectileCollisionResult{code,unitId,intercepted}; };
     // 0x49b1c7..0x49b211: the body owning the cell (word +0), not the
     // shot's owner's (0x49b1f4), struck when the point is below its top --
     // its y (+0x6e) plus its type's model height (+0x16e). There is no
@@ -17846,7 +17660,7 @@ World::ProjectileCollisionResult World::projectileCollision(const std::array<int
     if(body && body->player!=owner && body->type &&
        point[1]<std::bit_cast<int32_t>(uint32_t((body->type->canFly ? body->flightY : body->groundY).v)+
                                       uint32_t(body->type->modelTop)))
-        return {2,body->id};
+        return result(2,body->id);
     // 0x49b222..0x49b275: the flyer owning the cell (word +2), struck from its
     // y plus type +0x162 (0 in TA, docs/retail-data.md) up to its y plus the
     // model height, both ends included.
@@ -17855,10 +17669,10 @@ World::ProjectileCollisionResult World::projectileCollision(const std::array<int
     if(airborne && airborne->alive() && !airborne->embarked() && airborne->type && airborne->player!=owner) {
         const int32_t base=airborne->flightY.v;
         const int32_t top=std::bit_cast<int32_t>(uint32_t(base)+uint32_t(airborne->type->modelTop));
-        if(point[1]>=base && point[1]<=top)return {2,airborne->id};
+        if(point[1]>=base && point[1]<=top)return result(2,airborne->id);
     }
     // 0x49b28a on: features, water and the ground.
-    return {projectileEnvironment(point,verticalSpeed,weaponFlags),0};
+    return result(projectileEnvironment(point,verticalSpeed,weaponFlags),0);
 }
 
 int World::projectileEnvironment(const std::array<int32_t,3>& point,int32_t& verticalSpeed,
@@ -18477,12 +18291,12 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         }
     }
     // The fire gate (0x49e3ae..): loaded, then the range gate 0x49aa80 from
-    // the unit's origin to the target point (0x49e3c8; a refusal raises
-    // unit+0xbb bit 0x10, 0x49e53a, which World does not keep).
+    // the unit's origin to the target point (0x49e3c8; a refusal raises the
+    // out-of-range event, 0x49e53a: noteSlotOutOfRange).
     if(u.reloads[size_t(slot)]>0)return true;
     // The horizontal range is the caller's test (to the target's origin,
     // docs/retail-weapon-scripts.md 7.8); the surfaced and arc tests are here.
-    if(!taRangeGate(u,target,w,false))return true;
+    if(!taRangeGate(u,target,w,false)) { noteSlotOutOfRange(u,slot);return true; }
     const bool moving=it->movementRate!=0;
     switch(w.taAim) {
     case Aim::Turret: {
@@ -18493,6 +18307,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         const auto now=taAimAngles(u,w,aimFromPoint(u.id,slot),target);
         if(!now || !taWithinTolerance(w,moving,*now,{aim.heading,aim.pitch})) {
             aim.flags&=uint16_t(~ta::TaAimState::kRequested);
+            if(!now)noteSlotOutOfRange(u,slot);   // no solution: 0x49d65b..0x49d664
             return true;
         }
         break;
@@ -18537,7 +18352,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         b.left=w.burst;b.rate=uint16_t(std::max<int>(1,w.burstRateTicks));b.next=tickCounter_+b.rate;
         // TotalA.exe's emitter is the spawner's own record (0x49cb79 /
         // 0x49cf58): its clones copy it, aimed and sprayed as it stands.
-        const bool taClass=w.velocityFx>0 && !w.lightning && w.losStatus==Weapon::LosStatus::None &&
+        const bool taClass=w.velocityFx>0 &&
             (w.hasTaFlag(20) || w.hasTaFlag(0) || (w.taAim==Aim::Turret && w.hasTaFlag(1)));
         ShotTweak capture=tweak;capture.capture=&b.shot;
         b.copies=taClass && fire(u,t,slot,true,capture) && b.shot.wsrc;
@@ -18610,7 +18425,7 @@ void World::tickWeaponBursts() {
             // tail (+0x10, the first shot's muzzle: 0x49b844 copies it and
             // 0x49b7e1 refreshes only the head).
             c.taLaunch=tickCounter_;
-            if(c.straight || c.taSelfProp || c.taLineOfSight)c.flight=int32_t(lifetime);
+            if(c.taSelfProp || c.taLineOfSight)c.flight=int32_t(lifetime);
             projectiles_.push_back(c);
             // 0x49b8f1..0x49b94b: sprayangle turns the EMITTER's horizontal
             // velocity for the next clone, from its stored heading and pitch.
@@ -20995,7 +20810,7 @@ void World::tick(float dt) {
         // Multi-weapon units count every slot's timer down.
         const bool reloadAll=u.type->weapons.size()>1;
         for(size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
-            if((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0)--u.reloads[slot];
+            if((reloadAll || slot==0) && u.reloads[slot]>0)--u.reloads[slot];
         if (u.embarked() && u.padPiece>=0 && onAirPad(u)) {
             // On a repair pad (VTOL_Landing's attach, 0x411e56): carried on its
             // piece (4dad30's attached branch), its missions still its own.
@@ -21172,61 +20987,11 @@ void World::tick(float dt) {
     // grid (word +2, read by 0x49b222) holds each flyer where its own update
     // left it (stampAirOccupant): a flyer is met in the cells it holds now.
     tickWeaponBursts();
-    tickFlames(projectileAircraft);
-    tickStraightProjectiles(projectileAircraft);
     // Projectiles.
     for (auto& p : projectiles_) {
-        if(p.straight)continue;
         if(p.taLineOfSight) {tickTaLineOfSight(p,projectileAircraft);continue;}
         if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
         if(p.taBallistic) {tickTaBallistic(p,projectileAircraft);continue;}
-        if(p.guided3d) {
-            if(p.life<=0)continue;
-            if(tickCounter_<=p.start) {
-                const Unit* owner=unit(p.fromId);
-                if(!owner || !owner->alive() || owner->hp<=Fixed())p.life=0;
-                continue;
-            }
-            if(tickCounter_>=p.end) {
-                // Run out without striking: a miss, as in the straight shots.
-                if(const Unit* t=unit(p.targetId);t && p.wsrc)noteShotImpact(p.fromId,p.targetId,*p.wsrc,p.position,0,t->hp);
-                p.life=0;continue;
-            }
-            // 52e030 steers at a target that is alive (+0x130 0x1000000) and not
-            // dying (0x1000), and tests nothing else: a carried target (its
-            // attach, 51b5a0, keeps both bits; +0x114's carried bits are not
-            // read) is homed on through its SweetSpot over its own +0x68, which
-            // 4dad30 commits at the host's attach point every tick.
-            const Unit* target=unit(p.targetId);
-            const auto targetPoint=target && target->alive() ?
-                queryUnitScriptPoint(p.targetId,true) : p.position;
-            RetailGuidedShot state{p.position,p.velocity,p.angles};
-            const uint32_t flags=(p.wsrc->unitsOnly?0x800u:0u)|
-                (p.wsrc->groundBounce?0x1000u:0u)|(p.wsrc->waterWeapon?0x2000u:0u);
-            const int32_t rawSpeed=int32_t(double(p.wsrc->projVel)*2184.5333333333333);
-            const int32_t speedPerSubstep=rawSpeed/int32_t(p.substeps);
-            int hitUnit=0;
-            const bool hit=retailGuidedTick(state,targetPoint,p.wsrc->turnRate/kTick,
-                speedPerSubstep,
-                p.substeps,p.wsrc->shotSpin,!p.wsrc->shotModel.empty(),
-                [&](const auto& point,int32_t& verticalSpeed) {
-                    const auto result=projectileCollision(point,verticalSpeed,flags,p.fromPlayer,
-                        projectileAircraft);
-                    if(result.code==2)hitUnit=result.unitId;
-                    return result.code;
-                });
-            p.position=state.position;p.velocity=state.velocity;p.angles=state.angles;
-            p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
-            p.age=int32_t(tickCounter_-p.start);
-            if(hit) {
-                const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
-                applyHit(*p.wsrc,Fixed::raw(p.position[0]).toFloat(),
-                    Fixed::raw(p.position[2]).toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),p.position,{},p.slot);
-                noteShotImpact(p.fromId,p.targetId,*p.wsrc,p.position,hitUnit,shotHp);
-                p.spent=true;p.life=0;
-            } else if(p.life>0)--p.life;
-            continue;
-        }
         const bool ballistic3d=p.ballistic3d && p.wsrc;
         const float ox = p.x.toFloat(), oz = p.z.toFloat();   // segment start (before this step)
         p.x += p.vx;   // px per tick already
@@ -22549,38 +22314,9 @@ uint64_t World::stateHash() const {
             mix(p.taLaunch);mix(p.taTailMoving);mix(p.spent);mix(uint32_t(p.life));mix(uint32_t(p.age));
             for(const auto* values:{&p.position,&p.velocity,&p.taTail})for(int32_t value:*values)mix(uint32_t(value));
         }
-        if(p.straight) {
-            mix(0x53545254u);mix(p.fromId);mix(p.slot);mix(p.start);mix(p.end);mix(p.substeps);mix(p.spent);
-            mix(uint32_t(p.life));mix(uint32_t(p.age));
-            for(const auto* values:{&p.position,&p.velocity})for(int32_t value:*values)mix(uint32_t(value));
-            for(auto angle:p.angles)mix(angle);
-            if(p.lightningEffect) {
-                mix(0x4c494748u);
-                const auto& effect=*p.lightningEffect;
-                mix(effect.nextSource);mix(effect.particles.size());
-                for(const auto& source:effect.sources)mix(uint32_t(source.countdown));
-                for(const auto& particle:effect.particles)
-                    for(const auto* values:{&particle.position,&particle.velocity})
-                        for(int32_t value:*values)mix(uint32_t(value));
-                for(uint8_t pixel:effect.pixels)mix(pixel);
-            }
-        }
     }
-    if(!flames_.empty()) {
-        mix(0x464c414du);mix(flames_.size());
-        for(const auto& flame:flames_) {
-            mix(flame.owner);mix(flame.fromId);mix(flame.targetId);mix(flame.slot);mix(flame.start);mix(flame.end);
-            mix(flame.lifetime);mix(flame.speed);mix(flame.substeps);mix(flame.impacted);
-            for(const auto* values:{&flame.position,&flame.velocity,&flame.endpoint})
-                for(int32_t value:*values)mix(uint32_t(value));
-            mix(flame.particles.size());
-            for(const auto& particle:flame.particles) {
-                mix(uint32_t(particle.remaining));mix(uint32_t(particle.lifetime));mix(particle.kind);
-                for(const auto* values:{&particle.position,&particle.velocity})
-                    for(int32_t value:*values)mix(uint32_t(value));
-            }
-        }
-    }
+    // Kingdoms' straight shots and flame streams are gone (no TA weapon
+    // launched them): the hash keeps the projectiles' shape without them.
     checkpoint("flames");
     // Kingdoms' Remote Effect spells are gone: the count they folded stays 0,
     // so the hash keeps its shape.

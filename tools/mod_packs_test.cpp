@@ -98,14 +98,15 @@ int main(){
             "a damaged archive in an always-enabled pack never stops the mods loading");
       std::filesystem::remove_all(root/"mods/cosmetic/always_enabled/Broken");
     }
-    {   // anims/ art passes the cosmetic filter, but a storm's frame timing is
-        // gameplay: an always-enabled pack (or a ticked one) that changes it is
-        // left out, so the player's Loaded hash still matches the referee's.
+    {   // anims/ art passes the cosmetic filter, but a burning feature's frame
+        // timing is gameplay (it holds the feature, gaf/featureburntiming.h): an
+        // always-enabled pack (or a ticked one) that changes it is left out, so
+        // the player's Loaded hash still matches the referee's.
       auto gaf=[](uint32_t delay,uint8_t pixel){   // one 1x1 frame named "stormfx"
         std::vector<uint8_t> art(89);auto word=[&](size_t at,uint32_t v,int n){for(int i=0;i<n;++i)art[at+size_t(i)]=uint8_t(v>>(i*8));};
         word(0,0x10100,4);word(4,1,4);word(12,16,4);word(16,1,2);word(18,1,2);std::memcpy(art.data()+24,"stormfx",7);
         word(56,64,4);word(60,delay,4);word(64,1,2);word(66,1,2);word(80,88,4);art.back()=pixel;return std::string(art.begin(),art.end());};
-      put("mods/game/Storm/units/storm.fbi","[WEAPON1]\n{\nwanderstartart=stormfx;\n}\n");put("mods/game/Storm/anims/stormfx.gaf",gaf(3,1));
+      put("mods/game/Storm/features/tree.tdf","[tree]\n{\nfilename=stormfx;\nseqnameburn=stormfx;\nflamable=1;\n}\n");put("mods/game/Storm/anims/stormfx.gaf",gaf(3,1));
       archive("mods/cosmetic/always_enabled/Fx/fx.hpi",{{"anims/stormfx.gaf",gaf(9,1)},{"sounds/fx.wav","fx"}});
       archive("mods/cosmetic/always_enabled/Recolor/recolor.hpi",{{"anims/stormfx.gaf",gaf(3,77)}});
       put("mods/cosmetic/Timing/anims/stormfx.gaf",gaf(5,1));

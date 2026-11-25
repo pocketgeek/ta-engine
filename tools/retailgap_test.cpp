@@ -319,7 +319,7 @@ int main(int argc, char** argv) {
             harmlessFlyer.maxHp=30000;harmlessFlyer.healTime=0;
             harmlessFlyer.categories.clear();harmlessFlyer.catIds.clear();
             check(demon->weapons[0].kind==sim::Weapon::Kind::Guided &&
-                  demon->weapons[0].flameKind<0 && !demon->weapons[0].beam &&
+                  !demon->weapons[0].beam &&
                   !demon->weapons[0].noAir && demon->weapons[0].damage>0,
                   "the Samson's missile is a projectile-backed Guided weapon that can hit flyers");
             sim::World w,peer;
@@ -820,7 +820,7 @@ int main(int argc, char** argv) {
         if (const sim::Weapon* w = wpn("cormort", 0))
             check(w->ballisticClass() && !w->needsClearLine(), "nor does the Morty's");
         if (const sim::Weapon* w = wpn("armpw", 0))
-            check(w->straight && w->needsClearLine(), "a lineofsight E.M.G. shot does");
+            check(w->hasTaFlag(0) && !w->beam && w->needsClearLine(), "a lineofsight E.M.G. shot does");
         if (const sim::Weapon* w = wpn("corak", 0))
             check(w->beam && w->needsClearLine(), "and so does a laser beam");
     }

@@ -1,6 +1,5 @@
 #include "util/virtualpath.h"
 #include "hpi/hpi.h"
-#include "gaf/nimbus.h"
 #include "gaf/animationtiming.h"
 #include "gaf/featureburntiming.h"
 #include "tdf/tdf.h"
@@ -1011,38 +1010,6 @@ uint64_t gameplayHash(const Vfs& input) {
         mix(reinterpret_cast<const uint8_t*>(k.data()), k.size());
         uint8_t z = 0; mix(&z, 1);
         try { auto b = vfs.read(byKey[k]); mix(b.data(), b.size()); } catch (const std::exception&) {}
-    }
-    // Only availability affects launch delay; changing valid nimbus pixels is
-    // still cosmetic. Missing/invalid art must not silently change peer timing.
-    for (const auto& [side, animation] : gaf::factionNimbus(vfs)) {
-        const std::string key = "nimbus-available:" + side;
-        mix(reinterpret_cast<const uint8_t*>(key.data()), key.size());
-        const uint8_t present = !animation.empty();
-        mix(&present, 1);
-    }
-    // Wandering start/end frame clocks control damage admission and lifetime.
-    // Protect timing and availability without disallowing cosmetic recolors.
-    std::set<std::string> stormArt;
-    for(const auto& key:keys) if(key.ends_with(".fbi")) {
-        const auto bytes=vfs.read(byKey[key]);
-        const auto root=tdf::parseText(std::string(bytes.begin(),bytes.end()),key);
-        for(const auto& [section,node]:root.children)
-            for(const char* field:{"wanderstartart","wanderloopart","wanderendart"}) {
-                const auto name=MountSet::key(node.valueOr(field,""));
-                if(!name.empty())stormArt.insert(name);
-            }
-    }
-    for(const auto& name:stormArt) {
-        const auto timing=gaf::animationTiming(vfs,name);
-        const std::string key="storm-timing:"+name;
-        mix(reinterpret_cast<const uint8_t*>(key.data()),key.size());
-        const uint16_t count=uint16_t(timing.size());
-        const uint8_t sizeBytes[]={uint8_t(count),uint8_t(count>>8)};
-        mix(sizeBytes,2);
-        for(uint16_t duration:timing) {
-            const uint8_t durationBytes[]={uint8_t(duration),uint8_t(duration>>8)};
-            mix(durationBytes,2);
-        }
     }
     // Feature TDFs: hash only the keys the deterministic sim consumes (the
     // exact set matchsetup's FeatDef loader reads), in canonical sorted order.

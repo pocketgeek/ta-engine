@@ -146,7 +146,7 @@ Run fight(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, bool attackMove, Ph
         w.unit(foe)->hp = sim::Fixed::fromInt(30000);
         r.dist = std::hypot((t->x - u->x).toFloat(), (t->z - u->z).toFloat());
         r.standing = u->speed.v == 0;
-        r.aiming = (u->weaponAim[size_t(u->weaponSlot)].flags & 0xe0) != 0;
+        r.aiming = (u->weaponAim[0].flags & 0xe0) != 0;
         if (trace && attackMove) {
             // Statics: 2 aiming, 3 moving (MoveWatcher), 5 TurnDirection,
             // 6 firing, 7 AimWeapon's gate, 9 restore_legs played, 10
@@ -164,9 +164,9 @@ Run fight(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, bool attackMove, Ph
                         w.tickCount(), u->x.toFloat(), u->speed.toFloat(),
                         u->orders.empty() ? -1 : int(u->orders.front().autoTarget),
                         u->orders.empty() ? -1 : u->orders.front().targetId, int(u->firedWeapons),
-                        unsigned(u->weaponAim[size_t(u->weaponSlot)].flags), u->slotTarget[size_t(u->weaponSlot)],
+                        unsigned(u->weaponAim[0].flags), u->slotTarget[0],
                         int(u->slotAuto), st[2], st[3], int(int32_t(st[5])), st[6], st[7], st[9], st[10],
-                        int(u->aimWait[size_t(u->weaponSlot)]), sim::RetailReplayProbe::threads(w, *u).c_str(),
+                        int(u->aimWait[0]), sim::RetailReplayProbe::threads(w, *u).c_str(),
                         legs.c_str());
         }
     }
