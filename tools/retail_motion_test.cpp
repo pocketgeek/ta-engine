@@ -857,12 +857,14 @@ int main(int argc, char** argv) {
         flyer.maxVel=Fixed::fromInt(4);flyer.accel=flyer.brake=Fixed::fromInt(1);
         flyer.turnRate=1200;flyer.cruiseAlt=80;flyer.footX=flyer.footZ=2;
         UnitType overhead=flyer;overhead.vtolStandby=false;
-        // The flyer overhead updates first, so it stamps the shared cells
-        // first: TotalA.exe's 0x47cc30 lets the first flyer keep a cell.
         const int above=world.spawn(&overhead,256,256);
         const int id=world.spawn(&flyer,256,256);
+        // Lifted by hand: the flyers' own commits (tickFlightBody) are what
+        // move a word +2 stamp, so the fixture stamps them itself, overhead first.
         world.unit(above)->flightGroundMode=2;world.unit(above)->flightY=Fixed::fromInt(300);
+        world.stampAirOccupant(*world.unit(above));
         auto* u=world.unit(id);u->flightGroundMode=2;u->flightY=Fixed::fromInt(180);
+        world.stampAirOccupant(*u);
         world.tick(1.0f/30.0f); // explore, then build the persistent airborne grid
         u=world.unit(id);
         u->standbyActive=true;u->standbyState={1,0,0xffffffffu,0,0};
@@ -879,6 +881,7 @@ int main(int argc, char** argv) {
         // A ground unit arriving under a descending flyer does not interrupt it.
         u->standbyActive=false;u->landing.reset();
         u->flightGroundMode=2;u->flightY=Fixed::fromInt(180);
+        world.stampAirOccupant(*u);
         u->standbyActive=true;u->standbyState={1,0,0xffffffffu,0,0};
         int stage3=-1;
         for(int tick=0;tick<600 && stage3<0;++tick) {

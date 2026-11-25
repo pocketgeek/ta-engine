@@ -3076,13 +3076,17 @@ public:
                               uint32_t weaponFlags) const;
     // Retail's persistent secondary (airborne) occupant grid, map word +2.
     // Each flyer moves its own stamp when its position is set (TotalA.exe
-    // 0x48a9f0 -> 0x47d0e0 / 0x47cc30; stampAirOccupant, after each unit's
-    // update in the units' pass); read by the projectiles (0x49b222) and by
+    // 0x48a9f0 -> 0x47d0e0 / 0x47cc30; stampAirOccupant, from the flight
+    // commit tickFlightBody and groundMove's layer change); read by the projectiles (0x49b222) and by
     // the landing-site predicate (0x47e2d0).
     RetailAirOccupancy airOccupancy_;
     std::span<const int> updateAirOccupancy();
     void stampAirOccupant(Unit& u);
     void retireAirOccupant(Unit& u);
+    void ensureAirGrid();
+#ifndef NDEBUG
+    void verifyAirOccupant(const Unit& u) const;
+#endif
     // TotalA.exe 0x49b090, every shot kind's test of one point: 0 clear (or a
     // bounce), 1 off the map, 2 a burst (unitId the body struck, or 0).
     struct ProjectileCollisionResult { int code=0,unitId=0; };
@@ -4128,7 +4132,10 @@ private:
     void groundRestamp(Unit&);               // 5062d0
     void groundRestampRect(int,int,int,int); // 5065b0 -> 5097f0
     // 51b3b0's cell or mode change: unstamp, then stamp at the current spot.
-    void groundMove(Unit& u) { groundUnstamp(u); groundStamp(u); }
+    // A flyer's layer change is committed by its position setter too
+    // (0x43d6d0 compares mover +0x2e & 3 with unit +0x110 & 3, then 0x48a9f0),
+    // which moves its word +2 stamp.
+    void groundMove(Unit& u) { groundUnstamp(u); groundStamp(u); if (u.type && u.type->canFly) stampAirOccupant(u); }
     void groundRebuild();
     int cellScoreWithBodies(const UnitType*,int,int,int,const SearchBodyRect*) const;
     bool gatePassageAt(int,int,const std::vector<int>* gates=nullptr) const;

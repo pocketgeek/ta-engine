@@ -2794,6 +2794,11 @@ void World::tickFlightBody(Unit& u) {
     if (oldX!=footprintOrigin(u.x,u.type->footX) || oldZ!=footprintOrigin(u.z,u.type->footZ)) {
         u.flightSectorX=u.x.v>>23;u.flightSectorZ=u.z.v>>23;
     }
+    // The commit's position setter (0x43d6d0 -> 0x43da0e -> 0x48a9f0) moves
+    // the flyer's word +2 stamp here, inside its own update: the unit's later
+    // steps this tick (its weapons, 0x48adda), the units after it and the
+    // projectile pass meet it where it now is.
+    stampAirOccupant(u);
 }
 
 void World::tickGuardNoMove(Unit& u) {
@@ -17709,13 +17714,22 @@ void World::tickFlames(std::span<const int> airGrid) {
 // its own stamp when its position is set (0x48a9f0, from the mover's commit
 // 0x43d6d0 -> 0x43d775 / 0x43da0e, inside the unit's update in the units'
 // pass 0x48ad30), at its creation (0x486109 -> 0x47cc30, 0x48630c) and at
-// its death (0x48682d -> 0x47cbd0 -> 0x47d0e0). World calls this after each
-// unit's update and at those transitions: a flyer whose footprint origin and
+// its death (0x48682d -> 0x47cbd0 -> 0x47d0e0). World calls this from the
+// flight commit (tickFlightBody), a layer change (groundMove) and those
+// transitions: a flyer whose footprint origin and
 // layer (airborne or not) are unchanged keeps its stamp (0x48aa35..0x48aa56);
 // otherwise it leaves its recorded cells (0x47d0e0) and stamps the new ones
 // (0x47cc30), first come keeping a shared cell. No random draw.
+void World::ensureAirGrid() {
+    if (airOccupancy_.width()==hW_ && airOccupancy_.height()==hH_) return;
+    airOccupancy_.reset(hW_,hH_);
+    for (auto& u:units_) u.airOccupant={};
+}
+
 void World::stampAirOccupant(Unit& u) {
-    if (!u.type || !u.type->canFly || airOccupancy_.empty()) return;
+    if (!u.type || !u.type->canFly) return;
+    ensureAirGrid();
+    if (airOccupancy_.empty()) return;
     const int fx=u.type->footX,fz=u.type->footZ;
     const bool air=u.alive() && u.hp>Fixed() && u.flightGroundMode==2 && !u.embarked();
     const int x=air ? footprintOrigin(u.x,fx) : -9999,z=air ? footprintOrigin(u.z,fz) : -9999;
@@ -17725,6 +17739,21 @@ void World::stampAirOccupant(Unit& u) {
     at.recordedX=at.recordedZ=-9999;
     if (air && airOccupancy_.taStamp(u.id,x,z,fx,fz)) { at.recordedX=int16_t(x);at.recordedZ=int16_t(z); }
 }
+
+#ifndef NDEBUG
+void World::verifyAirOccupant(const Unit& u) const {
+    if (!u.type || !u.type->canFly || airOccupancy_.empty()) return;
+    const bool air=u.alive() && u.hp>Fixed() && u.flightGroundMode==2 && !u.embarked();
+    if (!air) { if (u.airOccupant.recordedX<0 || !u.alive() || u.hp<=Fixed()) return; }
+    else if (u.airOccupant.recordedX<0) return;   // off the map, or a shared cell it did not take
+    else if (u.airOccupant.recordedX==footprintOrigin(u.x,u.type->footX) &&
+             u.airOccupant.recordedZ==footprintOrigin(u.z,u.type->footZ)) return;
+    std::fprintf(stderr,"air stamp stale: tick %u unit %d (%s) mode %d recorded %d,%d at %d,%d\n",tickCounter_,u.id,
+        u.type->id.c_str(),int(u.flightGroundMode),int(u.airOccupant.recordedX),int(u.airOccupant.recordedZ),
+        footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
+    if (std::getenv("TA_VERIFY_AIR")) std::abort();
+}
+#endif
 
 // 0x48682d -> 0x47cbd0 -> 0x47d0e0: a dying flyer leaves its cells; a cell
 // it shared with another flyer is left empty (no hand-over).
@@ -17754,10 +17783,7 @@ void World::syncUnitLists() {
 // projectile pass after it read it as the flyers left it. Here, before the
 // units, only a flyer that left the world without a death hook is retired.
 std::span<const int> World::updateAirOccupancy() {
-    if (airOccupancy_.width()!=hW_ || airOccupancy_.height()!=hH_) {
-        airOccupancy_.reset(hW_,hH_);
-        for (auto& u:units_) u.airOccupant={};
-    }
+    ensureAirGrid();
     syncUnitLists();
     for (const int id:unitLists_.flyers) {
         Unit& u=*unit(id);
@@ -20363,9 +20389,10 @@ void World::tick(float dt) {
 
 
     // The flyers' persistent cell grid (word +2). Each flyer moves its own
-    // stamp as its update in the units' pass ends (stampAirOccupant, as
-    // TotalA.exe's position setter 0x48a9f0 does), so the landing-site
-    // predicate and the projectile pass read it as the flyers left it.
+    // stamp at its mover's commit inside its update (tickFlightBody ->
+    // stampAirOccupant, TotalA.exe's position setter 0x48a9f0), so the
+    // landing-site predicate and the projectile pass read it as the flyers
+    // left it.
     const auto projectileAircraft=updateAirOccupancy();
 
     // The spatial hash for this tick (the scans + separation), and who is
@@ -20604,14 +20631,15 @@ void World::tick(float dt) {
             }
         }
 #endif
-        // TotalA.exe moves a flyer's word +2 stamp inside its own update (the
-        // mover's commit 0x43d6d0 -> 0x48a9f0): stamp it as the update ends,
-        // whichever way it ends, so the units after it and the projectile
-        // pass see it where it now is.
-        struct AirStampAtEnd {
+#ifndef NDEBUG
+        // A flyer's word +2 stamp moves only inside its own update, at the
+        // mover's commit (tickFlightBody, groundMove's layer change): check
+        // that no other writer of its position or layer left it stale.
+        struct AirStampCheck {
             World& w; size_t i;
-            ~AirStampAtEnd() { if (i<w.units_.size()) w.stampAirOccupant(w.units_[i]); }
-        } airStampAtEnd{*this,unitIndex};
+            ~AirStampCheck() { if (i<w.units_.size()) w.verifyAirOccupant(w.units_[i]); }
+        } airStampCheck{*this,unitIndex};
+#endif
         if (!units_[unitIndex].type) continue;
         if (units_[unitIndex].alive() && units_[unitIndex].constructionEmitter)
             units_[unitIndex].constructionEmitter->advance();
@@ -20943,6 +20971,10 @@ void World::tick(float dt) {
                 u.x=Fixed::raw(p[0]);u.z=Fixed::raw(p[2]);
                 if (u.type->canFly) u.flightY=Fixed::raw(p[1]); else u.groundY=Fixed::raw(p[1]);
                 updateBodyIndex(u);
+                // The attached branch's setter (0x43d775 -> 0x48a9f0) commits
+                // the pad's layer 0 (0x48ab70 put it in mover +0x2e): the
+                // flyer leaves word +2 here, in its own update.
+                stampAirOccupant(u);
                 if (airPadFront(u)) tickAirPad(u);
                 if (u.embarked()) {
                     if (u.orders.empty() || airPadFront(u) || !u.type->canFly) continue;
@@ -20960,6 +20992,7 @@ void World::tick(float dt) {
                     u.type->floater,uint8_t(u.type->waterline),uint8_t(seaLevel_));
                 u.x=Fixed::raw(point[0]);u.groundY=Fixed::raw(point[1]);u.z=Fixed::raw(point[2]);
                 updateBodyIndex(u);
+                stampAirOccupant(u);   // 0x43d775 -> 0x48a9f0 (a carried flyer holds no cell)
             }
             else { if (mission_ || scenario_) justDied_.push_back(u.id); retireAirOccupant(u); u.deadFor = 0; noteOrders(u.id); }  // transport lost with all hands
             continue;
