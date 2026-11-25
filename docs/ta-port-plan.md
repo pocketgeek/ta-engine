@@ -678,20 +678,6 @@ test or fixture note; (d) Kingdoms code still compiled but unreachable from TA
 data (cleanup, no gameplay).
 
 - (a) None left in the shot paths.
-- (b) Hit response: the old object of a change of owner (kind 4, 0x4886a4:
-  0x489bb0(0, old, 30000, 4) -> 0x406f80 with no attacker: event 0x10 to its
-  listeners, a computer cancapture type's threat deadline) runs no response;
-  World keeps the object across the change (changeOwner), whose death side
-  is the death-accounting work's.
-- (b) Mission dispatcher: the second list's stockpile build (common table
-  0x4fc490 row 9, 0x402b70: stage 0 waits 300 at 200 stockpiled, stage 1
-  adds 5 to the progress up to the weapon's +0xe4 and asks the economy
-  (0x4011c0) for the share of +0xc0 / +0xc4, sleeping 5 / 10, stage 2 adds
-  one to the slot's +0x1e) has nothing to run on: World has no stockpile
-  weapons (the `stockpile` key is parsed, kWStockpile, and read nowhere; no
-  queue, no count, no fire gate). TA's dispatcher loop has no call cap
-  (0x43b99f); the engine keeps 100 as a guard against a handler that never
-  waits.
 - (b) Shot pass details. The lightning
   strands draw with the client's own CRT-rand stream (0x4e4870 is the
   game's shared one; drawing only). The D-gun (rendertype 3) draws its model

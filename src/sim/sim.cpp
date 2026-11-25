@@ -9720,6 +9720,10 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     // object's update (I); 514da0 hands the new object no cargo.
     if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy=0;
     killPassengers(u,tadeath::kChangeOwner);   // TotalA.exe: the old object dies of kind 4 (0x4886a4)
+    // 0x4886a4: that kind-4 record (0x489bb0(0, old, 30000, 4)) runs the hit
+    // response 0x406f80 on the old object, with no attacker: its listeners hear
+    // event 0x10, and a computer's cancapture type sets the threat deadline.
+    taHitResponse(u, nullptr);
     cancelBuilds(unitId);
     stop(unitId);
     noteOrders(unitId);
