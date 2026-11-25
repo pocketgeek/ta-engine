@@ -969,14 +969,14 @@ struct alignas(64) Order {
     // with a tag when set.
     bool suppressApproach = false;
     int32_t padSuppress1_ = 0;      // was Kingdoms' approach ring; kept for Order's layout
-    // A flyer's attack at a point (the same 4de530 kind 3 resolver, by the
-    // selected slot's weapon): AIRSTRIKE (`dropped`), AIRTOGROUNDHOVER (the
-    // type's hoverattack) or AIRTOGROUND, each with no target unit (mission
-    // +0x16 is 0). Its point (+0x22) is attackPointX/Z, its mission runs on
-    // `mission`, its +0x4e in airRunCount and its controller in flightGoal,
-    // as on a flyer's unit attack (World::tickAirPoint). targetId stays 0.
-    // Hashed with a tag when set.
-    static constexpr uint8_t kAirStrike = 1, kAirHover = 2, kAirRun = 3;
+    // A flyer's attack at a point (TotalA.exe's resolver 0x43f1b7, by slot
+    // 0's weapon): AIRSTRIKE (`dropped`) or AIRTOGROUND, each with no target
+    // unit (mission +0x16 is 0); a hover gunship gets AIRTOGROUND too. Its
+    // point (+0x22) is attackPointX/Z, its mission runs on `mission`, its
+    // +0x4e in airRunCount and its controller in flightGoal, as on a flyer's
+    // unit attack (World::tickAirPoint). targetId stays 0. 2 is not used
+    // (it was an engine-only hover at a point). Hashed with a tag when set.
+    static constexpr uint8_t kAirStrike = 1, kAirRun = 3;
     uint8_t airPoint = 0;
     // A formation leg an attack's group check put ahead of the attack
     // (SUPPRESS's Move_Ground_Formation, a flyer attack's
@@ -2604,9 +2604,9 @@ public:
     // the builder's work rate, paid in energy through its books). tickRepair runs it.
     void repair(int builderId, int targetId, bool queue);
     void tickRepair(Unit& b, float dt);
-    void tickPatrolRepair(Unit& b);
-    void tickFlyingPatrolLook(Unit& b);
-    void tickGroundPatrolLook(Unit& b);
+
+    int flyingPatrolLook(Unit& b);
+    int groundPatrolLook(Unit& b);
     void setPatrolRepairs(bool enabled) { patrolRepairs_=enabled; }
     // True if (x,z) lies over water (for choosing the water impact effect).
     // Retail (icd 0x509760): a unit is "on road" only when EVERY cell under its
@@ -4205,6 +4205,7 @@ private:
     void tickFireSweep(int player);
     void tickSlotWeapons(Unit& u);
     void slotHitResponse(Unit& victim,const Unit& attacker);
+    bool taWeaponReach(const Unit& e,const Unit& t,int slot) const;
     // A guard's slot retarget at its guarded unit's attacker (Follow_Ground
     // 0x4081fa, VTOL_Follow 0x418c60): 409a50 part (b) without the attacker's
     // reach test; a flyer's keeps a current target inside its minimum range.
@@ -4218,6 +4219,7 @@ private:
     // answers whether the unit is now dying.
     bool selfDestructHit(Unit& u);
     bool tickSelfDestruct(Unit& u);
+    bool runSecondList(Unit& u);
 
     // 4d7de0 with explicit=0, auto=1: insert an auto attack, leashed with a
     // return move on the Maneuver/patrol path. Whether orders were inserted.
@@ -4333,6 +4335,18 @@ private:
                 int x = cx + i, z = cz + j;
                 if (x < 0 || z < 0 || x >= occW_ || z >= occH_) continue;
                 int32_t o = occ_[size_t(z) * size_t(occW_) + size_t(x)];
+                if (o != 0 && o != selfId) return false;
+            }
+        return true;
+    }
+
+    // The same test over a footprint rectangle at its origin cell.
+    bool rectFree(int cx, int cz, int fx, int fz, int selfId) const {
+        if (occW_ <= 0) return true;
+        for (int z = cz; z < cz + fz; ++z)
+            for (int x = cx; x < cx + fx; ++x) {
+                if (x < 0 || z < 0 || x >= occW_ || z >= occH_) continue;
+                const int32_t o = occ_[size_t(z) * size_t(occW_) + size_t(x)];
                 if (o != 0 && o != selfId) return false;
             }
         return true;

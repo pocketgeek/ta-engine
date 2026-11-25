@@ -309,7 +309,7 @@ TotalA.exe on every test case.
 | D13 | `RetailRectGoal::navigationCell` | perimeter clamp of the unit's cell | target `((minX+maxX)/2, maxZ)` (only affects the provisional segment) |
 | D14 | `retailGroundScan` / `groundSpeedMode` / `groundMovementMode` (`retailmotion.h`, `sim.cpp` ~19036) | speed ×0.667/×0.333 and a 16-px steering threshold near grade < 4 cells | no such scan: the threshold is always 80 px, the cap is pitch × water only (0x43cd20, 0x43cc20) |
 | D15 | water speed (`groundTerrainMultiplier`; FBI `watermultiplier` default 1) | no slowdown with TA data; the multiplier also scales brake and turn | **speed cap halved** below sea level for non-hover, non-floater units; brake, accel and turn are unscaled |
-| D16 | partial/failed route handling (`sim.cpp` ~18790: appended order point, refusal caps, re-ask) | keeps re-asking toward the ordered point | partial route walked; empty result → 0x40 → move order ends (§3.1) [U for the order-side end] |
+| D16 | partial/failed route handling (`World::deliverSearchRoute`, the re-ask in `tickNavigationMovement`) | ported 2026-11-24: the partial route is walked to its last point (no arrival radius on a navigator-driven leg), the re-ask through the 60-tick gate traces no closer cell, the empty delivery posts World's 0x200 (TA 0x40); GROUND_PICKUP / GROUND_UNLOAD wake on it | partial route walked; empty result → 0x40 → move order ends (§3.1) [U for the order-side end] |
 | D17 | cell-entry refusal (`bodyBlockStreak` etc.) | Kingdoms refusal/streak logic | §3.3: any other unit blocks entry; clamp to the cell, speed ≤ maxvel/2, re-path flag [S, engine side not fully mapped] |
 | D18 | plane build at load | Kingdoms bounds everywhere | TA's full build allows the last row/column (§1.5); negligible |
 

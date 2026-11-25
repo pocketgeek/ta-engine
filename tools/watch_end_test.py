@@ -161,11 +161,13 @@ def case_allai(args, base):
     session = Session(args, base)
     try:
         # TA_MP_WATCH: the host takes no seat; TA_STRESS + TA_UNITCAP=250: each AI opens
-        # with an army, so they are at each other at once.
+        # with an army, so they are at each other at once. 40 minutes of game: with
+        # TotalA.exe's hit response (slot 0's reach alone, 0x49abb0) the game is decided
+        # at tick 60682 (2026-11-25; 49687 with the engine's 0.9 x leash + range reach).
         watcher = session.client('watcher', '--mphost', {
             'TA_WATCH_END_TEST': '1', 'TA_MP_WATCH': '1', 'TA_MP_AIS': '2', 'TA_STRESS': '1',
-            'TA_UNITCAP': '250', 'TA_SPEED': '80'}, 1800)
-        out = watched(session, watcher, 420)
+            'TA_UNITCAP': '250', 'TA_SPEED': '80'}, 2400)
+        out = watched(session, watcher, 720)
     finally:
         session.close()
     # Nobody was ever seated: the game ends on the tick its result landed.

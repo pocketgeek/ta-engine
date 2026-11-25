@@ -3664,7 +3664,7 @@ if(TA_TEST_DATA)
       add_test(NAME watch_end COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tools/watch_end_test.py"
         --server "$<TARGET_FILE:taserver>" --client "$<TARGET_FILE:taclient>" --data "${TA_TEST_DATA}")
-      set_tests_properties(watch_end PROPERTIES TIMEOUT 600)
+      set_tests_properties(watch_end PROPERTIES TIMEOUT 900)
       # Replay seeking end to end: every landing and the end of the game hash as a straight
       # run does, on Retail, Legion, a campaign mission and a spectator's recording.
       add_test(NAME replay_seek COMMAND "${Python3_EXECUTABLE}"

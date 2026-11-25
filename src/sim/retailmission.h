@@ -316,6 +316,46 @@ int retailGroundPatrol(RetailMissionState& m,uint32_t& radius,uint32_t tick,
     }
 }
 
+// The navigator's setGoal (0x44f2a0), when it keeps no old route: a head
+// mission (unit +0x5c) without flag 0x800000 gets the provisional two-point
+// route [unit, target] and starts straight at the target while the search is
+// queued; with the flag (set by the dispatcher's return 9, 0x43b8e5, and
+// never cleared) there is no route until the search delivers, so the mover
+// brakes (0x44f3e9..0x44f3f0).
+constexpr bool retailProvisionalRoute(uint32_t headFlags) { return !(headFlags & 0x800000u); }
+
+// TotalA.exe RepairPatrol (0x405980), the ground patrol of a builder whose
+// type has canreclamate (0x43f3b9..0x43f41d picks it for flagsB +0x245 bits
+// 6 and 9 on a unit without canfly). Stage 0 (0x405d59): the target's point
+// into +0x22 when there is one, the return waypoint (0x43a020), 1 -- stage 1
+// runs in the same dispatch. Stage 1 (0x4059ac): any navigator event (TA
+// 0xe0, World's 0x700) moves on to the next waypoint (6); else a circle of
+// radius 16 on the waypoint (0x4059c5 -> 0x438930), a sleep of 60
+// (0x4059cf) and the navigator's events in the wait (0x4059d8..0x4059e1),
+// then the look for work: 2 nothing, 3 a job went ahead (a reclaim clears
+// the wait word first, 0x405c13 / 0x405d1d; the host passes -3), 6 a repair
+// was issued and the patrol goes to the back (0x405ae0). No combat scan.
+template<class Initialize,class Circle,class Look>
+int retailGroundRepairPatrol(RetailMissionState& m,uint32_t tick,uint32_t events,
+        Initialize initialize,Circle circle,Look look) {
+    switch (m.stage) {
+    case 0:
+        initialize();
+        return 1;
+    case 1: {
+        if (events&0x700u) return 6;
+        circle(16u);
+        m.sleep(tick,60);
+        m.waitMask|=0x700u;
+        const int found=look();
+        if (found==-3) { m.waitMask=0;return 3; }
+        return found;
+    }
+    default:
+        return 7;
+    }
+}
+
 // TotalA.exe's mission dispatcher (0x43b7c0). Host: enabled(), head(),
 // hasNext(state), handle(state, events), random(bound), remove(state),
 // rotate(state), clear(), idle(). Re-fetch the head and enabled state after
@@ -335,10 +375,12 @@ int retailGroundPatrol(RetailMissionState& m,uint32_t& radius,uint32_t tick,
 // and its nine callers), the dispatcher only sets bit 0 there (0x43b7f9), and
 // every other write masks it (0x438915, 0x4389b1, 0x438a8a, 0x438b4c,
 // 0x4110b1) or copies a mission record (0x43a64d); so World posts no 0x10000
-// mission event either (its 0x10000 is a slot's shot, TA's 0x400). Not
-// modelled: the second (+0x60, mission flag 0x40000) list. TotalA.exe loops for as long as handlers return without waiting
-// (0x43b99f); the 100-call cap is an engine guard against a handler that
-// never waits.
+// mission event either (its 0x10000 is a slot's shot, TA's 0x400). A
+// mission whose row carries 0x40000 lives on the second list (unit +0x60,
+// retailDispatchSecondList) and is unlinked from there (0x43b8ad,
+// 0x43b8fc). TotalA.exe loops for as long as handlers return without
+// waiting (0x43b99f); the 100-call cap is an engine guard against a handler
+// that never waits.
 template<class Host>
 void retailDispatchMissions(uint32_t tick, uint32_t& unitEvents, Host& host) {
     unsigned calls = 0;
@@ -370,6 +412,42 @@ void retailDispatchMissions(uint32_t tick, uint32_t& unitEvents, Host& host) {
             break;
         default: host.clear(); return;
         }
+    }
+}
+
+// TotalA.exe's second mission list (unit +0x60, 0x43bad0), run right after
+// the main dispatcher in the unit update (0x48af98 -> 0x48af9e) and before
+// the mover (0x48afaa). It holds the missions whose row carries flag 0x40000
+// (0x43ac60 links a new mission there by that flag): of TA's rows only the
+// common table's (0x4fc490) row 9, the stockpile build (0x402b70, flags
+// 0x0c0140), and row 10, the self-destruct countdown (0x402010, 0x40040).
+// Every mission of the list may run in the same update: one that sleeps
+// (waitMask) with its deadline still ahead is passed over for the next
+// (0x43bae8..0x43bb02); there are no events -- the timer alone wakes one,
+// and the handler gets 0 (0x43bb15). The wait word clears, the handler runs,
+// and the walk starts again from the list's head (0x43bbf4), so a handler
+// that does not sleep runs again at once. Return codes (jump table
+// 0x43bc60): 0 stage 0, 1 next stage, 2/4 nothing, 3 a 30 + rand(15) sleep
+// (0x43bb31), 5/8/9 and any other value remove the mission and go on
+// (0x43bb6a, 0x43bba8), 6/7 remove it and end the walk (0x43bc06).
+// Host: head(), next(state) (null at the end), handle(state), random(bound),
+// remove(state) (unlinks; head() and next() then see the list without it).
+template<class Host>
+void retailDispatchSecondList(uint32_t tick, Host& host) {
+    auto* mission = host.head();
+    while (mission) {
+        auto& m = *mission;
+        if (m.waitMask && tick < m.deadline) { mission = host.next(m); continue; }
+        m.waitMask = 0;
+        switch (host.handle(m)) {
+        case 0: m.stage = 0; break;
+        case 1: ++m.stage; break;
+        case 2: case 4: break;
+        case 3: m.sleep(tick, host.random(15) + 30); break;
+        case 6: case 7: host.remove(m); return;
+        default: host.remove(m); break;
+        }
+        mission = host.head();
     }
 }
 

@@ -165,9 +165,9 @@ void retaliation() {
             if(w.unit(h.victim)->hp<hp){h.hit=true;h.hitX=x;h.hitZ=z;}
         }
     };
-    {   // 1: idle Offensive mobile, hit from 1.5x range inside 0.9 leash + range.
+    {   // 1: idle Offensive mobile, hit from inside slot 0's range (0x49abb0).
         sim::World w;setup(w,2);Hit h;
-        h.victim=w.spawn(&victimType,400,1000,0,0);h.attacker=w.spawn(&r1,850,1000,0,1);
+        h.victim=w.spawn(&victimType,400,1000,0,0);h.attacker=w.spawn(&r1,650,1000,0,1);
         auto& v=*w.unit(h.victim);v.moveState=1;v.fireState=2;
         w.attack(h.attacker,h.victim,false);
         firstHit(w,h,300);
@@ -215,13 +215,62 @@ void retaliation() {
         const bool patrolKept=std::any_of(o.begin(),o.end(),[](const sim::Order& x){return x.patrol;});
         check(h.hit && !attack && patrolKept,"retaliation: a patrolling unit takes no retaliation mission and keeps its patrol");
     }
-    {   // 4: attacker beyond 0.9 leash + range: no mission.
+    {   // 4: TotalA.exe 0x4070c8..0x4070d7: slot 0's reach (0x49abb0) is the
+        // range alone. An attacker at 1.5 x range -- inside the 0.9 x leash +
+        // range Kingdoms' 409a50 answered from -- gets no mission, and no slot
+        // takes it (0x407125).
         sim::World w;setup(w,2);Hit h;
-        h.victim=w.spawn(&victimType,400,1000,0,0);h.attacker=w.spawn(&r2,1050,1000,0,1);
+        h.victim=w.spawn(&victimType,400,1000,0,0);h.attacker=w.spawn(&r2,850,1000,0,1);
         auto& v=*w.unit(h.victim);v.moveState=1;v.fireState=2;
         w.attack(h.attacker,h.victim,false);
         firstHit(w,h,400);
-        check(h.hit && w.unit(h.victim)->orders.empty(),"retaliation: an attacker beyond 0.9 x leash + range gets no mission");
+        check(h.hit && w.unit(h.victim)->orders.empty() && w.unit(h.victim)->slotTarget[0]!=h.attacker,
+              "retaliation: an attacker beyond slot 0's range gets no mission and no slot (0x49abb0)");
+    }
+    {   // 6: the categories (0x40707d..0x4070c6): an attacker in the victim's
+        // nochasecategory, or in slot 0's badtargetcategory, gets no mission.
+        for (const bool chase:{true,false}) {
+            auto picky=victimType;
+            if (chase) picky.noChaseCats={"RAIDER"}; else picky.badTargetCats[0]={"RAIDER"};
+            auto raiderType=r1;raiderType.categories={"RAIDER"};
+            sim::World w;setup(w,2);Hit h;
+            h.victim=w.spawn(&picky,400,1000,0,0);h.attacker=w.spawn(&raiderType,650,1000,0,1);
+            auto& v=*w.unit(h.victim);v.moveState=1;v.fireState=2;
+            w.attack(h.attacker,h.victim,false);
+            firstHit(w,h,300);
+            const auto& o=w.unit(h.victim)->orders;
+            check(h.hit && (o.empty() || o[0].targetId!=h.attacker),chase
+                  ? "retaliation: an attacker in the nochasecategory gets no mission (type +0x23d)"
+                  : "retaliation: an attacker in slot 0's badtargetcategory gets no mission (type +0x231)");
+        }
+    }
+    {   // 7: a waterweapon reaches no target standing above the sea
+        // (0x49abf9..0x49ac19): a land attacker in range is not answered.
+        auto sub=victimType;sub.weapons[0].waterWeapon=true;sub.weapon=sub.weapons[0];
+        sim::World w;setup(w,2);Hit h;
+        h.victim=w.spawn(&sub,400,1000,0,0);h.attacker=w.spawn(&r1,650,1000,0,1);
+        auto& v=*w.unit(h.victim);v.moveState=1;v.fireState=2;
+        w.attack(h.attacker,h.victim,false);
+        firstHit(w,h,300);
+        check(h.hit && w.unit(h.victim)->orders.empty() && w.unit(h.victim)->slotTarget[0]!=h.attacker,
+              "retaliation: a waterweapon does not answer a target above the sea (0x49abb0)");
+    }
+    {   // 8: 0x489ce0 runs the response (0x489da2) before it lowers the hit
+        // points (0x489eb5): a hit that kills the victim still hands its
+        // slots the attacker.
+        auto frail=victimType;frail.maxHp=5;
+        sim::World w;setup(w,2);Hit h;
+        h.victim=w.spawn(&frail,400,1000,0,0);h.attacker=w.spawn(&r1,650,1000,0,1);
+        auto& v=*w.unit(h.victim);v.moveState=0;v.fireState=2;
+        w.attack(h.attacker,h.victim,false);
+        bool answered=false;
+        for (int t=0;t<300 && !answered;++t) {
+            ticks(w,1);
+            const sim::Unit* u=w.unit(h.victim);
+            if (!u) break;
+            if (u->hp<=sim::Fixed() || !u->alive()) answered=u->slotTarget[0]==h.attacker;
+        }
+        check(answered,"retaliation: the response runs before the hit points drop, so a lethal hit is answered");
     }
     {   // 5: 409b56..409b67: an armed building still under construction skips
         // both the retaliation mission (a) and the slot handoff (b); the same

@@ -169,7 +169,8 @@ int retailTaAirToGround(RetailMissionState& m,RetailFlightVector& point,uint32_t
 //            count goes back to 0 and a point controller rand(0x10000) round
 //            the target at the range, radius 0x80, is built but never
 //            installed (no 0x4388d0: it leaks), so the flyer keeps the one it
-//            has; wait 0x110e8 (TA's 0x1000 is not posted here), 2.
+//            has; wait 0x110e8 -- its 0x1000 is the unit word's refused aim
+//            (0x49e4f2..0x49e50b, 0x49d664), World's 0x100000 -- 2.
 //            Otherwise (0x4139ad..0x413a83) the hold: the target controller
 //            (0x44e330: a fixed point, the flyer headed at the target) at the
 //            target plus (sin, cos)(bearing 0x48a980(unit, target) + 0x2000
@@ -209,7 +210,7 @@ int retailTaAirToGroundHover(RetailMissionState& m,RetailFlightVector point,int3
         if (misses>=2) {                                                             // 0x413914
             misses=0;
             host.random(0x10000);                                                    // 0x413929: the leaked controller's angle
-            m.waitMask=0x728;                                                        // 0x413996
+            m.waitMask=0x728|0x100000;                                               // 0x413996
             return 2;
         }
         const uint16_t bearing=uint16_t(retailDirection(Fixed::raw(satSub32(in.position.x,in.targetPoint.x)),

@@ -69,13 +69,7 @@ inline bool retailTransportInRange(int32_t dx,int32_t dz,uint16_t range) {
 // carrier runs TransportDrop and answers whether it took BUSY).
 template<class InRange,class Approach,class Random>
 int retailTransportUnloadApproach(RetailMissionState& m,uint32_t& attempts,uint32_t now,
-        uint32_t events,InRange inRange,bool hasMover,bool hasNext,bool routing,Approach approach,Random random) {
-    // The stand-in timer below (not an event) while the route still moves
-    // the hull: no navigator failure yet, so no call.
-    if(m.stage==1 && (m.flags&0x80000000u) && !(events&~1u) && routing) {
-        m.waitMask=0x700u;m.sleep(now,60);return 2;
-    }
-    m.flags&=~0x80000000u;
+        InRange inRange,bool hasMover,bool hasNext,Approach approach,Random random) {
     if(m.stage==1) {
         ++attempts;
         bool called;
@@ -92,13 +86,6 @@ int retailTransportUnloadApproach(RetailMissionState& m,uint32_t& attempts,uint3
     if(!hasMover)return 8;
     m.stage=1;m.waitMask=0x700u;
     approach();
-    // Engine stand-in, not retail: the wait has no timer there, and a route
-    // that cannot reach the point ends in the navigator's 0x40 once its
-    // 60-tick re-ask comes back empty (docs/retail-pathfinding.md 3.1). The
-    // engine's navigator keeps pressing instead (ibid. D16), so a hull that
-    // has stopped short is called again after those 60 ticks (flag 0x80000000
-    // marks the timer; it is no retail bit).
-    m.flags|=0x80000000u;m.sleep(now,60);
     return 2;
 }
 
@@ -182,19 +169,15 @@ constexpr uint32_t kTargetCloakedEvent=0x20000000u;
 // where the passenger stands (0x438930) and a wait on the navigator and 8
 // (0xe8). Stage 5 (0x4068b1): the controller goes, back to stage 0.
 // The script owns the transfer: call() starts it (the boom reaches or not),
-// busy() is its BUSY, aboard() what its ATTACH_UNIT left. The engine's
-// navigator never fails a point it cannot reach (docs/retail-pathfinding.md
-// D16), and a radius-0 circle on a standing unit is one: the stand-in timer
-// (flag 0x80000000, no retail bit) wakes the circle after 60 ticks once the
-// hull has stopped, as GROUND_UNLOAD's does (retailTransportUnloadApproach).
+// busy() is its BUSY, aboard() what its ATTACH_UNIT left. The circle on a
+// standing passenger cannot be entered, so the navigator ends it: the partial
+// route to the nearest cell, then its re-ask from there (wantsPath's 60-tick
+// gate, 0x44f260) traces no closer cell (0x40e630: r >= h0), delivers no
+// points, and 0x44f080 posts the failure (0x40) that wakes stage 5.
 template<class Host>
 int retailGroundPickup(RetailMissionState& m,uint32_t& calls,uint32_t now,uint32_t events,
-        bool passenger,bool routing,Host& host) {
+        bool passenger,Host& host) {
     if(!passenger || (events&8u)) return 8;
-    if(m.stage==5 && (m.flags&0x80000000u) && !(events&~1u) && routing) {
-        m.waitMask=kTransportNavEvents|8u;m.sleep(now,60);return 2;
-    }
-    m.flags&=~0x80000000u;
     switch(m.stage) {
     case 0:
         if(!host.canLoad()) return 7;
@@ -209,7 +192,6 @@ int retailGroundPickup(RetailMissionState& m,uint32_t& calls,uint32_t now,uint32
         if(std::bit_cast<int32_t>(calls)>=3) return 9;
         host.approach();
         m.waitMask=kTransportNavEvents|8u;
-        m.flags|=0x80000000u;m.sleep(now,60);
         return 1;
     case 5:
         host.release();return 0;

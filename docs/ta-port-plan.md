@@ -602,6 +602,73 @@ What these entries describe is ported; what is left of each is under "Open".
   three shots on it, which write the target off), watch_end; legion
   baselines retaken for attackring-river-64 (the bank strip fires across the
   river: damage was 0; fewer ever reach the ring, licensed).
+- Navigator failure on an unreachable circle (2026-11-24, retailtransport.h,
+  World::deliverSearchRoute / tickNavigationMovement): GROUND_PICKUP's
+  radius-0 circle on a standing passenger (0x40686f -> 0x438930) and
+  GROUND_UNLOAD's drop-point circle (0x406a5e) wait on the navigator only
+  (0xe8, no timer); the stand-in 60-tick wake (flag 0x80000000) is gone. The
+  route to the nearest cell is walked, the navigator asks again when it has
+  fewer than two points (0x44f1a0) through wantsPath's 60-tick gate
+  (0x44f260), the tracer finds no closer cell (0x40e630: r >= h0), the
+  deliver posts the failure 0x40 for an unsatisfied goal (0x44f080; World's
+  0x200) and the mission calls again. What had stopped it: the old arrival
+  radius stopped a load leg 16..32 px short with no event (a leg the
+  navigator drives now ends only on its controller), the re-ask skipped an
+  unload-approach leg, and terrain-only harnesses refused cell entry on a
+  non-square footprint's bounding square while the search planned on the
+  rectangle (0x47db70 tests the rectangle). Evidence: transport (the circle
+  wakes on the failure, no timer), transport_roster (its coast explored:
+  unexplored cells read clear, D7), transport_post_unload,
+  transport_map_roundtrip, legion_transport.
+- The navigator's 0x800000 reader (2026-11-24, retailProvisionalRoute):
+  setGoal installs the provisional route [unit, target] only when the head
+  mission lacks 0x800000 (0x44f3e9..0x44f3f2), the flag a return 9 leaves
+  (0x43b8e5). SUPPRESS's approach reads SUPPRESS's mission (its circle,
+  0x40392e), the transport approaches their own. Evidence: suppress (a
+  flagged SUPPRESS waits for the search, an unflagged one starts at once),
+  retail_mission.
+- The second mission list (2026-11-24, retailDispatchSecondList): 0x43bad0,
+  after the main dispatcher in the unit update (0x48af98 -> 0x48af9e), the
+  timer alone wakes a mission (no events), a sleeping one is passed over,
+  the walk restarts from the head after each run, 6/7 end it, the rest
+  remove (jump table 0x43bc60). Its rows are the common table's 9 and 10
+  (flag 0x40000; 0x43ac60 links by it): World's self-destruct countdown
+  (0x402010) runs as that list's mission, after the main dispatch, not
+  before the unit's orders. Evidence: retail_mission (the walk), kill_credit,
+  building_death.
+- RepairPatrol's look (2026-11-24): a canreclamate builder's ground patrol is
+  RepairPatrol (0x43f3b9..0x43f41d, retailGroundRepairPatrol): stage 0's
+  return waypoint (0x43a020), stage 1 moves on at a navigator event (6,
+  0x4059ac), else re-installs a radius-16 circle on the waypoint (0x4059c5),
+  sleeps 60 (0x4059cf) and looks for work (groundPatrolLook): 6 for a repair,
+  3 for a job ahead, a reclaim clearing the wait word first (0x405c13).
+  VTOL_RepairPatrol's look (flyingPatrolLook) runs at its stage-1 wake
+  (sleep 45, 0x415386) the same way (0x415564, 0x415603, 0x415790). The
+  separate timers are gone. Evidence: reclaim (the look at the start and at
+  the next 60-tick wake), flyer_combat.
+- Flyer take-offs (audited 2026-11-24): VTOL_RepairUnit 0x414fe1,
+  VTOL_Reclaim 0x41485e, AirToAir 0x4133fa, VTOL_SeekAttack 0x4107c6 and
+  AirStrike 0x41215c take off through flyerTakeOff (0x43d210(2), the climb
+  controller at cruisealt / 2, 0x44e2d0 / 0x44e6c0); AirToAir's one-tick
+  sleep (0x413444) lets its stage 1 head off while it climbs. AIRSTRIKE's
+  stage-0 wait (0x4121a3) and stage-6 pad detour (0x4125c2..0x4126b4) and
+  LandIfCan's off-map return (0x40f2e3) are in retailAirStrike /
+  retailflight.h. Evidence: air_pad (each take-off).
+- A flyer's attack at a point (2026-11-24): the resolver's point branch
+  (0x43f1b7..0x43f302) gives AIRSTRIKE for a dropped slot-0 weapon, else
+  AIRTOGROUND, a hover gunship too (hoverattack is read only with a target,
+  0x43f2fa); the engine's hover at a point is gone. AirToGroundHover's
+  two-miss branch waits on 0x110e8 (0x413996), its 0x1000 the refused aim
+  (World's 0x100000). Evidence: suppress, mission_orders, retail_mission.
+- The hit response's tests (2026-11-24, World::taWeaponReach,
+  taHitResponse, slotHitResponse): 0x49abb0 line by line (waterweapon:
+  floater / hover against the sea; else the shooter's and target's tops,
+  toairweapon on a flying target, a ballistic arc via 0x49a890; then the
+  range from the squares' high dwords); part (a) tests nochasecategory
+  (+0x23d) and slot 0's badtargetcategory (+0x231) and 0x49abb0 (no leash
+  reach); part (b) 0x4070f2..0x4071aa. The weapon path responds before the
+  HP drop (0x489da2 before 0x489eb5). Evidence: fire_sweep retaliation
+  (range, categories, waterweapon, a lethal hit answered).
 
 ## Open
 
@@ -611,35 +678,20 @@ test or fixture note; (d) Kingdoms code still compiled but unreachable from TA
 data (cleanup, no gameplay).
 
 - (a) None left in the shot paths.
-- (b) GROUND_PICKUP's circle and GROUND_UNLOAD's wait also wake 60 ticks after
-  the hull stops (flag 0x80000000, retailtransport.h). Retail's wait has no
-  timer: the navigator's failure (0x40) after its empty 60-tick re-ask wakes
-  it. Tried removing the stand-in (2026-11-24): the engine's navigator then
-  never fails a radius-0 circle on a standing passenger, and transport,
-  transport_roster, transport_post_unload, transport_map_roundtrip and
-  legion_transport stop boarding. The difference is in that re-ask's result,
-  not in the missions.
-- (b) Ground RepairPatrol (0x405980): stage 1 re-installs a radius-16 circle
-  on the waypoint at every 60-tick wake (0x4059c5..0x4059e1) and moves on at
-  any navigator event (0xe0 -> 6); World keeps its patrol navigation and runs
-  the look (tickGroundPatrolLook) on a 60-tick timer. VTOL_RepairPatrol's job
-  search runs on a 45-tick timer from tickPatrolRepair, not its stage-1 wake.
-- (b) Flyer take-off climbs not modelled: VTOL_RepairUnit / VTOL_Reclaim /
-  VTOL_RepairPatrol's jobs (0x414fe1, 0x41485e), AirToAir / SeekAttack
-  (0x4133fa, 0x4107c6), AIRSTRIKE's stage-0 wait for take-off altitude; nor
-  LandIfCan's off-map return (0x40f2e3) or AIRSTRIKE's stage-6 pad detour.
-- (b) AirToGroundHover at a point is ours (TotalA.exe's stages read the target,
-  +0x16; World runs them on the point); its wait mask's event 0x1000
-  (0x413996) is not posted. Two misses of 0x49abb0 build a controller that is
-  never installed (0x41391e), so only its rand(0x10000) remains.
-- (b) Hit response approximations: the retaliation's category / reach tests are
-  World's retailAnswersAttacker / slotHitResponse (0x49abb0's underwater tests
-  and the +0x23d / +0x231 category sets are not traced one by one); the old
-  object of a change of owner (kind 4, 0x4886a4) runs no response; the weapon
-  path lowers the HP before the response (0x489ce0 responds first).
-- (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
-  the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
-  loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
+- (b) Hit response: the old object of a change of owner (kind 4, 0x4886a4:
+  0x489bb0(0, old, 30000, 4) -> 0x406f80 with no attacker: event 0x10 to its
+  listeners, a computer cancapture type's threat deadline) runs no response;
+  World keeps the object across the change (changeOwner), whose death side
+  is the death-accounting work's.
+- (b) Mission dispatcher: the second list's stockpile build (common table
+  0x4fc490 row 9, 0x402b70: stage 0 waits 300 at 200 stockpiled, stage 1
+  adds 5 to the progress up to the weapon's +0xe4 and asks the economy
+  (0x4011c0) for the share of +0xc0 / +0xc4, sleeping 5 / 10, stage 2 adds
+  one to the slot's +0x1e) has nothing to run on: World has no stockpile
+  weapons (the `stockpile` key is parsed, kWStockpile, and read nowhere; no
+  queue, no count, no fire gate). TA's dispatcher loop has no call cap
+  (0x43b99f); the engine keeps 100 as a guard against a handler that never
+  waits.
 - (b) Shot pass details. The lightning
   strands draw with the client's own CRT-rand stream (0x4e4870 is the
   game's shared one; drawing only). The D-gun (rendertype 3) draws its model

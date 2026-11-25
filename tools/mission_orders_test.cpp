@@ -690,7 +690,7 @@ static void airPoint(Fixture& f) {
     auto m = startMission(f, *w, p);
     const struct { int i; uint8_t kind; std::pair<uint8_t, uint32_t> mission; const char* what; } rows[] = {
         {0, Order::kAirStrike, {2, 0x1000400}, "a dropped weapon: AIRSTRIKE, read as class 2, 0x1000400 (it read a move)"},
-        {1, Order::kAirHover, {1, 0x1000000}, "a hoverattack type: AIRTOGROUNDHOVER, class 1, 0x1000000"},
+        {1, Order::kAirRun, {1, 0x1000000}, "a hoverattack type: AIRTOGROUND too (0x43f1b7 reads no hoverattack without a target)"},
         {2, Order::kAirRun, {1, 0x1000000}, "else AIRTOGROUND, class 1, 0x1000000"},
     };
     for (const auto& r : rows) {

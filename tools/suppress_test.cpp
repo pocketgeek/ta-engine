@@ -179,8 +179,8 @@ Run fireAt(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const Shooter& sh,
         r.endDist = d;
         if (i >= ticks * 2 / 3) { lateSum += d; ++lateN; }
         r.airborne = r.airborne || u->flightGroundMode == 2;
-        if (!u->orders.empty() && u->orders.front().airPoint == sim::Order::kAirHover &&
-            u->orders.front().flightGoal && u->orders.front().flightGoal->radius == 0x10) {
+        if (!u->orders.empty() && u->orders.front().airPoint && u->orders.front().flightGoal &&
+            u->orders.front().flightGoal->radius == 0x10 && (u->orders.front().flightGoal->flags & 0x40)) {
             ++r.ringGoals;
             if ((u->orders.front().flightGoal->flags & 0x48) != 0x48) r.ringWithoutFixed = true;
         }
@@ -334,25 +334,18 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
         check(r.orderAtEnd && r.ordersAtEnd == 1, "and keeps the order", describeAir(r));
         check(flyAt(vfs, reg, runner, 1500).hash == r.hash, "the same run gives the same state hash");
     }
-    // AIRTOGROUNDHOVER: holds two thirds of slot 0's range off the point,
-    // 45 degrees either side of its bearing in turn (TotalA.exe 0x4139ad;
-    // World runs it on the point), and fires.
+    // A hoverattack flyer at a point: TotalA.exe's resolver gives a point no
+    // AIRTOGROUNDHOVER (0x43f1b7..0x43f1cf reads only slot 0's `dropped`;
+    // hoverattack is read with a target, 0x43f2fa), so it flies AIRTOGROUND's
+    // runs over the point.
     {
         const Run r = flyAt(vfs, reg, hover, 1500);
-        const int d = int(hover->weapons[0].range) * 2 / 3;
-        std::printf("  %s (hoverattack, distance %d) at a point 600 px off: %s\n", hover->id.c_str(), d,
-                    describeAir(r).c_str());
-        check(r.airKind == Order::kAirHover, "a hoverattack flyer gets AIRTOGROUNDHOVER at the point", describeAir(r));
-        // Between two holds a quarter turn apart it passes 0.71 d off the point.
-        check(r.airborne && r.lateDist > 0.65f * d && r.lateDist < d + 24, "it hovers two thirds of its range off the point",
-              describeAir(r));
-        check(r.shots >= 2 && r.hits >= 2 && r.hitDist < 64 && !r.targetedShot,
-              "and its shots land on the point, with no target", describeAir(r));
+        std::printf("  %s (hoverattack) at a point 600 px off: %s\n", hover->id.c_str(), describeAir(r).c_str());
+        check(r.airKind == Order::kAirRun, "a hoverattack flyer gets AIRTOGROUND at the point (0x43f302)", describeAir(r));
+        check(r.ringGoals == 0, "it never holds a hover station over the point", describeAir(r));
+        check(r.airborne && r.shots >= 2 && r.hits >= 2 && r.hitDist < 64 && !r.targetedShot,
+              "its shots land on the point, with no target", describeAir(r));
         check(r.orderAtEnd && r.ordersAtEnd == 1, "and keeps the order", describeAir(r));
-        // 0x413a52..0x413a76: the hold is the target controller (0x44e330:
-        // headed, 0x40 here), radius 0x10, at cruisealt (0x44e6c0: 0x8).
-        check(r.ringGoals > 0 && !r.ringWithoutFixed,
-              "each hold has a fixed heading and its own altitude (0x48)", describeAir(r));
     }
     // AIRSTRIKE: the shipped bomber, whose bomb is `dropped`.
     {
@@ -731,6 +724,35 @@ void wire() {
 }
 }  // namespace
 
+// The navigator's setGoal (0x44f2a0..0x44f3f0): SUPPRESS's approach circle is
+// installed on SUPPRESS's own mission. Without its flag 0x800000 the shooter
+// starts straight at the point on the provisional two-point route while the
+// search is queued; flagged (a return 9 left it, 0x43b8e5) it has no route and
+// brakes until the search delivers (0x44f3e9). Returns {braked on the approach
+// before a route came, ticks from the order to the first step}.
+std::pair<bool,int> approachStart(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitType& t,
+                                  bool flagged) {
+    Scene s;
+    build(s, vfs, reg);
+    const int shooter = s.w.spawn(&t, 300, 768, 1.5707963f, 0);
+    s.w.unit(shooter)->fireState = 0;
+    for (int i = 0; i < 30; ++i) s.w.tick(kTick);
+    const float x0 = s.w.unit(shooter)->x.toFloat();
+    attackGround(s.w, reg, shooter, 300 + float(t.weapons[0].range) + 300, 768);
+    if (flagged)
+        for (auto& o : s.w.unit(shooter)->orders) if (o.suppress) o.mission.flags |= 0x800000u;
+    bool awaited = false;
+    for (int i = 0; i < 300; ++i) {
+        s.w.tick(kTick);
+        const sim::Unit* u = s.w.unit(shooter);
+        if (!u->orders.empty() && u->orders.front().suppressApproach && u->orders.front().navigationExhausted &&
+            u->orders.size() == 2)
+            awaited = true;   // the approach leg alone, with no route: braking
+        if (std::abs(u->x.toFloat() - x0) > 0.5f) return {awaited, i};
+    }
+    return {awaited, -1};
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: suppress_test <retail-install-dir> [--legion]\n"); return 2; }
     for (int i = 2; i < argc; ++i)
@@ -785,6 +807,18 @@ int main(int argc, char** argv) {
         std::printf("  %s, point %.0f px off: %s\n", archer->id.c_str(), range + 300, describe(r).c_str());
         check(r.approach && r.moved > 250 && r.endDist <= range + 1, "out of reach it walks into reach", describe(r));
         check(r.shots >= 2 && r.orderAtEnd, "and fires from there", describe(r));
+    }
+
+    // 0x44f3e9: the provisional route only for a head mission without 0x800000.
+    if (mode == sim::PathfindingMode::Retail) {
+        const auto plain = approachStart(vfs, reg, *archer, false);
+        const auto flagged = approachStart(vfs, reg, *archer, true);
+        std::printf("  approach start: plain tick %d (braked %d), flagged tick %d (braked %d)\n",
+                    plain.second, int(plain.first), flagged.second, int(flagged.first));
+        check(!plain.first && plain.second >= 0 && plain.second < 10,
+              "unflagged, the approach starts straight at the point while the search runs (0x44f3f2)");
+        check(flagged.first && flagged.second > plain.second,
+              "flagged 0x800000, no provisional route: it waits for the search (0x44f3e9)");
     }
 
     // A tower: in reach it fires; out of reach it keeps the order and waits.

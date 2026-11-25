@@ -1131,9 +1131,15 @@ void World::commitGroundStep(Unit& u,Fixed dx,Fixed dz,bool strictDiagonal) {
     else {
         // Legacy terrain-only harnesses have no feature plane. Loaded matches
         // use the authoritative rectangular map/body placement above.
-        const auto& grid=navFor(u.type);const int foot=std::clamp(std::max(fx,fz),1,15);
-        clear=(grid.empty() || grid.fits(footprintCell(px,foot),footprintCell(pz,foot),foot)) &&
-            cellFree(px,pz,u.id,foot);
+        // Terrain and bodies over the footprint rectangle at its origin cell
+        // (nx, nz, fx x fz), the rectangle the occupancy grid and the search
+        // plane use: 0x47db70 tests the footprint rectangle, and a bounding
+        // square refused cells the search had routed a 1x4 hover through.
+        const auto& grid=navFor(u.type);
+        clear=rectFree(nx,nz,fx,fz,u.id);
+        if (clear && !grid.empty())
+            for (int z=nz;clear && z<nz+fz;++z) for (int x=nx;x<nx+fx;++x)
+                if (!grid.walkable(x,z)) { clear=false;break; }
     }
     if(clear&&strictDiagonal&&nx!=ox&&nz!=oz) {
         // A corner's destination alone is insufficient for a rectangular body.
@@ -2231,7 +2237,7 @@ int World::flightGround(const Unit& u) const {
 // leg (attackMove, ours: TA has no fight-move) flies VTOL_Move with response
 // mode -1 (markFightLeg): its stage-2 scan puts the attacks ahead of it.
 // Every flyer's patrol is VTOL_Patrol, armed or a builder: its stage-2 scan
-// (TotalA.exe 0x41106c) and job search (tickPatrolRepair).
+// (TotalA.exe 0x41106c) and job search (flyingPatrolLook, at its stage-1 wakes).
 static bool plainFlightPatrol(const Unit& u) {
     if (!u.type || !u.type->canFly || u.orders.empty()) return false;
     const auto& order=u.orders.front();
@@ -2444,10 +2450,19 @@ void World::tickFlightPatrol(Unit& u) {
                         order.flightGoal.reset();m.waitMask=0;padTo=pad;
                         return 0;
                     }
-                    // The job search that follows (0x41547d..) is
-                    // tickFlyingPatrolLook, run on the same 45-tick cadence
-                    // from tickPatrolRepair.
-                    return 2;
+                    // The job search (0x41547d..): 6 a repair (the look
+                    // moved the patrol to the back), 3 a job ahead (a
+                    // reclaim clears the wait word first), 2 nothing.
+                    if (!w.patrolRepairs_ || !u.type->isBuilder || u.type->workerTime<=0) return 2;
+                    const int found=w.flyingPatrolLook(u);
+                    if (found==2) return 2;
+                    if (found!=6)
+                        for (auto& o:u.orders) if (o.patrol) {
+                            if (found==-3) o.mission.waitMask=0;
+                            o.mission.sleep(w.tickCounter_,random(15)+30);
+                            break;
+                        }
+                    return 4;
                 }
                 return 7;
             }
@@ -3978,8 +3993,6 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 // while the approach still stands alone (unloadAt).
                 const size_t leg=currentLeg(u.orders);
                 const bool nextOrder=leg+(goal.unload ? 1u : 2u)<u.orders.size();
-                const bool routing=goal.controller && !goal.navigationExhausted && u.speed>Fixed() &&
-                    u.bodyBlockStreak<2;
                 // A scripted carrier's call is TransportDrop(the first
                 // passenger, the point) (0x40698c..0x4069bf): BoomCalc decides,
                 // and a drop under way holds BUSY.
@@ -3997,8 +4010,8 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                     return true;
                 };
                 const int result=retailTransportUnloadApproach(m,goal.transportApproachAttempts,
-                    w.tickCounter_,events,call,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
-                    routing,[&] {
+                    w.tickCounter_,call,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
+                    [&] {
                         // TotalA.exe GROUND_UNLOAD installs its drop-point circle
                         // once per failed TransportDrop (0x406a5e, 0x438930: the
                         // old controller goes, a new one is made) and then waits
@@ -4007,7 +4020,10 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                         if(goal.controller && !goal.navigationExhausted)return;
                         w.cancelPath(u);
                         goal.controller=++w.nextMovementController_;
-                        goal.navigationExhausted=false;goal.navigationConsumed=false;
+                        goal.navigationConsumed=false;
+                        // 0x44f3e9: flagged 0x800000 (a return 9), no
+                        // provisional route: the hull waits for the search.
+                        goal.navigationExhausted=!retailProvisionalRoute(m.flags);
                         // A polled surface-unload retry re-anchors the navigator
                         // directly at the mission site while the replacement search
                         // runs. Keep the requested site separate from any partial
@@ -4078,7 +4094,12 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 goal.controller = ++w.nextMovementController_;
                 m.pending &= ~0x3700u;
                 const bool retain=currentLeg(u.orders)>0 && retainGroundRoute(u,goal);
-                const bool direct=!retain && (!(m.flags&0x10400000u) ||
+                // TA's head mission (0x44f3e9): SUPPRESS's for its approach
+                // (the circle is installed on SUPPRESS's own mission, 0x40392e).
+                const size_t leg=currentLeg(u.orders);
+                const uint32_t headFlags=goal.suppressApproach && leg+1<u.orders.size() &&
+                    u.orders[leg+1].suppress ? u.orders[leg+1].mission.flags : m.flags;
+                const bool direct=!retain && retailProvisionalRoute(headFlags) && (!(m.flags&0x10400000u) ||
                     (!wasActive && (m.flags&0x10000000u)));
                 goal.navigationExhausted=!retain && !direct;
                 if (direct) {
@@ -4156,6 +4177,39 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             // (see the Move mask below); Legion owns its arrival.
             if (goal.patrol && w.legion_ && isLegionPathfinding(w.pathfindingMode_) && w.legion_->supports(u))
                 events&=~0x2600u;
+            // A canreclamate builder's patrol is RepairPatrol (0x405980;
+            // 0x43f3b9..0x43f41d), its look for work on its own wakes.
+            if (goal.patrol && w.patrolRepairs_ && u.type->isBuilder && u.type->canReclaim &&
+                u.type->workerTime>0) {
+                bool reordered=false;
+                const int result=retailGroundRepairPatrol(m,w.tickCounter_,events,[&] {
+                        if (!goal.patrolOpen) return;
+                        goal.patrolOpen=false;
+                        const size_t current=currentLeg(u.orders);
+                        bool loop=false;
+                        for (size_t i=current+1;i<u.orders.size();++i)
+                            loop|=u.orders[i].goal && u.orders[i].patrol && !u.orders[i].patrolOpen;
+                        if (!loop) {patrolReturn=std::pair{u.x,u.z};patrolReturnIdentity=goal.identity();}
+                    },[&](uint32_t radius) {
+                        // 0x438930(mission, +0x22, 16): the circle's radius
+                        // is the stored radius + 4 (resetGoal).
+                        if (goal.missionTarget) { goal.x=goal.missionTarget->first;goal.z=goal.missionTarget->second; }
+                        goal.missionRadius=radius-4u;
+                        resetGoal(radius);
+                    },[&] {
+                        // The look rewrites the queue: m and goal are not
+                        // read once it put a job in.
+                        const int found=w.groundPatrolLook(u);
+                        reordered=found!=2;
+                        return found;
+                    });
+                if (!reordered) return result;
+                // The patrol's own wake for 3 (0x43b890: 30 + rand(15)) or
+                // nothing for 6 (the look moved it to the back already).
+                if (result==3)
+                    for (auto& o:u.orders) if (o.patrol) { o.mission.sleep(w.tickCounter_,random(15)+30);break; }
+                return 4;
+            }
             if (goal.patrol) {
                 int patrolAttack=0;
                 const int result=retailGroundPatrol(m,goal.missionRadius,w.tickCounter_,events,
@@ -5548,11 +5602,6 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
             Order& goal=*order();
             Unit* p=w.unit(goal.targetId);
             const bool live=p && p->alive();
-            // The stand-in timer's test: the hull has made headway since the
-            // last wake (transportX/Z hold where it stood then).
-            const bool routing=goal.controller && !goal.navigationExhausted &&
-                (std::abs(int64_t((u.x-goal.transportX).v))>65536 || std::abs(int64_t((u.z-goal.transportZ).v))>65536);
-            goal.transportX=u.x;goal.transportZ=u.z;
             struct Ops {
                 World& w; Unit& u; Order& goal; Unit* p; Host& host;
                 bool canLoad() const { return u.type->canTransport; }
@@ -5586,7 +5635,10 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                     goal.missionRadius=uint32_t(0)-4u;
                     goal.controller=++w.nextMovementController_;
                     goal.transportMission.pending&=~0x3700u;
-                    goal.navigationExhausted=false;goal.navigationConsumed=false;
+                    goal.navigationConsumed=false;
+                    // 0x44f3e9: no provisional route once a return 9 flagged
+                    // the mission (0x800000): the hull waits for the search.
+                    goal.navigationExhausted=!retailProvisionalRoute(goal.transportMission.flags);
                     resetGroundSegment(u,goal);
                     w.cancelPath(u);
                     if (uint32_t(u.routeStamp)<=w.tickCounter_-10u) u.routeStamp=0;
@@ -5599,7 +5651,7 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                     host.request=false;
                 }
             } ops{w,u,goal,p,*this,w.scriptedTransport(u,false)};
-            return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,routing,ops);
+            return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,ops);
         }
     } host{*this,u};
     retailDispatchMissions(tickCounter_,u.missionEvents,host);
@@ -6487,6 +6539,32 @@ bool World::selfDestructHit(Unit& u) {
 // rand(15) and waits that long (a draw of 0 hits in the same update, as
 // 4d85e0 takes the list from its head again); then the hit. A countdown of
 // 0 hits on the first run, with no draw.
+// The unit's second mission list (0x43bad0, retailDispatchSecondList): the
+// self-destruct countdown when armed. World keeps the countdown in
+// selfDestructT and steps it once a tick (tickSelfDestruct), so its mission
+// sleeps one tick at a time; the 30-tick steps and the rand(15) wait of
+// 0x402010 fall on the same ticks. True when the countdown's hit landed and
+// left the unit at or below zero hit points.
+bool World::runSecondList(Unit& u) {
+    struct Host {
+        World& w; Unit& u;
+        RetailMissionState countdown;
+        bool armed, died=false;
+        RetailMissionState* head() { return armed ? &countdown : nullptr; }
+        RetailMissionState* next(RetailMissionState&) { return nullptr; }
+        uint32_t random(uint32_t n) { return w.gameRand(n); }
+        void remove(RetailMissionState&) { armed=false; }
+        int handle(RetailMissionState& m) {
+            died=w.tickSelfDestruct(u);
+            if (u.selfDestructT==-1) return 5;   // the hit (0x402147) ends it
+            m.sleep(w.tickCounter_,1);
+            return 2;
+        }
+    } host{*this,u,{},u.selfDestructT!=-1};
+    retailDispatchSecondList(tickCounter_,host);
+    return host.died;
+}
+
 bool World::tickSelfDestruct(Unit& u) {
     if (u.selfDestructT==-1) return false;
     if (u.selfDestructT>0) { --u.selfDestructT; return false; }
@@ -6765,17 +6843,20 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // is still consumed. Our hp<=0 sweep runs later in the tick, so the
         // dying test is the sweep's own.
         if (e.hp <= Fixed()) return;
+        // The hitter player and damage kind of the record before this one
+        // (victim +0xf4 / +0xf5): TotalA.exe's handler 0x489ce0 runs the hit
+        // response 0x406f80 (0x489da2) first, before it writes them
+        // (0x489dac..0x489dc0) and before it lowers the hit points
+        // (0x489eb5).
+        const int previousHitPlayer = e.lastHitPlayer;
+        const uint8_t previousHitKind = e.lastHitKind;
+        retailHitResponse(e,attacker,w.dmgType);
         // Native HP is a 16-bit word that wraps; ours is 16.16 and saturates,
         // and `dealt` may exceed the whole-number range of fromInt (armour
         // and veterancy reach 33619). Subtract in 64 bits, clamped so that
         // -hp (the overkill below) is representable too.
         e.hp = Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(e.hp.v) - int64_t(dealt) * Fixed::kOne,
                                                       -int64_t(INT32_MAX), INT32_MAX)));
-        // The hitter player and damage kind of the record before this one
-        // (victim +0xf4 / +0xf5): TotalA.exe's handler 0x489ce0 runs the hit
-        // response 0x406f80 (0x489da2) before it writes them (0x489dac..0x489dc0).
-        const int previousHitPlayer = e.lastHitPlayer;
-        const uint8_t previousHitKind = e.lastHitKind;
         // 52a40a forms the hit bearing from the impact position, relative to
         // the victim's current native heading. 51a140 retains its high byte;
         // 51a4d2 notifies each normal/fire/explosion recipient, including splash.
@@ -6809,7 +6890,6 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             if (fromPlayer != e.player && fromPlayer >= 0 && fromPlayer < numPlayers())
                 ++players_[size_t(fromPlayer)].combatEvents;
         }
-        retailHitResponse(e,attacker,w.dmgType);
         // The under-attack request that ends 0x406f80 (0x4071b0..0x4071d8), after
         // the response above may have given the unit an attack: none while its
         // current mission carries flag 0x80 (0x438be0: a ground attack or the
@@ -8391,24 +8471,63 @@ void World::tickSlotWeapons(Unit& u) {
     }
 }
 
-// 409a50 part (b): a unit that returns fire hands the attacker to every auto
-// slot that reaches it, unless the slot's current target is still a good
-// one. No RNG. Part (a), the retaliation mission (4d7de0), is
-// retailHitResponse's, which calls this when it issues none.
+// TotalA.exe 0x49abb0(unit, target, slot), the hit response's reach test
+// (and AirToGroundHover's, Attack_Chase's): slot's weapon (unit +0x10 +
+// slot x 0x1c).
+//  - a waterweapon (weapon +0x111 bit 16, 0x49abd7): a target that is no
+//    floater (type +0x241 0x80000) standing above the sea (+0x70, the high
+//    word of its height) is out of reach (0x49abf9..0x49ac19); so is a
+//    canhover one (0x1000) whose middle, height + half its model height
+//    (type +0x170, 0x49ac2b), is above the sea (0x49ac1b..0x49ac44).
+//  - any other: the shooter's top (height + model height) at or under the
+//    sea (0x49acaf..0x49acdd), likewise the target's (0x49ace0..0x49ad04);
+//    a toairweapon (0x20000) against a target that is not flying (mover
+//    +0x110 & 3 != 2, 0x49ad07..0x49ad25); a ballistic one (bit 1) with no
+//    arc to the target (0x49a890 = 0x8000, 0x49ad28..0x49ad7b).
+//  - then the horizontal deltas' squares, high dwords summed, against the
+//    range squared, inclusive (0x49ac47..0x49acac, 0x49ad7e..0x49ade5).
+bool World::taWeaponReach(const Unit& e,const Unit& t,int slot) const {
+    if (!e.type || !t.type || slot<0 || slot>=int(e.type->weapons.size())) return false;
+    const Weapon& w=e.type->weapons[size_t(slot)];
+    const int sea=int(uint8_t(seaLevel_));
+    const auto y=[](const Unit& v) { return (v.type->canFly ? v.flightY : v.groundY).v; };
+    const auto height=[&](const Unit& v) { return int32_t(int16_t(uint32_t(y(v))>>16)); };
+    const auto model=[](const Unit& v) { return int32_t(int16_t(uint32_t(v.type->modelTop)>>16)); };
+    const auto sub=[](int32_t a,int32_t b) { return std::bit_cast<int32_t>(uint32_t(a)-uint32_t(b)); };
+    if (w.waterWeapon) {
+        if (!t.type->floater && height(t)>sea) return false;
+        if (t.type->canHover && height(t)+(model(t)>>1)>sea) return false;
+    } else {
+        if (height(e)+model(e)<=sea) return false;
+        if (height(t)+model(t)<=sea) return false;
+        if (w.toAir && t.flightGroundMode!=2) return false;
+        if (w.hasTaFlag(1) && ta::taBallisticPitch(sub(e.x.v,t.x.v),sub(y(e),y(t)),sub(e.z.v,t.z.v),
+                                                    w.velocityFx,w.minBarrelAngle,ballisticGravityRaw_)==0x8000)
+            return false;
+    }
+    const int64_t dx=sub(t.x.v,e.x.v),dz=sub(t.z.v,e.z.v);
+    return int32_t(uint32_t((dx*dx)>>32)+uint32_t((dz*dz)>>32))<=int32_t(uint32_t(w.range)*uint32_t(w.range));
+}
+
+// TotalA.exe 0x4070f2..0x4071aa, the hit response's part (b): on fire orders
+// other than Hold Fire (+0x110 & 0x300000), each of slots 0..2 that holds a
+// weapon and is automatic (slot byte +0x1f bits 2 and 0x10) and reaches the
+// attacker (0x49abb0), its weapon no commandfire (+0x111 bit 26), takes the
+// attacker (0x48a060) unless its own target (0x48a190) still is in its reach
+// and not in the slot's badtargetcategory (type +0x231 + slot x 4). The
+// engine's clear-line test (slotClearShot, a documented deviation shared with
+// the sweep and the weapon update) is kept on the attacker. No RNG.
 void World::slotHitResponse(Unit& victim,const Unit& attacker) {
-    if (!victim.alive() || victim.hp<=Fixed() || !victim.type || victim.type->weapons.empty() ||
-        victim.fireState==0 || victim.incapacitated() || isNeutralPlayer(victim.player) ||
-        !attacker.alive() || !attacker.type || allied(victim.player,attacker.player)) return;
+    if (!victim.type || victim.type->weapons.empty() || victim.fireState==0 || !attacker.type) return;
     syncSlotMode(victim);
     if (!victim.slotAuto) return;
     for (int s=0;s<int(std::min<size_t>(3,victim.type->weapons.size()));++s) {
         if (!(victim.slotAuto>>s&1)) continue;
+        if (!taWeaponReach(victim,attacker,s)) continue;
         if (victim.type->weapons[size_t(s)].commandFire) continue;
-        if (slotInsideMinRange(victim,attacker,s) || !slotInRange(victim,attacker,s) ||
-            !slotClearShot(victim,attacker,s)) continue;
+        if (!slotClearShot(victim,attacker,s)) continue;
         if (const Unit* t=unit(victim.slotTarget[size_t(s)]);
-            t && t->alive() && t->hp>Fixed() && slotInRange(victim,*t,s) && slotClearShot(victim,*t,s) &&
-            !slotInsideMinRange(victim,*t,s) && !slotBadTarget(victim,s,*t)) continue;
+            t && t->alive() && t->type && taWeaponReach(victim,*t,s) && !slotBadTarget(victim,s,*t)) continue;
         if (victim.slotTarget[size_t(s)]!=attacker.id) setSlotTarget(victim,s,attacker.id);
     }
 }
@@ -8482,11 +8601,11 @@ void World::retailHitResponse(Unit& e,const Unit* a,int dmgType) {
 //    kamikaze (flagsA 0x10010000), finished (+0x104 == 0) and not allied to
 //    the attacker's player (owner +0x108[attacker's]): (a) with no mission or
 //    a Standby (descriptor flag 0x20000 -- not a patrol, unlike Kingdoms'
-//    409a50), an attacker its categories admit and in slot 0's reach
-//    (0x49abb0), the retaliation attack (0x43b1f0); else (b), on fire orders
-//    other than Hold Fire (+0x110 & 0x300000), each auto slot that reaches the
-//    attacker and whose own target is gone or no longer good takes it
-//    (0x48a060). No paralysis gate: a paralysed unit is a Paralyze mission.
+//    409a50), an attacker in neither the nochasecategory (type +0x23d,
+//    0x40707d..0x4070a4) nor slot 0's badtargetcategory (+0x231,
+//    0x4070a6..0x4070c6) and in slot 0's reach (0x49abb0, taWeaponReach),
+//    the retaliation attack (0x43b1f0); else (b) (slotHitResponse). No
+//    paralysis gate: a paralysed unit is a Paralyze mission.
 void World::taHitResponse(Unit& e,const Unit* a) {
     e.attackedTick=tickCounter_+1;
     if (!e.alive() || !e.type) return;
@@ -8502,7 +8621,8 @@ void World::taHitResponse(Unit& e,const Unit* a) {
     const bool mobile=e.type->canMove && !e.type->isStructure();
     const bool idle=e.orders.empty() && e.buildQueue.empty();
     bool mission=false;
-    if (!e.type->weapons.empty() && idle && retailAnswersAttacker(e,*a,0,mobile)) {
+    if (!e.type->weapons.empty() && idle && !categoryMatch(e.type->noChaseCats,*a->type) &&
+        !slotBadTarget(e,0,*a) && taWeaponReach(e,*a,0)) {
         mission=retailIssueAutoAttack(e,a->id,false);
         // An idle flyer's answer goes in ahead of its default mission.
         if (mission && e.type->canFly) e.orders.front().aheadOfDefault=true;
@@ -9253,13 +9373,14 @@ bool World::suppress(int unitId, float x, float z, bool queue) {
     o.issuedTick=tickCounter_;
     o.attackPointX=px;o.attackPointZ=pz;
     if (u->type->canFly) {
-        // 4de770..4de7e3: the selected slot's `dropped` key gives AIRSTRIKE
-        // (row 0x615dac), the type's hoverattack (+0x260 0x8000000; not the
-        // weapon's) AIRTOGROUNDHOVER (0x615d98), else AIRTOGROUND (0x615d8c);
-        // each with no target, so the ctor (4d6d66) clears the target bit
-        // 0x200 from the row's flags.
-        o.airPoint=u->type->weapons[size_t(slot)].cursorAirstrike ? Order::kAirStrike
-                 : u->type->hoverAttack ? Order::kAirHover : Order::kAirRun;
+        // TotalA.exe 0x43f1b7..0x43f1cf: with no target, slot 0's weapon
+        // (type +0x1ee) decides alone: `dropped` (weapon +0x111 bit 8) gives
+        // AIRSTRIKE (0x43f2b2), any other AIRTOGROUND (0x43f302). The type's
+        // hoverattack (+0x241 0x8000000) is read only with a target
+        // (0x43f2fa / 0x43f323): a hover gunship attacks a point with
+        // AirToGround's runs. Each with no target, so the ctor clears the
+        // target bit 0x200 from the row's flags (0x43a1a1).
+        o.airPoint=u->type->weapons[size_t(slot)].cursorAirstrike ? Order::kAirStrike : Order::kAirRun;
     } else {
         o.suppress=true;
         o.suppressSlot=uint8_t(slot);
@@ -9271,7 +9392,6 @@ bool World::suppress(int unitId, float x, float z, bool queue) {
 void World::tickAirPoint(Unit& u) {
     switch (u.orders.front().airPoint) {
     case Order::kAirStrike: tickAirStrike(u,nullptr); break;
-    case Order::kAirHover: tickTaAirAttack(u,nullptr,true); break;
     default: tickTaAirAttack(u,nullptr,false); break;
     }
 }
@@ -13316,20 +13436,11 @@ void World::tickFlyingGuard(Unit& u) {
     o.mission.deadline=tickCounter_+30;   // 0x410225: 0x439e80(0x1e)
 }
 
-void World::tickPatrolRepair(Unit& b) {
-    if (!patrolRepairs_ || !b.type || !b.type->isBuilder || !b.type->canMove || b.type->isStructure() ||
-        b.type->workerTime<=0 || b.underConstruction || b.embarked() || b.incapacitated() ||
-        b.buildSiteId || b.repairId || b.reclaimId || b.repeatType || !b.buildQueue.empty() ||
-        hasQueuedWork(b) || b.orders.empty() || !b.orders.front().patrol) return;
-    if (b.type->canFly) { tickFlyingPatrolLook(b); return; }
-    tickGroundPatrolLook(b);
-}
 
 // TotalA.exe RepairPatrol (0x405980), the ground patrol of a canreclamate
-// type (table 0x4fc6e8 row 15). Its stage 1 heads for the waypoint on a
-// radius-16 circle (0x4059ca) and looks for work at every wake, a sleep of 60
-// ticks (0x4059d3); ours runs the look on a 60-tick timer from here and keeps
-// World's patrol navigation. The look:
+// type (table 0x4fc6e8 row 15): retailGroundRepairPatrol, whose stage 1
+// heads for the waypoint on a radius-16 circle (0x4059ca) and runs this look
+// at every wake, a sleep of 60 ticks (0x4059d3). The look:
 //  - while the energy stored is at least a fifth of the storage (0x4059ea..
 //    0x405a03; 0x4fc950 = 0.2): the units 0x47e890 finds within sightdistance
 //    (type +0x202), one drawn at random (0x405a8c); an allied one (owner
@@ -13344,8 +13455,7 @@ void World::tickPatrolRepair(Unit& b) {
 //    with the patrol's controller gone (0x4388d0) and the wait cleared.
 // (Kingdoms' patrol repaired the nearest damaged unit in sight every 30
 // ticks, with a path test, and never reclaimed.)
-void World::tickGroundPatrolLook(Unit& b) {
-    if (!b.type->canReclaim || (uint32_t(b.id)+tickCounter_)%60!=0) return;
+int World::groundPatrolLook(Unit& b) {
     const auto& books=players_[size_t(b.player)].books;
     if (!(double(books.cap[econ::E])*0.2>double(books.stored[econ::E]))) {
         const int32_t sight=std::max(0,sightDistance(*b.type));
@@ -13396,17 +13506,17 @@ void World::tickGroundPatrolLook(Unit& b) {
                     std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
                 }
                 noteOrders(b.id);
-                return;
+                return 6;
             }
             if (c.underConstruction && canHelpBuild(b,c)) {
                 guardInsertJob(b,c.id,0);
-                return;
+                return 3;
             }
         }
     }
     const bool energyLow=double(books.cap[econ::E])*0.2>double(books.stored[econ::E]);
     const bool metalLow=double(books.cap[econ::M])*0.2>double(books.stored[econ::M]);
-    if (!energyLow && !metalLow) return;   // 0x405b18..0x405b54
+    if (!energyLow && !metalLow) return 2;   // 0x405b18..0x405b54
     struct Pick { int32_t x=0,z=0; float value=0; int target=0; };
     std::vector<Pick> energy,metal;
     std::unordered_map<int,int> targets;
@@ -13458,7 +13568,7 @@ void World::tickGroundPatrolLook(Unit& b) {
     else if (e && energyLow) go=e;
     else if (m && books.stored[econ::M]+m->value<=books.cap[econ::M]) go=m;
     else if (e && books.stored[econ::E]+e->value<=books.cap[econ::E]) go=e;
-    if (!go) return;
+    if (!go) return 2;
     const Pick pick=*go;
     guardStandAside(b);   // 0x4388d0(0): the patrol's controller goes
     const size_t oldSize=b.orders.size();
@@ -13466,14 +13576,14 @@ void World::tickGroundPatrolLook(Unit& b) {
     if (b.orders.size()>oldSize)
         std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
     noteOrders(b.id);
+    return -3;   // 0x405c13 / 0x405d1d: the wait word cleared, then 3
 }
 
 // TotalA.exe VTOL_RepairPatrol (0x4152f0), the patrol of a flyer whose type
 // has canreclamate (flagsB +0x245 bit 9; the order's mission is picked at
 // 0x43f3e6..0x43f404 -- any other flyer flies VTOL_Patrol, which looks for no
 // work). Its stage 1 (0x415345) flies to the waypoint on a point controller
-// and looks for work at every wake, a sleep of 45 ticks (0x415386); ours
-// looks every 45th tick of the patrol. A look:
+// and runs this look at every wake, a sleep of 45 ticks (0x415386). A look:
 //  - below 3/4 health (0x415397) it would land on a random repair pad of its
 //    own within 3840 px (0x40b530, VTOL_LANDING); not modelled: the engine has
 //    no pad repair;
@@ -13498,8 +13608,7 @@ void World::tickGroundPatrolLook(Unit& b) {
 // Not modelled: the candidate filter's skip of a unit last hit by the
 // repairer's player with damage kind 5 (+0xf4 / +0xf5, 0x415943); the order
 // within one sector is ours (by id), not retail's insertion order.
-void World::tickFlyingPatrolLook(Unit& b) {
-    if (!b.type->canReclaim || (uint32_t(b.id)+tickCounter_)%45!=0) return;
+int World::flyingPatrolLook(Unit& b) {
     const auto& books=players_[size_t(b.player)].books;
     if (!(double(books.cap[econ::E])*0.2>double(books.stored[econ::E]))) {
         const int32_t sight=std::max(0,sightDistance(*b.type));
@@ -13547,11 +13656,11 @@ void World::tickFlyingPatrolLook(Unit& b) {
                     std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
                 }
                 noteOrders(b.id);
-                return;
+                return 6;   // 0x415564
             }
             if (c.underConstruction && repairTopAboveSea(c) && canHelpBuild(b,c)) {
                 guardInsertJob(b,c.id,0);
-                return;
+                return 3;   // 0x415603
             }
         }
     }
@@ -13607,7 +13716,7 @@ void World::tickFlyingPatrolLook(Unit& b) {
     else if (e && double(books.cap[econ::E])*0.2>double(books.stored[econ::E])) go=e;
     else if (m && books.stored[econ::M]+m->value<=books.cap[econ::M]) go=m;
     else if (e && books.stored[econ::E]+e->value<=books.cap[econ::E]) go=e;
-    if (!go) return;
+    if (!go) return 2;   // 0x4157bd
     const Pick pick=*go;
     guardStandAside(b);   // 0x4388d0(0): the patrol's controller goes
     const size_t oldSize=b.orders.size();
@@ -13618,6 +13727,7 @@ void World::tickFlyingPatrolLook(Unit& b) {
         std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
     }
     noteOrders(b.id);
+    return -3;   // 0x415790 / 0x4157ab: the wait word cleared, then 3
 }
 
 void World::repair(int builderId, int targetId, bool queue) {
@@ -14075,15 +14185,15 @@ void World::joinBuilderGroup(const Unit& builder,Unit& output) {
 
 // TotalA.exe's AirToGround (0x412710, retailTaAirToGround) and
 // AirToGroundHover (0x413470, retailTaAirToGroundHover) on a flyer's attack
-// order: a unit target that cannot fly, or an attack at a point
-// (Order::kAirRun / kAirHover, World::suppress). Both run on the order's own
-// state: Order::mission, mission +0x22 in attackPointX/Z, the hover's side
-// (+0x36) in bit 16 of airRunCount and its miss count (+0x3a) in the low word.
-// A unit target's lost-target exits are tickCombat's (seekLostTarget), before
-// the dispatch, so the head's own seek is reached only by an attack at a point:
-// VTOL_SEEKATTACK at the point once the attack has gone. Engine deviation:
-// TotalA.exe has no hover at a point (its stages read the target, +0x16), so
-// World's runs its stages on the point.
+// order: AirToGround on a unit target that cannot fly or at a point
+// (Order::kAirRun, World::suppress), AirToGroundHover only on a unit target
+// (the resolver gives a point no hover, 0x43f1b7). Both run on the order's
+// own state: Order::mission, mission +0x22 in attackPointX/Z, the hover's
+// side (+0x36) in bit 16 of airRunCount and its miss count (+0x3a) in the
+// low word. A unit target's lost-target exits are tickCombat's
+// (seekLostTarget), before the dispatch, so the head's own seek is reached
+// only by an attack at a point: VTOL_SEEKATTACK at the point once the
+// attack has gone.
 void World::tickTaAirAttack(Unit& u,const Unit* target,bool hover) {
     struct Host {
         World& w; Unit& u; const Unit* target; bool hover;
@@ -14092,7 +14202,7 @@ void World::tickTaAirAttack(Unit& u,const Unit* target,bool hover) {
         Fixed seekX,seekZ;
         bool owns(const Order& o) const {
             if (target) return o.targetId==target->id;
-            return o.airPoint==(hover ? Order::kAirHover : Order::kAirRun) && !o.targetId;
+            return !hover && o.airPoint==Order::kAirRun && !o.targetId;
         }
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
@@ -14158,14 +14268,10 @@ void World::tickTaAirAttack(Unit& u,const Unit* target,bool hover) {
             goal.point.y=Fixed::fromInt(std::min(511,ground+u.type->cruiseAlt)).v;
             install(goal);
         }
-        // 0x49abb0(unit, target, 0): slot 0's range test.
+        // 0x49abb0(unit, target, 0): slot 0's range test (AirToGroundHover
+        // runs only on a unit target).
         bool inReach() const {
-            if (u.type->weapons.empty()) return false;
-            if (target) return w.slotInRange(u,*target,0);
-            const Order& o=u.orders.front();
-            const int64_t dx=(u.x.v>>16)-(o.attackPointX.v>>16),dz=(u.z.v>>16)-(o.attackPointZ.v>>16);
-            const int64_t r=u.type->weapons.front().range;
-            return dx*dx+dz*dz<=r*r;
+            return !u.type->weapons.empty() && target && w.slotInRange(u,*target,0);
         }
         // 0x412b3f / 0x413a8a: the pad test, and the landing put ahead once the
         // dispatch is done (its controller let go, 0x412bbe / 0x413b04).
@@ -19117,7 +19223,7 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
             }
         }
         const bool routeable = !u.orders.empty() &&
-            !u.orders.front().unload &&
+            (!u.orders.front().unload || u.orders.front().transportUnloadApproach) &&
             ((!u.orders[currentLeg(u.orders)].load && !u.orders[currentLeg(u.orders)].groundMission && !u.orders[currentLeg(u.orders)].buildRectangle) ||
              u.orders[currentLeg(u.orders)].controller);
         if (u.routeStamp < 0 && routeable && !pathPending(u.id)) {
@@ -19229,7 +19335,7 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
         // (accepted above): the ring is 48 px deep, and stopping a footprint
         // short of its middle left a 4x4 guard (3x3 at sea) just outside the
         // band, held there walking in place.
-        if (!groundMissionOrder(u,true) && !legHasRectangle && (u.type->canFly || o.goal) && dist < arrive &&
+        if (!navigationMissionOrder(u) && !legHasRectangle && (u.type->canFly || o.goal) && dist < arrive &&
             !(o.guard && !u.type->canFly)) {
             if (o.buildType || o.reclaimFeat || o.repairTarget)
                 return;   // the job is claimed above; its order blocks the queue
@@ -19865,23 +19971,26 @@ void World::tick(float dt) {
                                        retailInverseBuildTime(u.type->buildTime), maxHp), maxHp);
             u.hp = fxMin(Fixed::fromInt(int32_t(maxHp)), u.hp + Fixed::fromInt(int32_t(healed) - whole));
         }
-        // Self-destruct (Ctrl+D): NOT an explosion. Its mission (4017e0, the
-        // handler behind UNITMISSIONCODE_SELFDESTRUCT) runs in the background
-        // list (4d85e0, after self-repair 429d90, the pool 401160 and the
-        // missions 4d8450) and ends by dealing 30000 damage of type 5 to the
-        // unit itself: no gibs, no wreck, nobody credited; it quietly leaves
-        // your command and fades. A lethal hit's death (512610) ends the same
-        // update (51e357..51e36c), as deadly water's does. World runs it before
-        // the unit's orders here, so a dying unit's orders get no last run.
-        if (tickSelfDestruct(u)) { sweepDeath(u); continue; }
         // A WANDERER keeps its spawn point as home -- that anchor is what stops its
         // stroll turning into a migration.
         if (u.orders.empty() && !u.type->wanders) { u.homeX = u.x; u.homeZ = u.z; }
         // Retail dispatches each unit's missions immediately before its mover,
         // not all ground missions before every other unit's activity.
-        if (u.constructionHolding && (u.buildSiteId || u.repairId)) continue;
-        if (u.legionLift && tickLegionLift(u)) continue;
-        if (tickHoldLift(u)) continue;
+        // TotalA.exe's second mission list (0x43bad0) runs after the main
+        // dispatcher (0x48af98 -> 0x48af9e), before the mover. Its one World
+        // mission is the self-destruct countdown (common row 10, 0x402010;
+        // the stockpile build, row 9, has no World counterpart): 0x402147's
+        // hit of 30000 is lethal to every TA unit, and World ends the update
+        // with the death there. The unit's own states that skip the main
+        // dispatch below still run it.
+        const auto secondList=[&] {
+            if (!runSecondList(u)) return false;
+            if (!(u.retailSite && u.underConstruction)) { sweepDeath(u); return true; }
+            return false;
+        };
+        if (u.constructionHolding && (u.buildSiteId || u.repairId)) { secondList(); continue; }
+        if (u.legionLift && tickLegionLift(u)) { secondList(); continue; }
+        if (tickHoldLift(u)) { secondList(); continue; }
         // MobileBuild/FlyingBuild standing (or hovering) at its site, waiting
         // out mobile units on it (405824..405911, 41f301..41f3e5): navigation
         // has stopped (tickNavigationMovement only brakes or holds it); only
@@ -19891,7 +20000,6 @@ void World::tick(float dt) {
             u.orders.front().placementFailures>0;
         if (!placementWait) {
             tickGuardHelp(u);
-            tickPatrolRepair(u);
             if (g_phase) {
                 PhaseSpan span(g_moveMs,probe::kMovement);
                 tickGroundMission(u);
@@ -19911,6 +20019,7 @@ void World::tick(float dt) {
             }
             tickGuardNoMove(u);
         }
+        if (secondList()) continue;
         // A captured MobileBuild waits for navigator arrival before creating
         // the site. Keep that rectangle attached to the owning goal across
         // every intermediate route, and hand construction over on the next tick.
