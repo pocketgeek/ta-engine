@@ -33,7 +33,7 @@
              const std::string& installRoot, ta::hpi::ModUse mods,
              bool demo, bool scenario,
              bool bare, const std::string& side, const std::string& aiSide)
-        // (side_ initialized below before loadPanel uses it; vfs_ must precede
+        // (vfs_ must precede
         //  mapView_ in the member list so the Compositor can borrow it)
         : ren_(ren), vfs_(std::move(vfs)), mapView_(ren, vfs_, mapPath),
           installRoot_(installRoot), mods_(mods),
@@ -52,11 +52,8 @@
         loadTextures();
         mapView_.setZoom(0.9f);
         loadInterfaceFonts();
-        loadOrderButtons();
         sounds_.init(vfs_);
         soundClasses_.load(vfs_);   // music is started per-state by manageMusic()
-        loadPanel(side_);
-        loadGui(side_);
 
 #ifndef NDEBUG
         if (ta::devFlag("TA_GUI_SMOOTH_TEST")) guiSmoothTest();
@@ -76,7 +73,7 @@
         loadFeatures();
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
 
-        // Each side starts with only its Monarch, dropped on the map's real
+        // Each side starts with only its Commander, dropped on the map's real
         // start positions (from the .ota). Pick the two furthest-apart spots
         // so the player and the AI begin on opposite sides.
         auto starts = parseStartPositions();
@@ -96,10 +93,10 @@
         } else if (starts.size() == 1) {
             px = starts[0].first; pz = starts[0].second;
         }
-        // Camera opens on the player's Monarch.
+        // Camera opens on the player's Commander.
         mapView_.setOffset(px - 640 / 0.9f, pz - terrainLift(px, pz) - 400 / 0.9f);
 #ifndef NDEBUG
-        // Local dev/test match layouts (TA_FFA, the 2-monarch start, demo armies):
+        // Local dev/test match layouts (TA_FFA, the 2-commander start, demo armies):
         // gameview_devharness.cpp. A release build is always `bare` -- the match is built
         // from the server's GameStarting -- so none of that is compiled in.
         if (setupLocalMatch(demo, bare, side, aiSide, starts, cx, cz, px, pz, ax, az)) return;
@@ -107,7 +104,7 @@
         (void)demo; (void)scenario; (void)bare; (void)side; (void)aiSide; (void)ax; (void)az;
 #endif
 
-        startAtMonarch();
+        startAtCommander();
 
         for (auto& u : world_.units()) {
             if (!u.type || u.type->canMove) continue;
@@ -502,8 +499,6 @@
         noFog_ = true;             // a spectator sees the whole map
         localPlayer_ = 0;
         side_ = "arm";
-        loadPanel(side_);
-        loadGui(side_);
         if (!spots.empty())
             mapView_.setOffset(spots[0].first - 640 / 0.9f,
                                spots[0].second - terrainLift(spots[0].first, spots[0].second) - 400 / 0.9f);
@@ -818,7 +813,7 @@
         hitQueue_.clear();missionSoundQueue_.clear();unitSoundQueue_.clear();
         transportEffectQueue_.clear();smokeTickQueue_.clear();
         flightAnimationQueue_.clear();weaponAnimationQueue_.clear();
-        pendingHurt_.clear();
+        pendingHurt_.clear();pendingSpeech_.clear();
     }
 
     void GameView::replayResetDisplay() {
@@ -931,7 +926,7 @@
         return st;
     }
 
-    void GameView::startAtMonarch() {
+    void GameView::startAtCommander() {
         const ta::sim::Unit* target=nullptr;
         for (const auto& u : world_.units()) {
             if (u.player!=localPlayer_ || !u.alive() || !u.type) continue;
@@ -939,7 +934,7 @@
             if (u.type->commander) break;
         }
         if (target) {
-            playerMonarchId_=target->id;builderId_=target->id;
+            playerCommanderId_=target->id;builderId_=target->id;
             initialCamera_=std::pair{target->x.toFloat(),target->z.toFloat()};
         }
     }
@@ -1178,7 +1173,7 @@
         s.gen = fb.gen;
         s.id = u.id; s.type = u.type; s.player = u.player;
         if (s.scenarioName != u.scenarioName) s.scenarioName = u.scenarioName;
-        s.hp = u.hp.toFloat(); s.mana = 0; s.kills = u.kills;
+        s.hp = u.hp.toFloat(); s.kills = u.kills;
 #ifndef NDEBUG
         s.studyTint = renderStudyTint_.empty() ? 0 : renderStudyTint(u.id);
 #endif
@@ -1203,10 +1198,7 @@
         s.buildSiteId = u.buildSiteId; s.productionSiteId = u.productionSiteId;
         s.reclaimId = u.reclaimId; s.repairId = u.repairId;
         s.yardOpen = world_.scriptYardOpen(u.id);
-        s.scriptHealthPercent = int32_t(int16_t(u.hp.floorInt()))*100/std::max(u.maximumHp(),1);
-        s.constructionPercentLeft = u.retailSite
-            ? int(ta::sim::retailConstructionPercent(u.retailSite->progress.remaining))
-            : int(u.underConstruction);
+        s.scriptWords = world_.scriptGetWords(u.id);
         s.moverMoving = u.speed.v != 0;
         s.buildRemaining = u.underConstruction ? 1.0f - u.constructionFraction() : 0.0f;
         s.buildProgress = (float(u.buildProgress) + float(u.buildFraction) / 65536.0f) / 30.0f;   // ticks -> seconds
@@ -1427,7 +1419,7 @@
                         break;
                     }
             }
-            r.manaShareMask = pl.manaShareMask;
+            r.shareResources = pl.shareResources;
             r.kills = pl.kills; r.unitCount = pl.unitCount; r.combatEvents = pl.combatEvents;
             r.built = pl.built; r.losses = pl.losses; r.score = pl.score;
             // sim keeps these in TICKS now; the scoreboard wants seconds.
@@ -1445,6 +1437,11 @@
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
             for (int id : world_.recordHurt())
                 if (pendingHurt_.size() < 256) pendingHurt_.push_back({world_.tickCount(), id});
+        }
+        if (!world_.unitSpeech().empty()) {
+            std::lock_guard<std::mutex> hq(hitQueueMutex_);
+            for (const auto& s : world_.unitSpeech())
+                if (pendingSpeech_.size() < 256) pendingSpeech_.push_back({world_.tickCount(), s.unitId, s.event, s.text});
         }
         if (!fb.hits.empty()) {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
@@ -1805,15 +1802,17 @@
         // Released by the displayed tick, like the other tick-stamped queues below.
         std::vector<ta::sim::World::HitFx> hitsToShow;
         std::vector<std::pair<uint32_t, int>> hurt;
+        std::vector<PendingSpeech> speech;
         {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
             hurt.swap(pendingHurt_);
+            speech.swap(pendingSpeech_);
             while (!hitQueue_.empty() && int32_t(front().gameTick - hitQueue_.front().tick) >= 0) {
                 hitsToShow.push_back(std::move(hitQueue_.front().hit));
                 hitQueue_.pop_front();
             }
         }
-        // TotalA.exe's under-attack alert (client/monarchalert.h): a local unit hit while
+        // TotalA.exe's under-attack alert (client/commanderalert.h): a local unit hit while
         // off screen. The hit unit's own sound class speaks it (0x47fd70: the class of
         // [unit+0x92]+0x20e, slot "underattack"; warning1 in every shipped class), with
         // no position, at speech priority, when UNIT SPEECH allows it -- which starts the
@@ -1822,25 +1821,41 @@
         // the speech queue (client/speechqueue.h), which holds one entry of an event
         // at a time (0x47fb0a) and plays one entry a frame, its speech at most once
         // every 30 ticks (0x47f6bb) and its text line regardless.
+        // Every other row (client/unitspeech.h) goes the same way: the sim's
+        // requests (0x47f780, World::unitSpeech) for the local player's own units.
         const auto playSpeech = [&](const ta::SpeechQueue::Turn& turn, uint32_t now) {
             const auto& entry = turn.entry;
-            if (turn.speak && ta::MonarchAlert::speaks(unitSpeech_)) {
+            const auto* row = ta::unitSpeechRow(entry.event);
+            if (!row) return;
+            if (turn.speak && ta::unitSpeechHeard(row->priority, unitSpeech_)) {
                 const std::string* wav = entry.soundClass.empty()
-                                             ? nullptr : soundClasses_.pick(entry.soundClass, "underattack", salt_++);
+                                             ? nullptr : soundClasses_.pick(entry.soundClass, row->slot, salt_++);
                 if (wav) {   // 0x47fe03: a class with no variant for the slot says nothing
                     sounds_.play(*wav, 1.f, 1.f, 7, false);
-                    monarchAlert_.spoken(now);
+                    if (entry.event == ta::CommanderAlert::kEvent) commanderAlert_.spoken(now);
+                    else speechNextTick_[size_t(entry.event)] = now + uint32_t(row->cooldownSeconds) * 30u;
                 }
             }
-            if (ta::MonarchAlert::shows(unitChatText_))
-                gameChat_.push_back({std::string(), ta::MonarchAlert::line(entry.unitName), 0, true});
+            if (!entry.text.empty() && ta::unitSpeechHeard(row->priority, unitChatText_))
+                gameChat_.push_back({std::string(), entry.unitName + ": " + entry.text, 0, true});
         };
         for (const auto& [tick, id] : hurt) {
             const UnitR* u = frameUnitP(id);
             if (!u || !u->type ||   // a fatal hit too: 0x406f80 runs before the death
-                !monarchAlert_.admit(u->player, localPlayer_, watchOnly(), onScreen(*u), tick)) continue;
-            if (const auto evicted = speechQueue_.request({ta::MonarchAlert::kEvent, ta::MonarchAlert::kPriority,
-                                                           u->id, u->type->name, u->type->soundClass}))
+                !commanderAlert_.admit(u->player, localPlayer_, watchOnly(), onScreen(*u), tick)) continue;
+            if (const auto evicted = speechQueue_.request({ta::CommanderAlert::kEvent, ta::CommanderAlert::kPriority,
+                                                           u->id, u->type->name, u->type->soundClass,
+                                                           ta::CommanderAlert::kText}))
+                playSpeech(*evicted, front().gameTick);
+        }
+        for (const auto& s : speech) {
+            const UnitR* u = frameUnitP(s.unitId);
+            const auto* row = ta::unitSpeechRow(s.event);
+            // 0x47f780: the local player's own unit only; 0x47faf0: the row's next-allowed tick.
+            if (!u || !u->type || !row || watchOnly() || localPlayer_ < 0 || u->player != localPlayer_ ||
+                s.tick < speechNextTick_[size_t(s.event)]) continue;
+            if (const auto evicted = speechQueue_.request({s.event, row->priority, u->id, u->type->name,
+                                                           u->type->soundClass, s.text ? s.text : (row->text ? row->text : "")}))
                 playSpeech(*evicted, front().gameTick);
         }
         if (const auto turn = speechQueue_.next(front().gameTick)) playSpeech(*turn, front().gameTick);
@@ -1904,7 +1919,7 @@
             // second, each one a dozen-plus particles. The storm's own animation and
             // its one-shot cast sound carry it instead.
 
-            // A status spell that lands (charm, stone, freeze) adds a silent event
+            // A status hit that lands adds a silent event
             // carrying only its explosion, on the victim (HitFx::sound/explosion).
             if (h.weapon && h.sound && !h.weapon->soundHit.empty()) {
                 const std::string& body = h.target ? h.target->bodyType : std::string("default");
@@ -2356,7 +2371,7 @@
                             // controller and bypasses its attack/movement guards.
                             else a.vm->start("StopBuilding");
                         } else if (a.hasFlightSM) {
-                            // SM flyer (arafly/zonhunt monarch): StartBuilding sets unit
+                            // SM flyer (arafly/zonhunt commander): StartBuilding sets unit
                             // value 5 and fires RequestState->Go, raising statics 9/10;
                             // RestoreWatcher (a Create thread) then loops `build` -- NOT
                             // FlightControl, which plays `attack` for the body. Verified by
@@ -2403,7 +2418,7 @@
             // that StartCloaking starts. We were never calling either, so a
             // cloaking spy just went transparent in its walking pose.
             // Native callbacks follow the requested mode. Enemy proximity or
-            // insufficient mana can reveal a unit without restoring its pose.
+            // insufficient energy can reveal a unit without restoring its pose.
             if (a.hasCloakAnim && u.cloakOn != a.cloakOn) {
                 a.cloakOn = u.cloakOn;
                 a.vm->start(u.cloakOn ? "StartCloaking" : "StopCloaking");
@@ -2588,8 +2603,6 @@
     }
 
     void GameView::prepare(int winW, int winH) {
-        if (watchOnly() && !inLobbyPhase())   // the interface of the player on show
-            if (const int shown = hudPlayer(); shown >= 0) showSideArt(framePlayer(shown).side);
         if (initialCamera_ && !inLobbyPhase() && !spectating_ && !replayMode_) {
             const auto [x,z]=*initialCamera_;
             float initialZoom=mouseZoomOn_ ? 1.25f : 1.0f;   // MOUSE ZOOM off: retail's 1:1
@@ -3031,14 +3044,17 @@
             configureExplosionHierarchy(a,visuals_.at(typeId).model.root);
             // TA COB unit-state queries answered from the sim.
             int unitId = id;
-            a.vm->onGet = [this, unitId](int32_t valId,
-                                         const std::vector<int32_t>&) -> int32_t {
+            a.vm->onGet = [this, unitId, vm = a.vm.get()](int32_t valId,
+                                         const std::vector<int32_t>& args) -> int32_t {
                 // Ticked on the worker pool (animFrame) -- read the pinned render snapshot,
                 // never live world_, which the sim thread mutates concurrently under Stage B.
                 const auto* su = frameUnitP(unitId);
                 if (!su || !su->type) return 0;
-                // TotalA.exe's ids 1..20 only (0x480770; client/displayget.h).
-                return ta::client::displayScriptGet(*su, valId);
+                // TotalA.exe's GET, the sim host's routine (client/displayget.h).
+                const auto& map = mapView_.map();
+                ta::client::DisplayGetHost host{*su, [this](int other) { return frameUnitP(other); },
+                                                vm->retailPieces(), &map.heights, map.width, map.height};
+                return ta::client::displayScriptGet(valId, args, host);
             };
             a.flying = type && type->canFly;
         } catch (const std::exception&) { /* unit stays unanimated */ }
@@ -3520,9 +3536,9 @@
         // while the lobby still used the previous data set.
         destroyGpuTextures();anims_.clear();cobCache_.clear();visuals_.clear();
         atlasRect_.clear();atlasLaidOut_=false;modelTextureAnimations_.clear();animatedTex_.clear();
-        hitBoxes_.clear();ringBoxes_.clear();kingdomPals_.clear();pickBoundsValid_=false;pickRegistered_={};
+        hitBoxes_.clear();ringBoxes_.clear();pickBoundsValid_=false;pickRegistered_={};
         featureDefs_.clear();featurePals_.clear();cursorsInit_=false;
-        loadTextures();loadOrderButtons();
+        loadTextures();
         loadInterfaceFonts();
         sounds_.reload(vfs_);soundClasses_.load(vfs_);musicMode_=0;
         registry_ = ta::sim::TypeRegistry{};
@@ -4153,7 +4169,7 @@
                 bool disco = hotkeys_.match(int32_t(key), mod) == ta::Act::Disco;
                 ta::net::Command c;
                 c.kind = disco ? ta::net::Cmd::Disco : ta::net::Cmd::Headbang;
-                if (selection_.empty()) issue(c); // living monarch fallback
+                if (selection_.empty()) issue(c); // living commander fallback
                 else for (int id : selection_) {
                     const auto* u = frameUnitP(id);
                     if (!u || !u->alive() || u->player != localPlayer_ || !u->type || u->type->isStructure()) continue;
@@ -4182,24 +4198,24 @@
             case ta::Act::SelectOnScreen:
                 selectOwned([this](const UnitR& u){ return onScreen(u); });
                 return true;
-            case ta::Act::SelectMonarch: {   // select the Monarch and track it
-                int monarch = playerMonarchId_;
-                if (watchOnly()) {   // the monarch of the player on show
+            case ta::Act::SelectCommander: {   // select the Commander and track it
+                int commander = playerCommanderId_;
+                if (watchOnly()) {   // the commander of the player on show
                     const int owner = hudPlayer();
                     if (owner < 0) return true;
-                    monarch = -1;
+                    commander = -1;
                     for (const UnitR* u : front().live)
                         if (u->alive() && u->type && int(u->player) == owner && u->type->commander) {
-                            monarch = u->id;
+                            commander = u->id;
                             break;
                         }
                 }
-                const auto* m = monarch >= 0 ? frameUnitP(monarch) : nullptr;
+                const auto* m = commander >= 0 ? frameUnitP(commander) : nullptr;
                 if (m && m->alive()) {
-                    selection_ = {monarch};
+                    selection_ = {commander};
                     trackSel_ = true;
                     centerOnSelection();
-                    voice(monarch, "select");
+                    voice(commander, "select");
                 } else {
                     notice_ = "NO COMMANDER"; noticeTimer_ = 2;
                 }
@@ -4225,7 +4241,7 @@
                     return false;
                 });
                 return true;
-            case ta::Act::SelectTroops:   // mobile armed, no navy, not the Monarch
+            case ta::Act::SelectTroops:   // mobile armed, no navy, not the Commander
                 selectOwned([](const UnitR& u){
                     if (!u.type->canMove || u.type->commander) return false;
                     if (u.type->domain == ta::sim::UnitType::Domain::Water) return false;
@@ -4233,7 +4249,7 @@
                     return false;
                 });
                 return true;
-            case ta::Act::SelectArmed:    // anything with a weapon except the Monarch
+            case ta::Act::SelectArmed:    // anything with a weapon except the Commander
                 selectOwned([](const UnitR& u){
                     if (u.type->commander) return false;
                     for (const auto& w : u.type->weapons) if (w.damage > 0) return true;

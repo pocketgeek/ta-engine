@@ -1,35 +1,70 @@
 #pragma once
 
 // The display VM's GET / GET_UNIT_VALUE answers (GameView::registerUnit's
-// onGet), read from the pinned render snapshot. TotalA.exe's GET (0x480770)
-// answers ids 1..20 only: the jump table takes id - 1 up to 0x13 (0x480781)
-// and everything else -- 0, a negative id, any id past 20 -- returns 0
-// (0x480abb). The simulation's host (World::ScriptHost::get) keeps that
-// range; so does this one, so a script reading Kingdoms' 27..46 (heading,
-// terrain, animation speeds, veteran level, standing order) sees 0 in both.
+// onGet): TotalA.exe's GET (0x480770), the same routine the simulation's host
+// runs (sim/retailscriptget.h: World::ScriptHost::get), fed from the pinned
+// render snapshot instead of live world state. The unit's words are the sim's
+// own (UnitR::scriptWords, World::scriptGetWords: ACTIVATION is the script's
+// activation, BUSY its BUSY, BUILD_PERCENT_LEFT the remaining work); UNIT_XZ /
+// UNIT_Y / UNIT_HEIGHT read the unit the argument names; PIECE_XZ / PIECE_Y
+// pose the display VM's own pieces on the unit as 0x43e060 does; GROUND_HEIGHT
+// reads the map. Ids outside 1..20 answer 0 in both hosts.
 
 #include "client/renderframe.h"
+#include "sim/retailheight.h"
+#include "sim/retailpiecepose.h"
+#include "sim/retailscriptget.h"
 
+#include <array>
 #include <cstdint>
+#include <span>
+#include <vector>
 
 namespace ta::client {
 
-inline int32_t displayScriptGet(const UnitR& su, int32_t id) {
-    switch (id) {
-        case 1:  return su.buildQueue.empty() ? 0 : 1;   // ACTIVATION
-        case 4:  return su.scriptHealthPercent;          // HEALTH %
-        case 6:  return su.moving() ? 1 : 0;             // BUSY
-        case 9: {                                        // UNIT_XZ
-            const int32_t x = int32_t(su.x) & 0xFFFF;
-            const int32_t z = int32_t(su.z) & 0xFFFF;
-            return (x << 16) | z;
-        }
-        case 17: return su.constructionPercentLeft;      // BUILD_PERCENT_LEFT
-        // The authoritative yard handshake, a blocked transition and a
-        // successful close (zero) included.
-        case 18: return su.yardOpen;                     // YARD_OPEN
-        default: return 0;
+// What the display host needs beyond the unit: another unit by id (the render
+// snapshot), the unit's piece poses and the map's height grid.
+template<class FindUnit>
+struct DisplayGetHost {
+    const UnitR& unit;
+    FindUnit find;                                   // const UnitR*(int id)
+    std::span<const ta::cob::RetailPiece> poses;     // the display VM's pieces
+    const std::vector<uint8_t>* heights = nullptr;   // the map's height cells
+    int mapW = 0, mapH = 0;
+    std::array<int32_t,3> piecePoint(int32_t piece) const {
+        std::array<int32_t,3> point = unit.worldPosition;
+        // 0x43df16 -> 0x43e01d: a piece out of range is the unit origin.
+        if (!unit.type || piece < 0 || size_t(piece) >= poses.size()) return point;
+        const auto offset = ta::sim::retailPieceOrigin(unit.type->productionModel, poses, piece,
+            unit.scriptWords.heading, unit.bodyPitch, unit.bodyRoll);
+        for (size_t axis = 0; axis < 3; ++axis)
+            point[axis] = int32_t(std::clamp<int64_t>(int64_t(point[axis]) + offset[axis], INT32_MIN, INT32_MAX));
+        return point;
     }
+    bool unitAt(int id, ta::sim::RetailGetOther& out) const {
+        const UnitR* other = find(id);
+        if (!other || !other->type || !other->alive()) return false;
+        out = {other->worldPosition[0], other->worldPosition[1], other->worldPosition[2], other->type->modelTop};
+        return true;
+    }
+    int groundHeight(int32_t x, int32_t z) const {
+        if (!heights || heights->empty()) return 0;
+        return ta::sim::retailTerrainHeight(x, z, mapW, mapH,
+            [&](int cx, int cz) { return int((*heights)[size_t(cz) * size_t(mapW) + size_t(cx)]); });
+    }
+};
+
+template<class FindUnit>
+inline int32_t displayScriptGet(int32_t id, const std::vector<int32_t>& args, DisplayGetHost<FindUnit>& host) {
+    std::array<uint32_t,4> words{};
+    for (size_t i = 0; i < words.size() && i < args.size(); ++i) words[i] = uint32_t(args[i]);
+    struct Queries {
+        DisplayGetHost<FindUnit>& h;
+        std::array<int32_t,3> piecePoint(int32_t piece) { return h.piecePoint(piece); }
+        bool unit(int id, ta::sim::RetailGetOther& out) { return h.unitAt(id, out); }
+        int groundHeight(int32_t x, int32_t z) { return h.groundHeight(x, z); }
+    } queries{host};
+    return int32_t(ta::sim::retailScriptGet(id, words, host.unit.scriptWords, queries));
 }
 
 } // namespace ta::client

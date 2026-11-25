@@ -27,7 +27,7 @@ std::string ruleValue(RoomField field, const ta::net::GameOptions& o) {
     case RoomField::DoubleSight: return onOff(o.doubleSight);
     case RoomField::UnitCap: return std::to_string(o.unitCap);
     // TA's skirmish option (SKIRMISH.GUI CommanderDeath: Game Ends / Continues).
-    case RoomField::Monarch: return o.monarchExpendable ? "CONTINUES" : "GAME ENDS";
+    case RoomField::Commander: return o.monarchExpendable ? "CONTINUES" : "GAME ENDS";
     case RoomField::SpeedUnlock: return onOff(o.speedUnlock);
     case RoomField::Fog: return kFogName[std::min<int>(o.fogExplored, 2)];
     case RoomField::StartLocations:
@@ -83,7 +83,7 @@ void drawPulse(SDL_Renderer* ren, const SDL_FRect& rect, uint64_t until) {
 }
 
 // The room plays its map's scenario: the MAP SCENARIO option, or (from the verified package)
-// a Test Map copy's opt-in. It fixes START LOCATIONS and owns MONARCH EXPENDABLE.
+// a Test Map copy's opt-in. It fixes START LOCATIONS and owns COMMANDER EXPENDABLE.
 bool scenarioPlays(const ta::net::RoomView& room, bool havePackage, const ta::sim::ScenarioInfo& s) {
     const bool fileMap = room.mission.empty() && !ta::mapgen::isGeneratedMapId(room.mapId);
     return fileMap && (room.opts.mapScenario != 0 ||
@@ -636,10 +636,10 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             const int index = at == std::end(kUnitCaps) ? 0 : int(at - std::begin(kUnitCaps));
             roomRuleCommit(RoomField::UnitCap, kUnitCaps[(index + direction + 4) % 4]);
         });
-        // When OFF, losing your Monarch loses the game (retail commander rule); ON makes the
-        // Monarch just another unit. A scenario owns how its game ends.
-        if (scenario) forced(RoomField::Monarch, "SCENARIO");
-        else toggle(RoomField::Monarch, o.monarchExpendable);
+        // When OFF, losing your Commander loses the game (retail commander rule); ON makes the
+        // Commander just another unit. A scenario owns how its game ends.
+        if (scenario) forced(RoomField::Commander, "SCENARIO");
+        else toggle(RoomField::Commander, o.monarchExpendable);
         toggle(RoomField::SpeedUnlock, o.speedUnlock);
         // FOG OF WAR: display-only (never hashed); every peer applies the same rule.
         if (watching) forced(RoomField::Fog, "FULL VISION");
@@ -750,7 +750,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 if(lines.size()>1) rule(lines[1].text,missing);
                 if(lines.size()>2) rule(lines[2].text);
                 if(lines.size()>3) rule(lines[3].text,lines[3].warning);
-                // Placements replace Monarchs, so a seated player the scenario gives no
+                // Placements replace Commanders, so a seated player the scenario gives no
                 // units starts with nothing.
                 uint8_t empty=0;
                 for(int i=0;i<ta::net::kMaxSlots;++i)
@@ -812,7 +812,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         switch (field) {
         case RoomField::DoubleSight: c.doubleSight = uint8_t(value); break;
         case RoomField::UnitCap: c.unitCap = uint16_t(value); break;
-        case RoomField::Monarch: c.monarchExpendable = uint8_t(value); break;
+        case RoomField::Commander: c.monarchExpendable = uint8_t(value); break;
         case RoomField::SpeedUnlock: c.speedUnlock = uint8_t(value); break;
         case RoomField::Fog: c.fogExplored = uint8_t(value); break;
         case RoomField::StartLocations: c.randomStarts = uint8_t(value); break;
@@ -940,7 +940,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         switch (field) {
         case RoomField::DoubleSight: p.doubleSight = c.doubleSight != 0; break;
         case RoomField::UnitCap: p.unitCap = c.unitCap; break;
-        case RoomField::Monarch: p.monarchExpendable = c.monarchExpendable != 0; break;
+        case RoomField::Commander: p.monarchExpendable = c.monarchExpendable != 0; break;
         case RoomField::SpeedUnlock: p.speedUnlock = c.speedUnlock != 0; break;
         case RoomField::Fog: p.fog = std::min<int>(c.fogExplored, 2); break;
         case RoomField::StartLocations: p.randomStarts = ta::net::normalizeStartMode(c.randomStarts); break;

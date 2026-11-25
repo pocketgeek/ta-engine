@@ -100,7 +100,8 @@
 #include "client/retaileffectvisibility.h"
 #include "client/retailfog.h"     // the local display fog (plane, overlay, radar)
 #include "client/replayfile.h"   // .tarep parser (extracted leaf)
-#include "client/monarchalert.h"
+#include "client/commanderalert.h"
+#include "client/unitspeech.h"
 #include "client/speechqueue.h"
 #include "client/padrider.h"
 #include "client/sound.h"     // WAV mixer + music + soundclasses (extracted leaf)
@@ -170,7 +171,7 @@ class GameView {
 public:
 #ifndef NDEBUG
     struct FactionKit {
-        const char* monarch;   // the side's commander
+        const char* commander;   // the side's commander
         const char* keep;      // the factory the commander builds first
         const char* lode;
         const char* builder;
@@ -224,7 +225,7 @@ public:
     bool headbangWas_[8] = {};    // ...and the headbang state
 
     // On the rising edge of a player's disco (Shift+D), play the 10s disco loop as a
-    // positional SFX from each of that player's dancing monarchs (enemies only if in
+    // positional SFX from each of that player's dancing commanders (enemies only if in
     // view). It runs alongside the faction music -- a dance-floor track from the unit.
     void discoSound();
 
@@ -512,7 +513,7 @@ public:
     // Esc during a run: end the benchmark now. If the sim has started, record a closing
     // sample at the current second and show the stats screen; otherwise bail to the menu.
     void stopBenchmark();
-    // Benchmark flythrough: each 10s leg tracks one AI's monarch (leg 0 -> AI1 .. leg 7 ->
+    // Benchmark flythrough: each 10s leg tracks one AI's commander (leg 0 -> AI1 .. leg 7 ->
     // AI8), starting fully zoomed out and zooming in across the leg, then cutting to the
     // next. Camera only -- view state is never hashed. Called each frame during the run.
     void benchmarkCamera(float dt, int winW, int winH);
@@ -577,7 +578,7 @@ public:
 
     // Set up the world for a multiplayer match from the server's final slot
     // table: one player per used slot (sim player index == slot), teams/colours
-    // per slot, a monarch spawned at a start position each, seeded starting mana.
+    // per slot, a commander spawned at a start position each, seeded starting metal and energy.
     void startMpGame(const ta::net::RoomView& room, uint32_t seed);
     void beginSpectating();   // watch-only: noFog_, no control, scoreboard on
     bool showInitialCampaignBriefing(const std::string& stem);
@@ -785,7 +786,7 @@ public:
 #endif
 
     void lookAt(float x, float z);
-    void startAtMonarch();
+    void startAtCommander();
     void cancelInitialCamera() { initialCamera_.reset(); }
 
     // Smoothed render FPS for the F4 overlay (set from the main loop each frame).
@@ -906,7 +907,13 @@ public:
     // Units damaged since the render last looked (World::HitFx::hurtUnits), with the tick:
     // the under-attack alert's input. Guarded by hitQueueMutex_; survives queue overflow.
     std::vector<std::pair<uint32_t, int>> pendingHurt_;
-    ta::MonarchAlert monarchAlert_;
+    // The sim's unit speech requests (World::unitSpeech) with their tick, under
+    // hitQueueMutex_ as pendingHurt_; and each event row's next-allowed tick
+    // (0x47faf0; client/unitspeech.h). Row 2's is commanderAlert_'s.
+    struct PendingSpeech { uint32_t tick = 0; int unitId = 0; int event = 0; const char* text = nullptr; };
+    std::vector<PendingSpeech> pendingSpeech_;
+    std::array<uint32_t, 16> speechNextTick_{};
+    ta::CommanderAlert commanderAlert_;
     ta::SpeechQueue speechQueue_;   // the unit speech queue (client/speechqueue.h)
     // TotalA.exe's unit speech / unit chat text levels (game +0x37f17 / +0x37f18,
     // 0|5|10; Settings::unitSpeech / unitChatText).
@@ -1350,7 +1357,7 @@ private:
     // That shipped: the build-icon path created the entry first via ghostModel, and
     // registerUnit's "if (!visuals_.count(typeId))" then skipped building the tree for
     // good. Any unit whose icon was drawn before its first instance spawned wore a
-    // square shadow -- reported on the Beast Handler, which sits in the Zhon conjure
+    // square shadow -- reported on the Beast Handler, which sits in a conjure
     // menu. Routing every site through here is what stops a fourth one being added.
     ta::tdo::Model* loadVisual(const std::string& key, bool rootIsGround = true) {
         auto it = visuals_.find(key);
@@ -1722,7 +1729,7 @@ private:
     // over a flyer at any altitude -- which is what "flying under trees" was.
     // Features of TDF height below 10 sit in a layer BEFORE the ground units
     // (ta::hiddenunits::kLayerLowFeature): retail draws them in its cell scan
-    // before any unit, so a stump or a mana decal never paints over a unit.
+    // before any unit, so a stump or a decal never paints over a unit.
     // `fx` (>= 0) makes the item a WORLD EFFECT instead: fxItems_[fx], a shot,
     // explosion, particle, flame or smoke sprite keyed by the GROUND z under it (plus
     // kFxDepthBias), so a spear behind a tree is covered by the tree and one in front
@@ -2208,8 +2215,8 @@ private:
     // No SDL calls and only reads shared state (models/textures/heightmap/anim), so
     // it is safe to run for many units at once on the worker pool. drawUnit() then
     // just submits g.runs. `scratch` is a reusable per-thread triangle buffer.
-    // A monarch (the five hero units).
-    static bool isMonarchType(const ta::sim::UnitType* t) {
+    // A commander (sidedata.tdf).
+    static bool isCommanderType(const ta::sim::UnitType* t) {
         if (!t) return false;
         return ta::sides::isCommander(t->id);
     }
@@ -2657,7 +2664,9 @@ private:
     // the sim in lockstep at a fixed step, so scaling one peer's dt would desync.
     float speedMult() const;
     bool giveUnitsMenu_ = false;
-    enum class DiplomacyAction { Give, Mana, Chat, Voice, Volume, Close };
+    // ShareMetal / ShareEnergy: the local player's TA auto-share switches
+    // (DiplomacyHot::player holds the resource, econ::M or econ::E).
+    enum class DiplomacyAction { Give, ShareMetal, ShareEnergy, Chat, Voice, Volume, Close };
     struct DiplomacyHot { SDL_FRect rect; int player; DiplomacyAction action; };
     std::vector<DiplomacyHot> giveUnitsHots_;
     // Who reads this player's chat: the diplomacy CHAT column. Each game starts with your
@@ -2679,7 +2688,7 @@ private:
     int voiceVolumeDrag_ = -1;    // the player whose VOLUME slider is being dragged
     bool voiceVolumeSlider(int p) const;   // does player p's row get a VOLUME slider?
     // The diplomacy screen's choices as a new game starts: chat and voice to everyone, the
-    // usual mana sharing, every VOLUME at 100, and which slots are human.
+    // auto-share switches as the sim holds them, every VOLUME at 100, and which slots are human.
     void resetDiplomacy(const ta::net::RoomView& room);
     void setVoiceVolumeAt(const SDL_FRect& track, int p, float mx);
     ta::VoiceEngine* voice_ = nullptr;
@@ -2698,7 +2707,9 @@ private:
     void drawGameChat(int winW, int winH);
     template <class Face> void drawGameChatIn(const Face& font, int winW, int winH);
     SDL_Color chatSenderColor(const std::string& who, bool notice) const;
-    std::optional<uint8_t> requestedManaSharing_;
+    // The auto-share switches as last clicked (Player::shareResources bits), until
+    // the sim's own copy catches up with the command.
+    std::optional<uint8_t> requestedSharing_;
     std::array<bool,8> eligibleGiftRecipients();
     std::array<bool,8> giftEligibleLast_{};   // its answer when the worker held the world
     void drawGiveUnitsMenu(int winW, int winH);
@@ -2974,7 +2985,7 @@ private:
     int mapScroll_ = 0;
     bool mapDrag_ = false;             // dragging the scrollbar thumb
     // Random-map generator ("Generate Random Map" in the picker): the current params,
-    // which slider is being dragged (0=doodad 1=mana 2=water, -1=none), and the three
+    // which slider is being dragged (0=doodad 1=metal 2=water, -1=none), and the three
     // slider bar rects for drag hit-testing.
     ta::mapgen::Params genParams_{};
     std::string genPreviewError_;
@@ -3041,7 +3052,6 @@ private:
     std::string bigMapFor_;
     std::vector<int> roomPreviewColors_;   // the room preview's start colours, for the big view
     float mapPreviewWorldW_ = 0, mapPreviewWorldH_ = 0;
-    std::map<std::string, std::vector<uint8_t>> kingdomPals_;  // kingdom -> RGBA palette (256*4)
     std::vector<std::string> availableGameMods_, availableCosmeticMods_;   // mods/game, mods/cosmetic
     // mods/cosmetic/always_enabled/<pack>: loaded in every game (campaigns too), only named.
     std::vector<std::string> alwaysCosmeticMods_;
@@ -3111,7 +3121,7 @@ private:
     // and every line is sent as chat.
     void submitChat(const std::string& line);
     // TA_POWER_SCRIPT="TICK:LINE;..." (debug builds): type these
-    // chat lines at those ticks; a ManaMe line selects every own unit first.
+    // chat lines at those ticks.
     void powerScriptStep();
     bool radarCode_ = false;   // +Radar: the minimap shows every unit (reset each match)
     // +MakePoster / MAKE POSTER: the whole map at native scale, one tile (the window,
@@ -3247,8 +3257,8 @@ private:
     // and the 104 types declaring `shadowart` get silhouettes like everyone else.
     static bool castsBlobShadow(const ta::sim::UnitType* t) { return castsShadow(t); }
     // EVERYTHING on the map lifts onto the terrain relief by the same rule -- mobile
-    // units, buildings, AND the feature decals (mana deposits, trees) -- so a mana
-    // deposit sits at the height its heightmap claims and a lodestone/units built on
+    // units, buildings, AND the feature decals (metal patches, trees) -- so a metal
+    // patch sits at the height its heightmap claims and units built on
     // it stack right on top instead of the decal being flat while units float above.
     // The Y lift is of the BODY, so a wading or floating unit's waterline sink is
     // folded in: over deep water it rides at sea - waterline, and every overlay
@@ -3442,8 +3452,8 @@ private:
     const RingBox& unitRingBox(const ta::sim::UnitType* type);
     // Half-extent of the model's GROUND PLATE -- the flat untextured quad at
     // y = 0 that every TA unit's root carries (AraGP and friends). It is the
-    // unit's shadow: sized per unit (17.6 for a Monarch, 14.4 for a swordsman),
-    // which is why a Monarch has a shadow in retail despite declaring no
+    // unit's shadow: sized per unit (17.6 for a Commander, 14.4 for a swordsman),
+    // which is why a Commander has a shadow in retail despite declaring no
     // `shadowart` in its FBI. Zero when the model has no such piece.
 
 
@@ -3629,7 +3639,7 @@ private:
     // and the click refused where the selected builder can never build.
     int placementBuilderId() const;
     bool siteReachable(const ta::sim::World& w, const ta::sim::UnitType* type, float x, float z) const;
-    // The PER-FRAME form for ghosts (drawGhost, build line, mana drag): the verdict is cached per
+    // The PER-FRAME form for ghosts (drawGhost, build line): the verdict is cached per
     // (type, x, z, published tick), a miss does a try_lock (never a blocking wait), and once a
     // try has failed this frame no more are made -- the previous verdict is reused instead. The
     // click path keeps canPlaceLocked's blocking lock, so a placement is never decided on a guess.
@@ -3685,7 +3695,7 @@ public:
 private:
     int keepId_ = -1, aiKeepId_ = -1, builderId_ = -1;
     std::optional<std::pair<float,float>> initialCamera_;
-    int playerMonarchId_ = -1, aiMonarchId_ = -1;
+    int playerCommanderId_ = -1, aiCommanderId_ = -1;
     const ta::sim::UnitType* placing_ = nullptr;
     bool shiftBuildPlaced_ = false; // disarm placement on Shift release after queued work
     // An armed order issued with Shift stays armed for the next click, as
@@ -3831,32 +3841,6 @@ private:
     // Join the minimap thread and drop its output -- required before the map it
     // reads is swapped (mapView_.reload) and at teardown.
     void resetMinimap();
-    SDL_Texture* panelTex_ = nullptr;
-    int panelW_ = 0, panelH_ = 0;
-    SDL_Texture* botTex_ = nullptr;
-    int botW_ = 0, botH_ = 0;
-    // Retail GUI-driven HUD: the parsed .gui and, parallel to gui_.gadgets, the
-    // loaded state-art textures for each gadget (imgs[0]=normal,1=hover,2=grayed).
-    ta::gui::Gui gui_;
-    std::vector<std::vector<SDL_Texture*>> guiTex_;
-    // A watcher's interface follows the player on show, so each side's art stays loaded
-    // once seen: the active members above swap with these, and draw code never knows.
-    struct SideArt {
-        SDL_Texture* panelTex = nullptr;
-        int panelW = 0, panelH = 0;
-        SDL_Texture* botTex = nullptr;
-        int botW = 0, botH = 0;
-        ta::gui::Gui gui;
-        std::vector<std::vector<SDL_Texture*>> guiTex;
-        bool missing = false;   // the side has no .gui: what was showing stays
-    };
-    std::map<std::string, SideArt> sideArt_;
-    std::string artSide_;       // the side the active members hold
-    SideArt takeSideArt();
-    void useSideArt(SideArt art);
-    void destroySideArt(SideArt& art);
-    void showSideArt(std::string side);
-    void clearSideArt();
     std::map<std::string, SDL_Texture*> icons_;
     std::map<std::pair<std::string, int>, SDL_Texture*> modelIcons_;  // model-rendered fallback icons
     std::vector<std::pair<SDL_FRect, const ta::sim::UnitType*>> iconRects_;
@@ -3879,7 +3863,7 @@ private:
     //
     // The size is FIXED: it follows the UI SCALE option and nothing else. It used to be
     // uiScale_ * winH/700, which meant the command panel -- the shield medallion, the
-    // mana orb, every order button -- grew and shrank as the window was resized, so the
+    // every order button -- grew and shrank as the window was resized, so the
     // HUD was a different size in a window than it was fullscreen. The rest of the HUD
     // was already window-independent (miniSize() and barH() are both uiScale_ only), so
     // this was also the one piece that disagreed with the others about how big the
@@ -3901,17 +3885,6 @@ private:
     // Every watcher's view is the full height, whether or not a selection has put the
     // bar over it, so the zoom floor and the scroll limits never jump on a click.
     int mapViewH(int winH) const { return std::max(64, winH - (watchOnly() ? 0 : barH())); }
-
-    // Screen rect for a command-panel gadget (x >= 512 in 640-space): the whole
-    // command panel is anchored to the bottom-right corner, so the ButtonPanel art
-    // and its buttons share one transform and stay aligned at any scale.
-    SDL_FRect guiCmdRect(const ta::gui::Gadget& g) const;
-
-    // Screen rect for a bottom-bar gadget (the retail InfoPanel occupies 640-space
-    // y 431..480). The whole bar layout is scaled uniformly to our barH()-tall bar and
-    // anchored bottom-left, so the unit-info block clusters at the left while the bar
-    // chrome stretches to fill the width.
-    SDL_FRect guiBarRect(const ta::gui::Gadget& g) const;
 
     SDL_FRect minimapRect(int winW, int winH) const;
 
@@ -4104,10 +4077,7 @@ private:
     bool addFeature(const std::string& rawName, int cx, int cz);
 
     void loadFeatures();
-    // Scatter retail wave sprites along the coast (display only; see the impl).
-    void addShorelineWaves();
 
-    void loadPanel(const std::string& side);
     void loadInterfaceFonts();
     void reloadInterfaceArt(const ta::Settings& s);
 
@@ -4118,60 +4088,9 @@ private:
     // Load one GAF sequence frame (anims/<gaf>, sequence seq, frame idx) to a texture.
     SDL_Texture* loadGuiFrame(const std::string& gaf, const std::string& seq, int frame);
 
-    // Parse the faction in-game .gui and load every gadget's state art. side is the
-    // 3-letter faction ("ara"/"tar"/"ver"/"zon"/"cre"); the file is guis/<side>ingame.gui.
-    void loadGui(const std::string& side);
-
     static constexpr int kBarHBase = 72;
     int barH() const { return int(kBarHBase * uiScale_); }   // UI-scale (Options)
 
-    struct OrderBtn {
-        SDL_Texture* frames[3] = {nullptr, nullptr, nullptr};   // normal/hover/armed
-        int w = 0, h = 0;
-        char cmd = 0;        // 'm','a','p'; 0 = stop (instant)
-        const char* label;
-    };
-    std::vector<OrderBtn> orderBtns_;
-
-
-    void loadOrderButtons();
-
-    SDL_FRect orderBtnRect(size_t i, int winW) const;
-
-    void drawOrderColumn(int winW, int winH);
-
-
-    // ---- Retail GUI-driven HUD ----------------------------------------------
-    // The command panel (right strip) and its order buttons are laid out from the
-    // faction .gui (see loadGui). Rects are anchored bottom-right and share the
-    // guiCmdRect transform so the ButtonPanel art and its buttons stay aligned.
-
-    int guiIdx(const char* name) const;
-
-    // Leftmost gadget with this name. Several bar gadgets appear twice -- the primary
-    // single-unit group (UnitInfo1, x~114) and the second-unit group (UnitInfo2,
-    // x~386); the primary is always the left one, the conjure-target the right one.
-    int guiIdxLeft(const char* name) const;
-    int guiIdxRight(const char* name) const;
-
-    // (gadget index, command char) for each command button to show for the current
-    // selection. cmd: 'm'/'a'/'p'/'g' arm pendingCmd_; 's' = Stop (immediate);
-    // '1'/'2'/'3' = weapon slot; 'O'/'D'/'H' = stance offensive/defensive/passive;
-    // 'K'/'k' = cloak on/off; 'N'/'F' = active on/off (all immediate toggles).
-    std::vector<std::pair<int, char>> guiActiveButtons() const;
-
-    std::vector<std::pair<SDL_FRect, char>> guiBtnRects_;
-    // Press flash: which command button was last clicked and when, so a push button
-    // shows retail's Pressed face for a moment even though we dispatch on mouse-down.
-    char guiPressed_ = 0;
-    uint32_t guiPressedMs_ = 0;   // hit list, filled by renderGui
-
-    // Draw the command panel chrome + buttons + idle crystal ball. Falls back to the
-    // old vertical order column if no .gui loaded.
-    void renderGui(int winW, int winH);
-
-    // Returns true if the click hit (and was handled by) a command-panel button.
-    bool guiClick(float mx, float my);
     // Retail HUD feedback: every side-panel / build-icon press plays the local
     // faction's click tone (sounds/tone<side>.wav -- the click.hpi overridables).
     // Retail acknowledgment bong: the faction tone. The soundclass "_NN-note"
@@ -4198,9 +4117,6 @@ private:
     // Issue a per-unit toggle command (targetId = value) to every selected own unit.
     void issuePerUnit(ta::net::Cmd kind, int value);
 
-    // Draw a thin fill gauge (HP/mana) at a bar gadget's .gui position.
-    void drawGauge(const char* name, float frac, SDL_Color c);
-
     // Retail's Unit Info dialog (guis/unitinfo.gui): portrait + the three mobility
     // stats for the hovered conjure icon, else the first selected unit. Does not
     // pause -- retail's didn't either. See client/gameview_unitinfo.cpp.
@@ -4216,12 +4132,6 @@ private:
     std::string unitInfoIconFor_;      // which type unitInfoIcon_ was baked for
     SDL_FRect unitInfoOkRect_{0, 0, 0, 0};
 
-    // Retail bottom InfoPanel bar: chrome (InfoPanel + EndCap) plus the selected
-    // unit's portrait/name/HP/mana at the .gui positions -- only what has data (no
-    // empty portrait box or bars, unlike retail). Returns false (so drawPanel
-    // keeps its own chrome) when no .gui is loaded. The build menu + mana readout stay
-    // in drawPanel and draw on top.
-    bool drawGuiInfoBar(int winW, int winH);
     // A multi-selection's per-type portraits, ALL of them: `primary` is the single-unit
     // portrait's full-size spot, where slot 0 (the front unit's type) anchors the strip
     // at the same size as the rest, which extend left into `room` px; a count badge on
@@ -4230,7 +4140,7 @@ private:
     // that portrait), returns 0.
     float drawSelPortraits(SDL_FRect primary, float room, float gap, float px);
     std::vector<ta::selportraits::Group> selTypeGroups() const;   // live selection, by type
-    // A multi-selection's bar stats: HP / mana totals over the live selected units, and
+    // A multi-selection's bar stats: HP totals over the live selected units, and
     // the name-slot label when the selection is exactly one control squad ("GROUP 3").
     ta::selportraits::Totals selTotals() const;
     std::string selSquadLabel() const;
@@ -4239,19 +4149,14 @@ private:
     // any press on a portrait (or the overflow tile) so it never reaches the world.
     bool selPortraitClick(float mx, float my, bool lmb);
 
-    // A one-word description of what the selected unit is doing, for the command
-    // panel's HelpText recess.
+    // A one-word description of what the selected unit is doing, for the info bar.
     const char* unitStatusText(const UnitR* u) const;
 
     // What a builder is currently conjuring/building, for the info bar (else "").
     std::string conjureTargetName(const UnitR* u) const;
 
-    // A simple filled bar (HP/mana) at explicit pixel coords.
+    // A simple filled bar (HP) at explicit pixel coords.
     void drawBar(float x, float y, float w, float h, float frac, SDL_Color c);
-
-    // Returns true if the click hit (and was handled by) the order column.
-    bool orderColumnClick(float mx, float my, int winW);
-
 
     SDL_Texture* iconFor(const std::string& typeId);
 
@@ -4485,23 +4390,12 @@ private:
     // lobbyInput's keys and clicks while a window is open: true when it used the event.
     bool browserWindowInput(const SDL_Event& e);
 
-    // Locate an 8-bit-indexed {u32 w, u32 h, w*h bytes} image at TNT header field
-    // `field` (little-endian u32 pointers). Returns false (with bounds checks) if the
-    // field is absent or malformed. Field 12 = the hi-res overview, 11 = the minimap.
-    static bool tntIndexedImage(const std::vector<uint8_t>& d, int field,
-                                int& w, int& h, const uint8_t*& data);
-
-    // The map's "kingdom" (from its sibling .ota [GlobalHeader] kingdom=...), which
-    // names the preview palette. The .ota carries the preview info too:
-    // kingdom=<side>, size=<W x H>, numplayers=<N>, memory=<...>.
+    // The map's sibling .ota (its preview info: size, players, ...).
     std::string readOta(const std::string& tntPath) const;
     // Value of `key`=... in an .ota (up to ';' or EOL, trimmed). Keeps internal spaces
     // (so "size=9 x 7" -> "9 x 7"); matches only a whole-word key before its '='.
     static std::string otaField(const std::string& ota, const char* keyLower);
 
-    // The 256-colour RGBA palette for a kingdom (palettes/<kingdom>.pcx), cached.
-    // Returns nullptr if the kingdom is unknown / its .pcx is missing.
-    const std::vector<uint8_t>* kingdomPalette(const std::string& kingdom);
 
     // Build the selected map's preview texture. Retail (KINGDOMS.icd, MapView gadget
     // at 0x4ae4f0) draws the .tnt's embedded RADARPIC through the map's KINGDOM palette

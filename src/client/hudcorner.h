@@ -2,7 +2,7 @@
 
 // The map view's top-left corner. Several overlays want it: the stream status banner
 // (client/streaming.cpp, drawn after the stream's capture so it never reaches the
-// broadcast), the legacy mana readout, the GAME TIME clock, the F4 scoreboard, the
+// broadcast), the GAME TIME clock, the F4 scoreboard, the
 // mission objectives panel and the voice-chat speakers. Each used to claim the corner
 // at a fixed position, so any two shown together overlapped (the banner covered the
 // scoreboard's header). Now they share one Column: each overlay asks for the top it

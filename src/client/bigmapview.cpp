@@ -31,7 +31,7 @@ float BigMapView::worldH() const { return float(view_->map().blocksY * 32); }
 // Every feature the map places, decoded once (frame 0, as Cartographer draws them).
 // A name no feature file of this world defines has no art and is left out.
 void BigMapView::loadFeatures(const std::string& world) {
-    features_.scan(*vfs_, world.empty() ? "aramon" : world);
+    features_.scan(*vfs_, world.empty() ? "green" : world);   // a TA planet folder
     const auto& names = view_->map().featureNames;
     for (size_t i = 0; i < names.size() && i < 0xFFFA; ++i) {
         const cart::FeatureRef* ref = features_.byName(names[i]);

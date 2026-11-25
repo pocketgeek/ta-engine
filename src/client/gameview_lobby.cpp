@@ -679,7 +679,7 @@ std::string defaultGameName(const std::string& player) {
 
     // What to SHOW for a map id. A generated map's id is a "~gen1~<hex>" recipe -- the
     // whole parameter block in hex -- which is unreadable in a lobby row: it shows the
-    // label mapgen provides ("Random 16x16 4P Aramon"). A real map's id is its name: the
+    // label mapgen provides ("Random 16x16 4P Green"). A real map's id is its name: the
     // map list's title for it when the list is built, else the translate tables' title.
     std::string GameView::mapTitle(const std::string& id) {
         if (ta::mapgen::isGeneratedMapId(id)) return ta::mapgen::friendlyLabel(ta::mapgen::decodeMapId(id));
@@ -749,7 +749,7 @@ std::string defaultGameName(const std::string& player) {
         std::string ota;
         if (!src) ota = readOta(tntPath);
         else if (auto o = src->tryRead(ta::vpath::replaceExtension(tntPath, ".ota"))) ota.assign(o->begin(), o->end());
-        int w = 0, h = 0; const uint8_t* idx = nullptr;
+        int w = 0, h = 0;
         std::vector<uint8_t> rgba;
         if (u32(0) == 0x2000) {
             // A Total Annihilation map (TNT 0x2000): its own minimap (header +0x28), 8-bit
@@ -773,26 +773,8 @@ std::string defaultGameName(const std::string& player) {
                         o[0] = pal.rgba[i][0]; o[1] = pal.rgba[i][1]; o[2] = pal.rgba[i][2]; o[3] = 255;
                     }
             } catch (...) { return; }
-        } else if (tntIndexedImage(d, 12, w, h, idx) || tntIndexedImage(d, 11, w, h, idx)) {
-            const std::vector<uint8_t>* pal = kingdomPalette(otaField(ota, "kingdom"));
-            if (!pal) pal = kingdomPalette("aramon");   // maps without a kingdom get a default
-            if (!pal) return;
-            rgba.resize(size_t(w) * h * 4);
-            for (size_t i = 0; i < size_t(w) * h; ++i) {
-                uint8_t p = idx[i];
-                if (p == 9) { rgba[i * 4 + 3] = 0; continue; }   // retail's transparent index
-                const uint8_t* c = &(*pal)[size_t(p) * 4];
-                rgba[i * 4 + 0] = c[0]; rgba[i * 4 + 1] = c[1]; rgba[i * 4 + 2] = c[2]; rgba[i * 4 + 3] = 255;
-            }
         } else {
-            // No radar picture (a random map saved before they were written): build it
-            // from the tiles, as the save now does.
-            std::string kingdom = otaField(ota, "kingdom");
-            for (auto& ch : kingdom) ch = char(std::tolower(uint8_t(ch)));
-            if (kingdom.empty()) kingdom = "aramon";
-            try { auto m = ta::tnt::Map::load(d, tntPath); rgba = radarPicture(m, from, kingdom, w, h); }
-            catch (const std::exception&) { return; }
-            if (rgba.empty()) return;
+            return;   // only TNT 0x2000 (Total Annihilation) maps load
         }
         mapPreviewTex_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
         if (!mapPreviewTex_) return;
@@ -1636,23 +1618,6 @@ std::string defaultGameName(const std::string& player) {
         blockText(label, x + (w - tw) / 2, y + (h - 7 * px - tail) / 2, px,
                   enabled ? SDL_Color{225, 230, 240, 255} : SDL_Color{110, 115, 125, 255});
         if (enabled && action) lobbyHots_.push_back({r, std::move(action)});
-    }
-
-    bool GameView::tntIndexedImage(const std::vector<uint8_t>& d, int field,
-                                int& w, int& h, const uint8_t*& data) {
-        auto u32 = [&](size_t o) -> uint32_t {
-            return uint32_t(d[o]) | (uint32_t(d[o + 1]) << 8) | (uint32_t(d[o + 2]) << 16)
-                 | (uint32_t(d[o + 3]) << 24);
-        };
-        size_t hoff = size_t(field) * 4;
-        if (hoff + 4 > d.size()) return false;
-        size_t p = u32(hoff);
-        if (p == 0 || p + 8 > d.size()) return false;
-        uint32_t iw = u32(p), ih = u32(p + 4);
-        if (iw == 0 || ih == 0 || iw > 4096 || ih > 4096) return false;
-        if (p + 8 + size_t(iw) * ih > d.size()) return false;
-        w = int(iw); h = int(ih); data = &d[p + 8];
-        return true;
     }
 
     std::string GameView::otaField(const std::string& ota, const char* keyLower) {

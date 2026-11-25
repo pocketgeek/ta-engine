@@ -29,7 +29,8 @@ const std::vector<HotkeyDef>& hotkeyDefs() {
         {Act::SelectAll,      "select.all",         "SELECT ALL",      "SELECTION", {SDLK_a, HK_CTRL}},
         {Act::SelectSameType, "select.sametype",    "SELECT SAME TYPE","SELECTION", {SDLK_z, HK_CTRL}},
         {Act::SelectOnScreen, "select.onscreen",    "SELECT ON SCREEN","SELECTION", {SDLK_u, HK_CTRL}},
-        {Act::SelectMonarch,  "select.monarch",     "SELECT COMMANDER",  "SELECTION", {SDLK_m, HK_CTRL}},
+        // (Its saved name keeps the old "select.monarch" so existing bindings load.)
+        {Act::SelectCommander,  "select.monarch",     "SELECT COMMANDER",  "SELECTION", {SDLK_m, HK_CTRL}},
         {Act::SelectBuilders, "select.builders",    "SELECT BUILDERS", "SELECTION", {SDLK_b, HK_CTRL}},
         {Act::SelectFactory,  "select.factories",   "SELECT FACTORIES","SELECTION", {SDLK_f, HK_CTRL}},
 

@@ -127,7 +127,7 @@
             r.text = ta::uiTextFit(r.text, px, 20 * 6 * px);   // a player's own capitals under MODERN
             w = std::max(w, blockWidth(r.text, px));
         }
-        const float x = 12, y0 = topLeft_.place(panelTex_ ? 7.0f : 55.0f, float(rows.size()) * rowH + 6) + 5;
+        const float x = 12, y0 = topLeft_.place(55.0f, float(rows.size()) * rowH + 6) + 5;
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         SDL_FRect bg{x - 6, y0 - 5, std::min(w + icon + 14, float(winW) - x), float(rows.size()) * rowH + 6};
         SDL_SetRenderDrawColor(ren_, 0, 0, 0, 140);

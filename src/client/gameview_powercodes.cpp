@@ -70,11 +70,6 @@ namespace {
             const uint32_t tick = colon == std::string::npos ? 0 : uint32_t(std::atoi(item.c_str()));
             if (netTick_ < tick) return;
             const std::string line = colon == std::string::npos ? item : item.substr(colon + 1);
-            if (const auto code = ta::sim::parsePowerCode(line); code && code->code == ta::sim::PowerCode::ManaMe) {
-                selection_.clear();
-                for (const UnitR* u : front().live)
-                    if (u->alive() && u->player == localPlayer_) selection_.push_back(u->id);
-            }
             std::fprintf(stderr, "power script: tick %u types '%s'\n", netTick_, line.c_str());
             submitChat(line);
             at = end + 1;
@@ -106,17 +101,6 @@ namespace {
         c.targetId = int32_t(in.code);
         c.queue = uint8_t(in.arg);
         std::lock_guard<std::mutex> lock(simMutex_);
-        if (in.code == PowerCode::ManaMe) {
-            // 426390 acts on the typer's selection: one command per selected unit of
-            // this player's (the sim checks ownership and the pool again).
-            for (int id : selection_) {
-                const UnitR* u = frameUnitP(id);
-                if (!u || !u->alive() || u->player != localPlayer_) continue;
-                c.unitId = id;
-                issue(c);
-            }
-            return;
-        }
         issue(c);
     }
 

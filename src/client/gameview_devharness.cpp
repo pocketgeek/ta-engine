@@ -3,7 +3,7 @@
 // units, issue orders and fast-forward the LOCAL sim. DEBUG builds only -- the
 // whole file compiles to nothing under NDEBUG, and the callers (the ctor, and the
 // localHarness block in main.cpp) are #ifndef NDEBUG too, so a release taclient
-// carries none of it. Shared helpers the harness leans on (startAtMonarch, lookAt,
+// carries none of it. Shared helpers the harness leans on (startAtCommander, lookAt,
 // collect, spawn) stay in gameview_impl.cpp / gameview.h.
 #include "sim/sides.h"
 #include "util/virtualpath.h"
@@ -178,26 +178,16 @@
         applySettings(s);
         cursorsInit_ = true; cursors_.load(ren_, vfs_, &s);
         const auto bytes = gpuvram::bytes(), count = gpuvram::count();
-        const auto buttons = orderBtns_.size();
         const auto width = hudFont_.width("Smoothing test"), height = hudFont_.height();
         auto check = [](bool ok, const char* message) {
             if (!ok) throw std::runtime_error(message);
         };
-        // A data set with a Kingdoms-style panel (anims/<side>ingame.gaf) reloads it
-        // smoothed. TA's sidebar is a .gui page (TaGuiView, gameview_tahud.cpp) drawn
-        // from intgaf art that SMOOTH ART does not touch, so with TA data there is no
-        // panel to check; the toggle must still keep layout and state and leak nothing.
-        const bool panel = panelTex_ != nullptr;
+        // TA's sidebar is a .gui page (TaGuiView, gameview_tahud.cpp) drawn from intgaf
+        // art that SMOOTH ART does not touch; the toggle must still keep layout and
+        // state and leak nothing.
         for (int i = 0; i < 3; ++i) for (bool on : {true, false}) {
             s.smoothArt = on; applySettings(s);
-            int w = 0, h = 0;
-            if (panel) {
-                check(panelTex_ && SDL_QueryTexture(panelTex_, nullptr, nullptr, &w, &h) == 0,
-                      "HUD panel missing during live smoothing toggle");
-                check(w == panelW_ * (on ? 2 : 1) && h == panelH_ * (on ? 2 : 1),
-                      "HUD smoothing did not apply live");
-            }
-            check(orderBtns_.size() == buttons && hudFont_.width("Smoothing test") == width && hudFont_.height() == height,
+            check(hudFont_.width("Smoothing test") == width && hudFont_.height() == height,
                   "live smoothing changed interface layout");
             check(world_.stateHash() == hash, "interface smoothing changed simulation state");
             if (!on) check(gpuvram::bytes() == bytes && gpuvram::count() == count,
@@ -250,8 +240,7 @@
         }
         s.smoothArt = initial; applySettings(s);
         ta::setUiFontStyle(initialFont);
-        std::puts(panel ? "PASS: HUD smoothing applies live, keeps layout/state and releases textures"
-                      : "PASS: HUD smoothing toggles live (no smoothed panel art in this data set), keeps layout/state and releases textures");
+        std::puts("PASS: HUD smoothing toggles live, keeps layout/state and releases textures");
         std::puts(glyphArt ? "PASS: solid HUD text is one flat colour in the glyph shapes"
                            : "PASS: no HUD glyph-art face in this data set (fonts/bodfontbody.gaf): solid text not checked");
     }
@@ -300,9 +289,9 @@
                 mapView_.map().width, mapView_.map().height));
     }
 
-    // The local (server-less) match layouts: TA_FFA=N, then the 2-player monarch
+    // The local (server-less) match layouts: TA_FFA=N, then the 2-player commander
     // start (+ the demo armies). Returns true when it fully set the match up (FFA),
-    // false to fall through to the ctor's startAtMonarch tail. Dev path only: it does
+    // false to fall through to the ctor's startAtCommander tail. Dev path only: it does
     // not call setupMatch, so it can drift from the real match setup (TA_FFA resolves
     // godType by hand below for exactly that reason).
     bool GameView::setupLocalMatch(bool demo, bool bare, const std::string& side,
@@ -310,7 +299,7 @@
                                    const std::vector<std::pair<float, float>>& starts,
                                    float cx, float cz, float px, float pz, float ax, float az) {
         // Dev harness: TA_FFA=N or TA_FFA=N,t0.t1.t2... sets up an N-player
-        // game (each on its own team unless a team list is given), one monarch +
+        // game (each on its own team unless a team list is given), one commander +
         // a small army per player at N start positions, all AI-driven. Verifies
         // the 8-player / team / shared-vision / win-condition paths before the
         // real lobby exists. (multiplayer M1)
@@ -342,8 +331,8 @@
                 std::string fkSide = ta::sides::lowerPrefix(i % ta::sides::count());
                 const FactionKit& fk = kit(fkSide);
                 float mx = spots[size_t(i)].first, mz = spots[size_t(i)].second;
-                int mon = spawn(fk.monarch, mx, mz, 0, i);
-                if (i == 0) { playerMonarchId_ = mon; builderId_ = mon; }
+                int mon = spawn(fk.commander, mx, mz, 0, i);
+                if (i == 0) { playerCommanderId_ = mon; builderId_ = mon; }
                 for (int s = 0; s < 4; ++s)
                     spawn(fk.squad[s % 4], mx + (s % 2) * 26 - 13, mz - 50 + (s / 2) * 26, 0, i);
                 writableWorld().setStartResources(i, 1000, 1000);
@@ -361,9 +350,9 @@
         // The commanders face one another.
         float pFace = std::atan2(ax - px, az - pz);
         float aFace = std::atan2(px - ax, pz - az);
-        playerMonarchId_ = spawn(pk.monarch, px, pz, pFace, 0);
-        builderId_ = playerMonarchId_;
-        aiMonarchId_ = spawn(ak.monarch, ax, az, aFace, 1);
+        playerCommanderId_ = spawn(pk.commander, px, pz, pFace, 0);
+        builderId_ = playerCommanderId_;
+        aiCommanderId_ = spawn(ak.commander, ax, az, aFace, 1);
         // A skirmish's opening economy (TA's default 1000 metal / 1000 energy).
         writableWorld().setStartResources(0, 1000, 1000);
         writableWorld().setStartResources(1, 1000, 1000);
@@ -373,7 +362,7 @@
             std::vector<int> playerA, playerB;
             // TA_SHOT_SQUADS=1: a still life for the under-unit squad marker -- the
             // first three troops in control group 1, the rest in formation 2, the
-            // monarch in group 10 ("0"), spread out with no keeps and no attack orders
+            // commander in group 10 ("0"), spread out with no keeps and no attack orders
             // so the labels neither overlap nor walk away.
             const bool squadShot = ta::devFlag("TA_SHOT_SQUADS");
             const float sp = squadShot ? 2.5f : 1.0f;
@@ -390,7 +379,7 @@
             if (squadShot) {
                 for (size_t k = 0; k < playerA.size(); ++k)
                     writableWorld().unit(playerA[k])->squad = k < 3 ? 1 : -2;
-                if (auto* m = writableWorld().unit(playerMonarchId_)) m->squad = 10;
+                if (auto* m = writableWorld().unit(playerCommanderId_)) m->squad = 10;
                 std::fprintf(stderr, "squad shot: player army at %.0f %.0f\n", px, pz);
             }
             if (!squadShot && !playerA.empty() && !playerB.empty()) {
@@ -844,7 +833,6 @@
                 check(!pendingCmd_ && !placing_ && !rightDrag_ && !buildDrag_,what+": nothing armed");
                 check(notice_.empty(),what+": no notice");
                 check(!giveUnitsMenu_,what+": no diplomacy");
-                check(!guiPressed_,what+": no press flash");
                 const auto cursor=desiredCursor(tint);
                 check((cursor==ta::CursorId::Normal || cursor==ta::CursorId::Select) && !tint,what+": a watcher's cursor");
             };
@@ -2210,7 +2198,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 resetDiplomacy(room);
             }
             writableWorld().player(7).defeated=true;hotkeys_.load({});
-            const int monarch=spawn("armcom",1800,2100,0,0);
+            const int commander=spawn("armcom",1800,2100,0,0);
             const int soldier=spawn("armpw",1650,2100,0,0);
             spawn("armpw",2000,2100,0,1);spawn("corak",2200,2100,0,2);
             writableWorld().unit(soldier)->squad=3;
@@ -2228,16 +2216,16 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             };
             selection_.clear();publish();
             if(ta::devFlag("TA_RETIREMENT_TEST") &&
-               (front().units.size()!=world_.units().size() || !frameUnitP(monarch) || frameUnitP(retiredFixtureId)))
+               (front().units.size()!=world_.units().size() || !frameUnitP(commander) || frameUnitP(retiredFixtureId)))
                 throw std::runtime_error("compacted render snapshot lost high-ID units");
             SDL_Event key{};key.type=SDL_KEYDOWN;key.key.keysym.sym=SDLK_d;
             input(key,1000,700);check(giveUnitsMenu_,"D must open diplomacy without a selection");
             drawGiveUnitsMenu(1000,700);
             check(!has(DiplomacyAction::Give,1),"empty selection must disable gifts");
-            check(has(DiplomacyAction::Mana,1) && !has(DiplomacyAction::Mana,2) && !has(DiplomacyAction::Mana,0),"only teammates can receive mana");
+            check(has(DiplomacyAction::ShareMetal,1) && has(DiplomacyAction::ShareEnergy,0),"your own share-metal / share-energy switches");
             for(int p:{0,1,2,7})check(has(DiplomacyAction::Chat,p),"all participants need chat controls");
             check(!has(DiplomacyAction::Chat,3),"empty slots must not appear as players");
-            check(chatRecipients_==0x03 && framePlayer(0).manaShareMask==0xff,"default sharing; chat to allies only");
+            check(chatRecipients_==0x03 && framePlayer(0).shareResources==0,"sharing off by default; chat to allies only");
             // VOICE: chat's column again, same defaults (allies only) and the same players; your
             // own box is shown but inert (your voice never comes back to you).
             check(voiceRecipients_==chatRecipients_ && voiceRecipients_==0x03,"voice defaults equal chat's: allies only");
@@ -2335,14 +2323,14 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             chatTyping_=true;check(textEntryActive(),"the chat composer counts as typing");chatTyping_=false;
             SDL_StartTextInput();check(textEntryActive(),"any focused text field counts as typing");SDL_StopTextInput();
             lbField_=4;check(!textEntryActive(),"a lobby field still marked once the game runs is not typing");lbField_=0;
-            click(DiplomacyAction::Mana,1);check(!(world_.player(0).manaShareMask & 2),"mana checkbox issues command");
-            selection_={monarch};drawGiveUnitsMenu(1000,700);
+            click(DiplomacyAction::ShareMetal,1);check(world_.player(0).shareResources & 1,"share-metal checkbox issues command");
+            selection_={commander};drawGiveUnitsMenu(1000,700);
             check(!has(DiplomacyAction::Give,1),"an ineligible commander must disable gifts");
-            selection_={monarch,soldier};drawGiveUnitsMenu(1000,700);
+            selection_={commander,soldier};drawGiveUnitsMenu(1000,700);
             check(has(DiplomacyAction::Give,1) && !has(DiplomacyAction::Give,2),"eligible gifts only enabled for allies");
             click(DiplomacyAction::Give,1);publish();drawGiveUnitsMenu(1000,700);
             check(giveUnitsMenu_ && !has(DiplomacyAction::Give,1),"gift keeps menu open and disables exhausted selection");
-            check(selection_==std::vector<int>{monarch} && world_.unit(soldier)->player==1 && world_.unit(soldier)->squad==0,"gift filters selection and removes old control group");
+            check(selection_==std::vector<int>{commander} && world_.unit(soldier)->player==1 && world_.unit(soldier)->squad==0,"gift filters selection and removes old control group");
             input(key,1000,700);check(!giveUnitsMenu_,"D closes diplomacy");
             input(key,1000,700);drawGiveUnitsMenu(1000,700);
             voice_=nullptr;   // the harness's engine is not the game's
@@ -2983,12 +2971,12 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             constexpr int W=1280,H=960;
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
             const int me=localPlayer_;
-            const int monarch=spawn("armcom",cx-200,cz,0,me);
+            const int commander=spawn("armcom",cx-200,cz,0,me);
             const int idleFactory=spawn("armlab",cx+100,cz-150,0,me);
             const int busyFactory=spawn("armlab",cx+100,cz+150,0,me);
             const int other=spawn("corcom",cx-200,cz+200,0,(me+1)%2);
             const int worker=spawn("armck",cx-300,cz-100,0,me);   // a mobile builder, not a commander
-            check(monarch>=0 && idleFactory>=0 && busyFactory>=0 && other>=0 && worker>=0,"fixture spawned");
+            check(commander>=0 && idleFactory>=0 && busyFactory>=0 && other>=0 && worker>=0,"fixture spawned");
             const auto& menu=registry_.buildable("armlab");
             check(!menu.empty() && registry_.find(menu.front()),"the kbot lab has something to build");
             writableWorld().train(busyFactory,registry_.find(menu.front()),5);
@@ -3003,7 +2991,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             };
             check(idleRects_.size()>=3,"portraits for the commander, the worker and the idle lab: "+std::to_string(idleRects_.size()));
             const auto has=[](const IdleBuilderIcon* i,int id){return i && std::find(i->ids.begin(),i->ids.end(),id)!=i->ids.end();};
-            check(has(iconOf("armcom"),monarch) && !has(iconOf("armcom"),other),"the commander is in, the other player's is not");
+            check(has(iconOf("armcom"),commander) && !has(iconOf("armcom"),other),"the commander is in, the other player's is not");
             check(iconOf("armlab") && iconOf("armlab")->ids==std::vector<int>{idleFactory},"only the idle lab, not the building one");
             // The commander, then the mobile builders, then the factories; cost rising within each.
             check(idleRects_.front().type->commander,"the commander comes first");
@@ -3013,7 +3001,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             bool ordered=true;
             for (size_t i=1;i<idleRects_.size();++i) {
                 const auto *a=idleRects_[i-1].type,*b=idleRects_[i].type;
-                if (rank(a)>rank(b) || (rank(a)==rank(b) && a->buildCost>b->buildCost)) ordered=false;
+                if (rank(a)>rank(b) || (rank(a)==rank(b) && a->buildCostMetal>b->buildCostMetal)) ordered=false;
             }
             check(ordered,"commander, mobile builders, factories, each basic (cheap) to advanced");
             const SDL_FRect mid=idleRects_.front().r;
@@ -3317,9 +3305,9 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             if(!open)throw std::runtime_error("buildline shot found no open ground");
             mapView_.setOffset(wx-300/zoom,wz-300/zoom);
-            const int monarch=spawn("armck",wx-60,wz+90,0,localPlayer_);
+            const int commander=spawn("armck",wx-60,wz+90,0,localPlayer_);
             captureFrame();beginFrame();cosmeticStep(0);
-            selection_={monarch};placing_=wall;SDL_SetModState(KMOD_LSHIFT);
+            selection_={commander};placing_=wall;SDL_SetModState(KMOD_LSHIFT);
             SDL_Event e{};e.type=SDL_MOUSEBUTTONDOWN;e.button.button=SDL_BUTTON_LEFT;e.button.x=300;e.button.y=300;input(e,winW_,winH_);
             SDL_Event m{};m.type=SDL_MOUSEMOTION;m.motion.x=300+dx;m.motion.y=300+dy;m.motion.state=SDL_BUTTON_LMASK;input(m,winW_,winH_);
             SDL_PushEvent(&m);   // again through the loop, after the window's own first motion
@@ -3712,7 +3700,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         //   TA_RENDER_ROSTER=a,b   unit types replacing the 6-type roster ("structures": all of them)
         //   TA_RENDER_OVERLAYS=1   control squads, factories with production queues,
         //                           builders with queued build orders (ghosts)
-        //   TA_RENDER_GHOST_QUEUES=B,Q[,T[,dx,dz]]  B monarchs, each with Q queued (shift)
+        //   TA_RENDER_GHOST_QUEUES=B,Q[,T[,dx,dz]]  B commanders, each with Q queued (shift)
         //                           builds cycling through T small structure types (repeated
         //                           types), on a grid centred dx,dz from the army centre:
         //                           long queues, mostly off screen at zoom >= 0.5
@@ -4649,7 +4637,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 }
                 if(!usesPalette || !changed)
                     throw std::runtime_error("authored SHADE/DONT_SHADE did not select palette bands");
-                std::fprintf(stderr,"PASS: Aramon Keep palette lighting selects authored bands and matches prepared geometry\n");
+                std::fprintf(stderr,"PASS: palette lighting selects authored bands and matches prepared geometry\n");
             }
             std::fprintf(stderr,"PASS: production body/shadow collector preserves visible children and hidden-parent transforms\n");
             return;

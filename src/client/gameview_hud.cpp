@@ -346,24 +346,7 @@ namespace {
         if (miniTex_) { gpuvram::destroy(miniTex_); miniTex_ = nullptr; }
     }
 
-    int GameView::cmdPanelW() const {
-        if (gui_.gadgets.empty()) return panelW();
-        return std::max(miniSize() + 12, int(128 * guiS()) + 8);
-    }
-
-    SDL_FRect GameView::guiCmdRect(const ta::gui::Gadget& g) const {
-        float s = guiS();
-        // 640-space y=480 (screen bottom in retail) maps just above our info bar so
-        // the command panel and the existing bottom bar don't overlap.
-        float baseY = winH_ - barH();
-        return {winW_ - (640 - g.x) * s, baseY - (480 - g.y) * s, g.w * s, g.h * s};
-    }
-
-    SDL_FRect GameView::guiBarRect(const ta::gui::Gadget& g) const {
-        float vs = float(barH()) / 49.0f;   // 49-tall retail bar -> barH() px
-        float barTop = winH_ - barH();
-        return {g.x * vs, barTop + (g.y - 431) * vs, g.w * vs, g.h * vs};
-    }
+    int GameView::cmdPanelW() const { return panelW(); }
 
     SDL_FRect GameView::minimapRect(int winW, int winH) const {
         float aspect = float(mapView_.map().blocksY) / float(mapView_.map().blocksX);
@@ -444,14 +427,9 @@ namespace {
             SDL_FRect mr = minimapRect(winW, winH);
             top = mr.y + mr.h + 2 + pad;
         }
-        // Bottom edge: the top of the command panel art when a GUI is loaded, else the
-        // bottom bar. A spectator gets neither, so the strip runs to the window edge.
-        float bot = hudShown() ? float(winH) - barH() - pad : float(winH) - pad;
-        if (hudShown()) {
-            int mi = guiIdx("UnitMenu");
-            if (mi >= 0 && mi < int(gui_.gadgets.size()))
-                bot = guiCmdRect(gui_.gadgets[size_t(mi)]).y - pad;
-        }
+        // Bottom edge: the bottom bar. A spectator has none, so the strip runs to
+        // the window edge.
+        const float bot = hudShown() ? float(winH) - barH() - pad : float(winH) - pad;
         float availW = x1 - x0, availH = bot - top;
         if (availW <= 8 || availH <= 4) return;
 
@@ -560,7 +538,7 @@ namespace {
         rows.push_back({"VID", b});
         rows.push_back({"RENDERER", ta::renderdriver::shortLabel(ta::renderdriver::active().created)});
 
-        // The face the mana readout uses (client/uitext.h), so the panel matches the HUD
+        // The HUD's UI face (client/uitext.h), so the panel matches the HUD
         // it sits in rather than introducing a second face.
         //
         // Fixed size follows UI scale. Reserve ten label characters (SERVER CPU),
@@ -582,7 +560,7 @@ namespace {
         rows.resize(size_t(fit.rows));
 
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-        const SDL_Color mc{200, 215, 255, 255};   // the mana readout's colour
+        const SDL_Color mc{200, 215, 255, 255};   // the readout's colour
         float y = top;
         for (const auto& r : rows) {
             blockText(r.label, x0, y, px, mc);
@@ -698,11 +676,7 @@ namespace {
     }
 
     void GameView::reloadInterfaceArt(const ta::Settings& s) {
-        clearSideArt();
         loadInterfaceFonts();
-        loadPanel(side_);
-        loadGui(side_);
-        loadOrderButtons();
 
         for (auto& [name, texture] : icons_) if (texture) gpuvram::destroy(texture);
         icons_.clear();   // build portraits reload smoothed (or not) on next use
@@ -716,33 +690,6 @@ namespace {
         if (cursorsInit_) cursors_.load(ren_, vfs_, &s);
         cursorMode_ = -1;
         hwCursorFailed_ = false;
-    }
-
-    void GameView::loadPanel(const std::string& side) {
-        gpuvram::destroy(panelTex_); panelTex_ = nullptr;
-        gpuvram::destroy(botTex_); botTex_ = nullptr;
-        std::string base = "anims/" + side + "ingame";
-        try {
-            auto pal = ta::gaf::Palette::fromBytes(vread(base + ".pcx"), base + ".pcx");
-            for (auto& sq : ta::gaf::load(vread(base + ".gaf"), pal, -1, base + ".gaf")) {
-                if (sq.frames.empty()) continue;
-                auto& f = sq.frames[0];
-                // Iron Plague's Creon art (creingame.gaf) names the same two panels
-                // ButtonPanel and InfoPanel; the four original sides use Aid*/Main*.
-                if (sq.name == "AidPanel" || sq.name == "MainPanel" || sq.name == "ButtonPanel") {
-                    // panelW_/panelH_ keep the 1x LOGICAL size, which is what the HUD
-                    // lays out in -- so the texture being built at 2x is invisible here.
-                    panelTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
-                    panelW_ = f.width;
-                    panelH_ = f.height;
-                } else if (sq.name == "AidBotPanel" || sq.name == "BottomPanel" ||
-                           sq.name == "InfoPanel") {
-                    botTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
-                    botW_ = f.width;
-                    botH_ = f.height;
-                }
-            }
-        } catch (const std::exception&) {}
     }
 
     ta::gaf::Palette GameView::guiPalette(const std::string& gaf) {
@@ -778,448 +725,6 @@ namespace {
         return nullptr;
     }
 
-    void GameView::loadGui(const std::string& side) {
-        for (auto& v : guiTex_)
-            for (auto* t : v)
-                if (t) gpuvram::destroy(t);
-        guiTex_.clear();
-        gui_ = {};
-        artSide_ = side;
-        if (ta::devFlag("TA_NOGUI")) return;   // debug: shoot the fallback stone HUD instead
-        std::string path = "guis/" + side + "ingame.gui";
-        try {
-            gui_ = ta::gui::parse(vread(path), path);
-        } catch (const std::exception& e) {
-            std::fprintf(stderr, "loadGui: %s: %s\n", path.c_str(), e.what());
-            return;
-        }
-        guiTex_.resize(gui_.gadgets.size());
-        for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
-            const auto& g = gui_.gadgets[i];
-            for (const auto& im : g.imgs)
-                guiTex_[i].push_back(loadGuiFrame(im.gaf, im.seq, im.frame));
-        }
-        if (ta::devEnv("TA_GUIDEBUG")) {
-            std::fprintf(stderr, "== %s: %zu gadgets ==\n", path.c_str(),
-                         gui_.gadgets.size());
-            for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
-                const auto& g = gui_.gadgets[i];
-                std::fprintf(stderr, "  [%2zu] t%-2d %-18s (%3d,%3d %3dx%3d)", i, g.type,
-                             g.name.c_str(), g.x, g.y, g.w, g.h);
-                for (size_t k = 0; k < g.imgs.size(); ++k)
-                    std::fprintf(stderr, " %s:%s#%d%s", g.imgs[k].gaf.c_str(),
-                                 g.imgs[k].seq.c_str(), g.imgs[k].frame,
-                                 guiTex_[i][k] ? "" : "(!)");
-                std::fprintf(stderr, "\n");
-            }
-        }
-    }
-
-    GameView::SideArt GameView::takeSideArt() {
-        SideArt art{panelTex_, panelW_, panelH_, botTex_, botW_, botH_, std::move(gui_), std::move(guiTex_)};
-        panelTex_ = botTex_ = nullptr;
-        gui_ = {};
-        guiTex_.clear();
-        return art;
-    }
-
-    void GameView::useSideArt(SideArt art) {
-        panelTex_ = art.panelTex; panelW_ = art.panelW; panelH_ = art.panelH;
-        botTex_ = art.botTex; botW_ = art.botW; botH_ = art.botH;
-        gui_ = std::move(art.gui);
-        guiTex_ = std::move(art.guiTex);
-    }
-
-    void GameView::destroySideArt(SideArt& art) {
-        gpuvram::destroy(art.panelTex);
-        gpuvram::destroy(art.botTex);
-        for (auto& row : art.guiTex) for (auto* t : row) if (t) gpuvram::destroy(t);
-        art = {};
-    }
-
-    void GameView::clearSideArt() {
-        for (auto& [side, art] : sideArt_) destroySideArt(art);
-        sideArt_.clear();
-    }
-
-    // The first selection of a side loads its art once; every later one swaps pointers.
-    void GameView::showSideArt(std::string side) {
-        std::transform(side.begin(), side.end(), side.begin(), ::tolower);
-        if (side.empty() || side == artSide_) return;   // neutral units have no side
-        const auto found = sideArt_.find(side);
-        if (found != sideArt_.end() && found->second.missing) return;
-        const std::string shown = artSide_;
-        SideArt previous = takeSideArt();
-        if (found != sideArt_.end()) {
-            useSideArt(std::move(found->second));
-            sideArt_.erase(found);
-            artSide_ = side;
-        } else {
-            loadPanel(side);
-            loadGui(side);
-            if (gui_.gadgets.empty()) {   // a side with no .gui keeps the art already showing
-                SideArt nothing = takeSideArt();
-                destroySideArt(nothing);
-                useSideArt(std::move(previous));
-                artSide_ = shown;
-                sideArt_[side].missing = true;
-                return;
-            }
-        }
-        sideArt_[shown] = std::move(previous);
-    }
-
-    void GameView::loadOrderButtons() {
-        for (auto& b : orderBtns_) for (auto* texture : b.frames) gpuvram::destroy(texture);
-        orderBtns_.clear();
-        auto grab = [&](const char* gaf, const char* seq, char cmd,
-                        const char* label, int f0 = 0, int f1 = 1, int f2 = 2) {
-            try {
-                std::string pp = "anims/" + std::string(gaf) + ".pcx";
-                std::string gp = "anims/" + std::string(gaf) + ".gaf";
-                auto pal = ta::gaf::Palette::fromBytes(vread(pp), pp);
-                for (auto& sq : ta::gaf::load(vread(gp), pal, -1, gp)) {
-                    if (sq.name != seq || sq.frames.size() < 3) continue;
-                    OrderBtn b;
-                    b.cmd = cmd;
-                    b.label = label;
-                    int idx[3] = {f0, f1, f2};
-                    for (int i = 0; i < 3; ++i) {
-                        auto& f = sq.frames[size_t(idx[i])];
-                        if (f.width == 0) continue;
-                        // b.w/b.h keep the 1x logical size the button lays out in.
-                        b.frames[i] = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
-                        b.w = f.width;
-                        b.h = f.height;
-                    }
-                    if (b.frames[0]) orderBtns_.push_back(b);
-                }
-            } catch (const std::exception&) {}
-        };
-        grab("actionbuttons", "MoveButton", 'm', "MOVE");
-        grab("actionbuttons", "AttackButton", 'a', "ATTACK");
-        grab("actionbuttons", "PatrolButton", 'p', "PATROL");
-        grab("actionbuttons", "GuardButton", 'g', "GUARD");
-        // Fight-move (Keys.TDF LOWER_F) reuses the Attack glyph, tinted.
-        grab("actionbuttons", "AttackButton", 'f', "FIGHT-MOVE");
-        grab("igcommonbuttons", "StopButton", 0, "STOP", 1, 2, 3);
-    }
-
-    SDL_FRect GameView::orderBtnRect(size_t i, int winW) const {
-        return {float(winW) - 54, 220 + float(i) * 52, 44, 44};
-    }
-
-    void GameView::drawOrderColumn(int winW, int winH) {
-        (void)winH;
-        if (orderBtns_.empty() || selection_.empty()) return;
-        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-        SDL_FRect col{float(winW) - 60, 210, 56,
-                      float(orderBtns_.size()) * 52 + 12};
-        SDL_SetRenderDrawColor(ren_, 20, 18, 16, 170);
-        SDL_RenderFillRectF(ren_, &col);
-        SDL_SetRenderDrawColor(ren_, 120, 105, 80, 255);
-        SDL_RenderDrawRectF(ren_, &col);
-        for (size_t i = 0; i < orderBtns_.size(); ++i) {
-            const auto& b = orderBtns_[i];
-            SDL_FRect r = orderBtnRect(i, winW);
-            bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w && mouseY_ >= r.y &&
-                       mouseY_ <= r.y + r.h;
-            bool armed = b.cmd && pendingCmd_ == b.cmd;
-            SDL_Texture* t = armed && b.frames[2] ? b.frames[2]
-                             : hot && b.frames[1] ? b.frames[1]
-                                                  : b.frames[0];
-            // Fight-move reuses the Attack glyph -- tint it so it reads apart from Attack
-            // (matches the fight-move mouse cursor). Reset after, as the glyph may be shared.
-            if (b.cmd == 'f')
-                SDL_SetTextureColorMod(t, kFightMoveTint.r, kFightMoveTint.g, kFightMoveTint.b);
-            SDL_RenderCopyF(ren_, t, nullptr, &r);
-            if (b.cmd == 'f') SDL_SetTextureColorMod(t, 255, 255, 255);
-            if (armed) {
-                SDL_SetRenderDrawColor(ren_, 255, 220, 90, 255);
-                SDL_RenderDrawRectF(ren_, &r);
-            }
-            if (hot) {
-                float px = 1.8f;
-                float tw = blockWidth(b.label, px);
-                SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
-                SDL_FRect tb{r.x - tw - 14, r.y + 14, tw + 10, 22};
-                SDL_RenderFillRectF(ren_, &tb);
-                blockText(b.label, r.x - tw - 9, r.y + 18, px, {235, 225, 180, 255});
-            }
-        }
-    }
-
-    int GameView::guiIdx(const char* name) const {
-        for (size_t i = 0; i < gui_.gadgets.size(); ++i)
-            if (gui_.gadgets[i].name == name) return int(i);
-        return -1;
-    }
-
-    int GameView::guiIdxLeft(const char* name) const {
-        int best = -1;
-        for (size_t i = 0; i < gui_.gadgets.size(); ++i)
-            if (gui_.gadgets[i].name == name &&
-                (best < 0 || gui_.gadgets[i].x < gui_.gadgets[size_t(best)].x))
-                best = int(i);
-        return best;
-    }
-
-    int GameView::guiIdxRight(const char* name) const {
-        int best = -1;
-        for (size_t i = 0; i < gui_.gadgets.size(); ++i)
-            if (gui_.gadgets[i].name == name &&
-                (best < 0 || gui_.gadgets[i].x > gui_.gadgets[size_t(best)].x))
-                best = int(i);
-        return best;
-    }
-
-    std::vector<std::pair<int, char>> GameView::guiActiveButtons() const {
-        std::vector<std::pair<int, char>> out;
-        if (gui_.gadgets.empty() || selection_.empty()) return out;
-        const UnitR* front = frameUnitP(selection_.front());
-        if (!front || !front->type) return out;
-        auto add = [&](const char* nm, char c) {
-            int i = guiIdx(nm);
-            if (i >= 0) out.push_back({i, c});
-        };
-        bool mobile = front->type->maxVel > ta::sim::Fixed();        // inverse of isStructure()
-        bool armed = !front->type->weapons.empty();
-        // A production building, or a mobile builder repeating production, takes
-        // Move/Patrol/Attack as RALLY orders for its output (World::setRally);
-        // while it repeats, a mobile builder refuses Guard (matchsetup.cpp).
-        const bool rally = front->holdsRally();
-        // The five order slots sit at fixed .gui positions that nothing else uses, so
-        // retail keeps them on screen and swaps in the Disabled face when the order
-        // doesn't apply (Gadget slot 0). Emitting them as UPPERCASE marks them
-        // unavailable: the draw picks the disabled art and they stay unclickable.
-        // The context slots below OVERLAP each other (HEAL/LOAD share one rect, CLEAR/
-        // UNLOAD another, cloak/power a third), so those must stay hidden, never
-        // blanked -- retail hides those the same way.
-        add("MOVE", (mobile || rally) ? 'm' : 'M');
-        add("PATROL", (mobile || rally) ? 'p' : 'P');
-        add("GUARD", (mobile && !rally) ? 'g' : 'G');
-        add("ATTACK", (armed || rally) ? 'a' : 'A');
-        add("STOP", 's');
-        // Context orders: reclaim (a mobile reclaiming builder), and transport
-        // load/unload. CLEAR and UNLOAD share a .gui slot (599,213) but a unit is
-        // never both a reclaimer and a transport, so only one shows.
-        bool builder = false, reclaimer = false;
-        for (int id : selection_) {
-            const auto* u = frameUnitP(id);
-            if (!u || !u->alive() || !u->type || !u->type->isBuilder ||
-                !u->type->canMove || u->player != hudPlayer() || u->repeatType)
-                continue;   // a repeating producer refuses repair/reclaim
-            builder = true;
-            if (u->type->canReclaim) reclaimer = true;
-        }
-        if (builder) add("HEAL", 'r');       // repair a damaged friendly
-        if (reclaimer) add("CLEAR", 'c');
-        if (front->type->canTransport) {
-            if (int(front->cargo.size()) < front->type->transportCap) add("LOAD", 'l');
-            // Keep the command available to queue a destination during pickup.
-            add("UNLOAD", 'u');
-        }
-        // Combat stance radio: offensive/defensive/passive. Gated on the FBI's
-        // unitstandorders, which is what retail's panel consults -- not on a
-        // mobile-and-armed guess that only happens to agree on the shipped data.
-        // A finished production building, or a mobile builder on an infinite
-        // queue, offers them too: they set the stance its output starts with
-        // (World::setStance's outputStance); none is lit until one is chosen.
-        const bool outputStance = front->showsOutputStance();
-        if ((mobile && armed && front->type->canSetStance) || outputStance) {
-            add("Offensive", 'O');
-            add("Defensive", 'D');
-            add("Passive", 'H');
-        }
-        // Cloak toggle (cloakers) OR power on/off (onOffable) -- they share the 303
-        // row, and a unit has at most one of the two capabilities.
-        if (front->type->canCloak) {
-            add("Uncloaked", 'k');
-            add("Cloaked", 'K');
-        } else if (front->type->onOffable) {
-            add("Inactive", 'F');
-            add("Active", 'N');
-        }
-        return out;
-    }
-
-    void GameView::renderGui(int winW, int winH) {
-        if (gui_.gadgets.empty()) { drawOrderColumn(winW, winH); return; }
-        guiBtnRects_.clear();
-        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-
-        // Command panel background. ButtonPanel frame 0 is the idle dragon medallion;
-        // frame 1 is the button-slot panel shown while a unit is selected (retail swaps
-        // the medallion out for the order grid).
-        int mi = guiIdx("UnitMenu");
-        if (mi >= 0 && !guiTex_[mi].empty()) {
-            int pf = !selection_.empty() && guiTex_[mi].size() > 1 && guiTex_[mi][1] ? 1 : 0;
-            SDL_Texture* pt = guiTex_[mi][size_t(pf)] ? guiTex_[mi][size_t(pf)]
-                                                      : guiTex_[mi][0];
-            if (pt) {
-                SDL_FRect r = guiCmdRect(gui_.gadgets[mi]);
-                SDL_RenderCopyF(ren_, pt, nullptr, &r);
-            }
-        }
-
-        const UnitR* selFront =
-            !selection_.empty() ? frameUnitP(selection_.front()) : nullptr;
-        for (auto [idx, cmd] : guiActiveButtons()) {
-            const auto& g = gui_.gadgets[idx];
-            auto& tex = guiTex_[idx];
-            SDL_FRect r = guiCmdRect(g);
-            // A disabled slot draws but never takes a click (uppercase = unavailable).
-            if (!(cmd == 'M' || cmd == 'P' || cmd == 'G' || cmd == 'A'))
-                guiBtnRects_.push_back({r, cmd});
-            bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w && mouseY_ >= r.y &&
-                       mouseY_ <= r.y + r.h;
-            bool active = false;
-            if (cmd == 'O' || cmd == 'D' || cmd == 'H') {
-                // A producer of units shows the stance chosen for its output.
-                const int want = cmd == 'O' ? 0 : cmd == 'D' ? 1 : 2;
-                active = selFront && (selFront->showsOutputStance() ? selFront->outputStance == want
-                                                                    : selFront->stance == want);
-            }
-            else if (cmd == 'K') active = selFront && selFront->cloakOn;
-            else if (cmd == 'k') active = selFront && !selFront->cloakOn;
-            else if (cmd == 'N') active = selFront && selFront->active;
-            else if (cmd == 'F') active = selFront && !selFront->active;
-            else if (cmd != 's')
-                active = pendingCmd_ == cmd;
-            // Retail's Gadget image slots are NOT (normal, hover, grey). Its per-class
-            // slot-name table reads {"Disabled", "Pressed", "Unpressed"} for both the
-            // Button and RadioButton classes, so:
-            //   slot 0 = Disabled (the empty socket), 1 = Pressed, 2 = Unpressed (idle).
-            // Button's constructor sets state 2, mouse-down sets 1 and mouse-up sets 2
-            // back. We had 1 and 2 the other way round for push buttons, so every order
-            // button sat permanently in its pushed-in face and "lit up" to its normal
-            // one on hover. Toggles were already right: a selected radio shows Pressed.
-            //
-            // There is deliberately no toggle/push branch below. A toggle wants Pressed
-            // while it is the SELECTED option and a push button wants it while ARMED,
-            // and `active` already means exactly that for each -- so the list of toggle
-            // letters that used to sit here had no reader and is gone.
-            // An UPPERCASE order letter is the same order, marked unavailable for this
-            // selection: draw the Disabled face and stay unclickable.
-            bool disabled = cmd == 'M' || cmd == 'P' || cmd == 'G' || cmd == 'A';
-            auto tx = [&](int i) -> SDL_Texture* {
-                return i >= 0 && i < int(tex.size()) ? tex[size_t(i)] : nullptr;
-            };
-            {
-                // A push button is Pressed while it is armed (waiting for you to
-                // click a target) or during the click flash; a toggle is Pressed while
-                // it is the selected option. Hover no longer changes the face -- it
-                // only raises the tooltip, as in retail.
-                bool held = active ||
-                            (cmd == guiPressed_ && SDL_GetTicks() - guiPressedMs_ < 120);
-                int slot = disabled ? 0 : (held ? 1 : 2);
-                SDL_Texture* t = tx(slot);
-                if (!t) t = tx(held ? 2 : 1);   // art missing that face: use the other
-                if (!t) t = tx(0);
-                if (t) SDL_RenderCopyF(ren_, t, nullptr, &r);
-                // Armed with no distinct pressed face: fall back to the gold outline.
-                if (active && (!t || slot != 1)) {
-                    SDL_SetRenderDrawColor(ren_, 255, 220, 90, 255);
-                    SDL_RenderDrawRectF(ren_, &r);
-                }
-            }
-            if (hot && !g.cmd.empty()) {
-                float px = 1.6f, tw = blockWidth(g.cmd.c_str(), px);
-                SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
-                SDL_FRect tb{r.x - tw - 14, r.y + r.h * 0.3f, tw + 10, 20};
-                SDL_RenderFillRectF(ren_, &tb);
-                blockText(g.cmd.c_str(), r.x - tw - 9, r.y + r.h * 0.3f + 3, px,
-                          {235, 225, 180, 255});
-            }
-        }
-
-        // Mana panel at the command-panel foot: the orb is a MANA BULB (its 24 frames
-        // are liquid-fill levels, picked by mana fraction); "MANA X/Y" sits in a box
-        // above it, with +income to the orb's left and -expenditure to its right.
-        int cb = guiIdx("CrystalBall");
-        if (cb >= 0) {
-            const PlayerR& tm = framePlayer(hudPlayer());
-            float cap = tm.storage;
-            SDL_FRect orb = guiCmdRect(gui_.gadgets[cb]);
-            if (!guiTex_[cb].empty()) {
-                int nf = int(guiTex_[cb].size());
-                int fr = tm.manaBulbFrame(nf);
-                if (guiTex_[cb][size_t(fr)])
-                    SDL_RenderCopyF(ren_, guiTex_[cb][size_t(fr)], nullptr, &orb);
-            }
-            // "MANA" over "X/Y", both centred (H and V) in the panel's black HelpText
-            // recess above the orb.
-            int pmi = guiIdx("UnitMenu"), hti = guiIdx("HelpText");
-            SDL_FRect panel = pmi >= 0 ? guiCmdRect(gui_.gadgets[pmi]) : orb;
-            SDL_FRect mbox = hti >= 0 ? guiCmdRect(gui_.gadgets[hti])
-                                      : SDL_FRect{panel.x + 6, orb.y - 60, panel.w - 12, 52};
-            SDL_SetRenderDrawColor(ren_, 8, 8, 8, 235);
-            SDL_RenderFillRectF(ren_, &mbox);
-            SDL_SetRenderDrawColor(ren_, 70, 62, 44, 255);
-            SDL_RenderDrawRectF(ren_, &mbox);
-            char nums[32];
-            std::snprintf(nums, sizeof nums, "%d/%d", int(tm.mana), int(cap));
-            float px = std::max(1.4f, mbox.h / 20.0f);
-            float gap = 3, lineH = 7 * px;
-            // Shrink to fit both lines within the recess (H and V).
-            while (px > 1.0f && (2 * lineH + gap > mbox.h - 4 ||
-                                 blockWidth(nums, px) > mbox.w - 6)) {
-                px -= 0.1f; lineH = 7 * px;
-            }
-            float y0 = mbox.y + (mbox.h - (2 * lineH + gap)) * 0.5f;
-            SDL_Color mc{200, 215, 255, 255};
-            float w1 = blockWidth("MANA", px), w2 = blockWidth(nums, px);
-            blockText("MANA", mbox.x + (mbox.w - w1) * 0.5f, y0, px, mc);
-            blockText(nums, mbox.x + (mbox.w - w2) * 0.5f, y0 + lineH + gap, px, mc);
-            // Both rates come from the same resource history as the simulation.
-            float ipx = std::max(1.5f, orb.h / 24.0f);
-            char inb[16], outb[16];
-            std::snprintf(inb, sizeof inb, "+%d", int(tm.income + 0.5f));
-            std::snprintf(outb, sizeof outb, "-%d", int(tm.expenditure + 0.5f));
-            float iy = orb.y + orb.h * 0.5f - 3.5f * ipx;
-            blockText(inb, orb.x - blockWidth(inb, ipx) - 5, iy, ipx, {150, 225, 150, 255});
-            blockText(outb, orb.x + orb.w + 5, iy, ipx, {230, 160, 150, 255});
-        }
-    }
-
-    bool GameView::guiClick(float mx, float my) {
-        for (auto& [r, cmd] : guiBtnRects_) {
-            if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
-            if (watchOnly()) return true;   // read-only: no tone, no press, no fall-through
-            playClickTone();
-            // Retail pushes the button in on mouse-DOWN and releases it on UP, firing
-            // the command there. We dispatch on down (changing that would also change
-            // how dragging off a button cancels it), so latch a short press flash
-            // instead -- the same visible feedback without moving the dispatch.
-            guiPressed_ = cmd;
-            guiPressedMs_ = SDL_GetTicks();
-            if (cmd == 's') {
-                for (int id : selection_) {
-                    ta::net::Command c;
-                    c.kind = ta::net::Cmd::Stop;
-                    c.unitId = id;
-                    issue(c);
-                }
-            } else if (cmd == 'O' || cmd == 'D' || cmd == 'H') {
-                int st = cmd == 'O' ? 0 : cmd == 'D' ? 1 : 2;
-                // A producer's lit output stance clicked again is cleared: its
-                // output keeps its own default.
-                const UnitR* f = selection_.empty() ? nullptr : frameUnitP(selection_.front());
-                if (f && f->type && f->showsOutputStance() && f->outputStance == st)
-                    st = ta::sim::World::kStanceNone;
-                issuePerUnit(ta::net::Cmd::Stance, st);
-            } else if (cmd == 'K' || cmd == 'k') {
-                issuePerUnit(ta::net::Cmd::Cloak, cmd == 'K' ? 1 : 0);
-            } else if (cmd == 'N' || cmd == 'F') {
-                issuePerUnit(ta::net::Cmd::SetActive, cmd == 'N' ? 1 : 0);
-            } else {
-                pendingCmd_ = cmd;
-            }
-            return true;
-        }
-        return false;
-    }
-
     std::vector<std::string> GameView::conjureMenu(const std::string& builderType) const {
         const auto& all = registry_.buildable(builderType);
         std::vector<std::string> out;
@@ -1230,202 +735,6 @@ namespace {
                 (!whitelisted || std::find(missionAllowed_.begin(), missionAllowed_.end(), id) != missionAllowed_.end()))
                 out.push_back(id);
         return out;
-    }
-
-    void GameView::drawGauge(const char* name, float frac, SDL_Color c) {
-        int gi = guiIdxLeft(name);
-        if (gi < 0) return;
-        SDL_FRect r = guiBarRect(gui_.gadgets[gi]);
-        if (r.h < 5) { r.y -= (5 - r.h); r.h = 5; }   // the retail gauge is 2px -- lift for legibility
-        frac = std::clamp(frac, 0.0f, 1.0f);
-        SDL_SetRenderDrawColor(ren_, 8, 8, 8, 230);
-        SDL_RenderFillRectF(ren_, &r);
-        SDL_FRect f{r.x, r.y, r.w * frac, r.h};
-        SDL_SetRenderDrawColor(ren_, c.r, c.g, c.b, 255);
-        SDL_RenderFillRectF(ren_, &f);
-        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 200);
-        SDL_RenderDrawRectF(ren_, &r);
-    }
-
-    bool GameView::drawGuiInfoBar(int winW, int winH) {
-        if (gui_.gadgets.empty()) return false;
-        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-        float barTop = float(winH - barH());
-        // Repeat the InfoPanel at its original aspect ratio, scaled to the bar
-        // height. The renderer clips the last tile at the window's right edge.
-        int bi = guiIdx("BottomBar");
-        SDL_Texture* chrome = bi >= 0 && !guiTex_[bi].empty() ? guiTex_[bi][0] : nullptr;
-        int chromeW = 0, chromeH = 0;
-        if (chrome && SDL_QueryTexture(chrome, nullptr, nullptr, &chromeW, &chromeH) == 0 &&
-            chromeW > 0 && chromeH > 0 && barH() > 0) {
-            const float tileW = float(chromeW) * float(barH()) / float(chromeH);
-            for (float x = 0; x < float(winW); x += tileW) {
-                SDL_FRect r{x, barTop, tileW, float(barH())};
-                SDL_RenderCopyF(ren_, chrome, nullptr, &r);
-            }
-        } else {
-            SDL_SetRenderDrawColor(ren_, 42, 38, 34, 255);
-            SDL_FRect bar{0, barTop, float(winW), float(barH())};
-            SDL_RenderFillRectF(ren_, &bar);
-        }
-        int ei = guiIdx("BottomEnd");
-        if (ei >= 0 && !guiTex_[ei].empty() && guiTex_[ei][0]) {
-            SDL_FRect r = guiBarRect(gui_.gadgets[ei]);
-            SDL_RenderCopyF(ren_, guiTex_[ei][0], nullptr, &r);
-        }
-        // Unit info as a FIXED group centred in the bar (like retail): UnitInfo1
-        // (selected unit: portrait + name + HP/mana bars), ActionText (status), and
-        // UnitInfo2 (the conjured target: name + progress bar). Every element keeps its
-        // .gui spot so the layout never shifts, but -- unlike retail, which always shows
-        // both blocks -- only what carries data draws: no portrait box with nothing
-        // selected, no mana bar without a pool, no target block without a target.
-        {
-            float vs = float(barH()) / 49.0f;
-            float groupW = (512.0f - 59.0f) * vs;   // UnitInfo1.x .. UnitInfo2 right edge
-            float off = (float(winW) - groupW) * 0.5f - 59.0f * vs;
-            auto place = [&](int gi) {
-                SDL_FRect r = guiBarRect(gui_.gadgets[gi]);
-                r.x += off;
-                return r;
-            };
-            auto bar = [&](int gi, float frac, SDL_Color c) {
-                if (gi < 0) return;
-                SDL_FRect r = place(gi);
-                if (r.h < 5) { r.y -= (5 - r.h) * 0.5f; r.h = 5; }
-                drawBar(r.x, r.y, r.w, r.h, frac, c);
-            };
-            const UnitR* u =
-                selection_.empty() ? nullptr : frameUnitP(selection_.front());
-            if (u && (!u->alive() || !u->type)) u = nullptr;
-            float tpx = std::max(2.0f, float(barH()) / 24.0f);
-            // A multi-selection shows the GROUP, not its front unit: no unit name (the
-            // squad's label instead, when the selection is one), HP / mana totals, and
-            // none of the front unit's own extras (veterancy chevron, conjure target).
-            const bool multi = u && selection_.size() > 1;
-
-            // The conjured target (site under construction, or the head of a build queue).
-            std::string tName; float tProg = 0;
-            if (u && !multi) {
-                if (u->buildSiteId) {
-                    if (const auto* s = frameUnitP(u->buildSiteId); s && s->type) {
-                        tName = s->type->name;
-                        tProg = s->hp / std::max(1.0f, float(s->type->maxHp));
-                    }
-                } else if (!u->buildQueue.empty() && u->buildQueue.front()) {
-                    // The unit being produced shows its own HP, as for a site above (and
-                    // as the bar over that unit does). buildProgress/buildTime ignored
-                    // the producer's workertime, and retail-resource production does
-                    // not advance buildProgress at all.
-                    tName = u->buildQueue.front()->name;
-                    if (const auto* s = u->productionSiteId ? frameUnitP(u->productionSiteId) : nullptr;
-                        s && s->type)
-                        tProg = s->hp / std::max(1.0f, float(s->type->maxHp));
-                }
-            }
-
-            // --- UnitInfo1: selected unit ---
-            int ii = guiIdx("UnitImage");
-            if (ii >= 0 && u && !multi) {
-                SDL_FRect pr = place(ii);
-                SDL_Texture* ic = iconFor(u->type->id);
-                if (!ic) ic = modelIconTex(u->type->id, playerColorSlot(hudPlayer()),
-                                           u->type->maxVel > ta::sim::Fixed());
-                if (ic) {   // no image at all: no bare box either
-                    SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
-                    SDL_RenderFillRectF(ren_, &pr);
-                    SDL_RenderCopyF(ren_, ic, nullptr, &pr);
-                    SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
-                    SDL_RenderDrawRectF(ren_, &pr);
-                }
-                // No rank mark: TA's veterancy is the kill count, shown by
-                // the panel's KillCount.
-            } else if (ii >= 0 && multi) {
-                // A multi-selection: one portrait per type, the front unit's anchoring
-                // the strip at this spot and the rest running LEFT over the chrome and
-                // the EndCap scroll out to the screen's left edge. All full size until
-                // a full-size strip would pass that edge -- only then do they ALL
-                // (the front one too) shrink, fold, or cap with "+K".
-                const SDL_FRect pr = place(ii);
-                const float gap = 3 * vs, margin = 4 * vs;
-                const float room = ta::selportraits::room(0, pr.x, margin);
-                drawSelPortraits(pr, room, gap, 1.5f * vs);
-            }
-            // The name row: the unit's name (in its own capitals under MODERN) or the
-            // squad label, shrunk to stop short of the conjured target's name to its right
-            // and, with any descenders it has, of the health bar below it.
-            auto nameText = [&](int slot, const std::string& text, int rightSlot, int barSlot) {
-                const SDL_FRect nr = place(slot);
-                float px = tpx;
-                if (rightSlot >= 0)
-                    px = std::min(px, tpx * (place(rightSlot).x - nr.x - 3 * tpx) / std::max(1.0f, blockWidth(text, tpx)));
-                // Its own descenders only (a "g" or "y" in the name; caps-only names keep
-                // the full row), a UI-scaled pixel clear of the bar.
-                if (barSlot >= 0)
-                    px = std::min(px, tpx * (place(barSlot).y - std::max(1.0f, vs) - nr.y)
-                                          / (7 * tpx + ta::uiTextInkDescent(text, tpx)));
-                blockText(text, nr.x, nr.y, std::max(1.0f, px), {236, 226, 192, 255});
-            };
-            if (int t1 = guiIdxLeft("UnitText"); u && !multi && t1 >= 0)
-                nameText(t1, ta::client::panelName(*u, !singlePlayer_, playerName_[u->player & 7]),
-                         guiIdxRight("UnitText"), guiIdxLeft("HealthBar"));
-            else if (const std::string sq = multi ? selSquadLabel() : std::string(); !sq.empty() && t1 >= 0)
-                nameText(t1, sq, guiIdxRight("UnitText"), guiIdxLeft("HealthBar"));
-            // HP with anything selected; mana only for a pool (the group's casters).
-            if (multi) {
-                const auto t = selTotals();
-                bar(guiIdxLeft("HealthBar"), t.hpFrac(), {210, 70, 60, 255});
-                if (t.hasMana) bar(guiIdxLeft("ManaBar"), t.manaFrac(), {90, 150, 255, 255});
-            } else if (u) {
-                bar(guiIdxLeft("HealthBar"), u->hp / std::max(1.0f, float(u->type->maxHp)),
-                    {210, 70, 60, 255});
-            }
-            // KillCount (4b28e8..4b2909): the unit's own kills, beside its bars, only
-            // for this player's unit and only once it has one. A watcher (spectator or
-            // replay) sees the panel as the selected unit's owner, so their units count.
-            int killSlot = -1;
-            if (int ki = guiIdx("KillCount"); ki >= 0 && u && !multi && int(u->player) == hudPlayer() && u->kills > 0) {
-                const SDL_FRect kr = place(ki);
-                const std::string k = std::to_string(u->kills);
-                const float px = std::max(1.0f, std::min(tpx, tpx * (kr.w - tpx) / std::max(1.0f, blockWidth(k, tpx))));
-                blockText(k, kr.x, kr.y + (kr.h - 7 * px) * 0.5f, px, {236, 226, 192, 255});
-                killSlot = ki;
-            }
-
-            // --- ActionText: status (or the total for a multi-selection) ---
-            // Not at the .gui's ActionText spot: that sits on the name row, where a long
-            // name ("BEAST HANDLER") runs into it. Centred in the gap between the two
-            // HP / mana bar pairs' SPOTS instead (drawn or not, so it never moves),
-            // shrunk only if it would not fit there.
-            if (int ai = guiIdx("ActionText"); u && ai >= 0) {
-                SDL_FRect ar = place(ai);
-                std::string st = multi
-                    ? std::to_string(selection_.size()) + " SELECTED"
-                    : std::string(unitStatusText(u));
-                float px = tpx, x = ar.x, y = ar.y;
-                const int lh = guiIdxLeft("HealthBar"), lm = guiIdxLeft("ManaBar");
-                const int rh = guiIdxRight("HealthBar");
-                if (lh >= 0 && lm >= 0 && rh >= 0) {
-                    const SDL_FRect a = place(lh), m = place(lm), b = place(rh);
-                    float l = std::max(a.x + a.w, m.x + m.w);
-                    if (killSlot >= 0) { const SDL_FRect k = place(killSlot); l = std::max(l, k.x + k.w); }
-                    const float gap = b.x - l;
-                    if (gap > 0 && !st.empty()) {
-                        px = std::max(1.0f, std::min(tpx, tpx * (gap - 2 * tpx) / std::max(1.0f, blockWidth(st, tpx))));
-                        x = l + (gap - blockWidth(st, px)) * 0.5f;
-                        y = (std::min(a.y, m.y) + std::max(a.y + a.h, m.y + m.h) - 7 * px) * 0.5f;
-                    }
-                }
-                blockText(st, x, y, px, {170, 205, 255, 255});
-            }
-
-            // --- UnitInfo2: the conjured target, only while there is one ---
-            // Name + progress; its ManaBar spot stays empty (a target has no pool to show).
-            if (!tName.empty()) {
-                if (int t2 = guiIdxRight("UnitText"); t2 >= 0) nameText(t2, tName, -1, guiIdxRight("HealthBar"));
-                bar(guiIdxRight("HealthBar"), std::clamp(tProg, 0.0f, 1.0f), {210, 70, 60, 255});
-            }
-        }
-        return true;
     }
 
     std::vector<ta::selportraits::Group> GameView::selTypeGroups() const {
@@ -1442,7 +751,7 @@ namespace {
         v.reserve(selection_.size());
         for (int id : selection_)
             if (const UnitR* u = frameUnitP(id); u && u->alive() && u->type)
-                v.push_back({u->hp, float(u->type->maxHp), 0.0f, 0.0f});
+                v.push_back({u->hp, float(u->type->maxHp)});
         return ta::selportraits::total(v);
     }
 
@@ -1576,30 +885,6 @@ namespace {
         SDL_SetRenderDrawColor(ren_, 0, 0, 0, 200);
         SDL_RenderDrawRectF(ren_, &r);
     }
-
-    bool GameView::orderColumnClick(float mx, float my, int winW) {
-
-        if (orderBtns_.empty() || selection_.empty()) return false;
-        for (size_t i = 0; i < orderBtns_.size(); ++i) {
-            SDL_FRect r = orderBtnRect(i, winW);
-            if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
-            if (watchOnly()) return true;   // read-only: swallowed, as in guiClick
-            const auto& b = orderBtns_[i];
-            if (b.cmd) {
-                pendingCmd_ = b.cmd;
-            } else {
-                for (int id : selection_) {
-                    ta::net::Command c;
-                    c.kind = ta::net::Cmd::Stop;
-                    c.unitId = id;
-                    issue(c);
-                }
-            }
-            return true;
-        }
-        return false;
-    }
-
 
     void GameView::colorSwatch(float x, float y, float s, int color, std::function<void(int)> action) {
         SDL_FRect r{x, y, s, s};
@@ -1773,27 +1058,14 @@ namespace {
     }
 
     void GameView::drawPanel(int winW, int winH) {
-        // Bottom bar: the retail InfoPanel chrome + unit info when a .gui is loaded,
-        // else our own stone strip. The build menu + mana readout below draw on top.
+        // Bottom bar: the engine's own strip (TA's interface is the sidebar page and
+        // the top bar, gameview_tahud.cpp). The build menu below draws on top.
         selPortraitRects_.clear();
-        bool guiBar = drawGuiInfoBar(winW, winH);
+        const bool guiBar = false;
         SDL_FRect bar{0, float(winH - barH()), float(winW), float(barH())};
-        if (!guiBar) {
-            if (botTex_) {
-                for (int x = 0; x < winW; x += botW_) {
-                    SDL_Rect dst{x, winH - barH(), botW_, barH()};
-                    SDL_RenderCopy(ren_, botTex_, nullptr, &dst);
-                }
-            } else if (panelTex_) {
-                for (int x = 0; x < winW; x += panelW_) {
-                    SDL_Rect src{0, 40, panelW_, barH()};
-                    SDL_Rect dst{x, winH - barH(), panelW_, barH()};
-                    SDL_RenderCopy(ren_, panelTex_, &src, &dst);
-                }
-            } else {
-                SDL_SetRenderDrawColor(ren_, 42, 38, 34, 255);
-                SDL_RenderFillRectF(ren_, &bar);
-            }
+        {
+            SDL_SetRenderDrawColor(ren_, 42, 38, 34, 255);
+            SDL_RenderFillRectF(ren_, &bar);
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 90);
             SDL_RenderFillRectF(ren_, &bar);
@@ -1813,18 +1085,17 @@ namespace {
             SDL_RenderDrawRectF(ren_, &z);
         };
 
-        // Bottom-LEFT: portrait + stats for the selected unit. Skipped when the retail
-        // InfoPanel bar already drew the unit info (drawGuiInfoBar).
+        // Bottom-LEFT: portrait + stats for the selected unit.
         // A multi-selection's other types sit LEFT of the portrait. This block is
         // pinned to the screen's left edge, so it widens instead: the strip takes the
         // left of the panel, the portrait and stats move right past it (up to the
-        // mana readout at the right), and the portrait still leads its strip.
+        // right-hand reserve), and the portrait still leads its strip.
         if (!guiBar && !selection_.empty() && statFont_.ok()) {
             const auto* u = frameUnitP(selection_.front());
             if (u && u->alive() && u->type) {
                 float px = 8;
-                // The strip's room runs from the panel's right edge to the mana panel
-                // (winW - 200), less a gap: full size until it would reach the mana.
+                // The strip's room runs from the panel's right edge to winW - 200, less
+                // a gap: full size until it would reach that reserve.
                 const float gap = 4, room = ta::selportraits::room(px + 288, float(winW) - 200, 8);
                 SDL_FRect pr{px + 4, bar.y + 8, 56, barH() - 20.0f};
                 float strip = 0;
@@ -1960,12 +1231,12 @@ namespace {
                 }
                 if (hot) {
                     char tip[80];
-                    std::snprintf(tip, sizeof tip, "%s  %d MANA", bt->name.c_str(),
-                                  int(bt->buildCost));
+                    std::snprintf(tip, sizeof tip, "%s  %d METAL  %d ENERGY", bt->name.c_str(),
+                                  int(bt->buildCostMetal), int(bt->buildCostEnergy));
                     float px = 2.0f * bScale;
                     float tw = blockWidth(tip, px);
                     // Kept left of the command panel like the icons (a right-aligned
-                    // row's last tooltip would otherwise hang over the mana bulb).
+                    // row's last tooltip would otherwise hang over the strip).
                     float tipx = std::max(6.0f, std::min(r.x + r.w / 2 - tw / 2,
                                                          float(mapViewW(winW)) - tw - 6));
                     SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
@@ -1999,20 +1270,6 @@ namespace {
 
         drawIdleBuilders(winW, winH, bar.y);
 
-        // Bottom-RIGHT: the Kingdoms mana readout. TA shows metal/energy in its top
-        // bar (renderTaTopBar), so this never draws for TA data.
-        if (!guiBar && false) {
-            const PlayerR& tm = framePlayer(hudPlayer());
-            float manaX = float(winW) - 192;
-            shade(manaX - 8, 200);
-            SDL_Color txt{0, 0, 0, 255};
-            blockText("MANA", manaX, bar.y + 9, 2.0f, txt);
-            std::snprintf(buf, sizeof buf, "%d/%d", int(tm.mana),
-                          int(tm.storage));
-            blockText(buf, manaX, bar.y + 30, 2.3f, txt);
-            std::snprintf(buf, sizeof buf, "+%d/SEC", int(tm.income + 0.5f));
-            blockText(buf, manaX, bar.y + 52, 1.8f, txt);
-        }
     }
 
 // A builder of yours with nothing to do: a mobile builder with no work order, site,
@@ -2051,13 +1308,13 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
         else it->ids.push_back(u.id);
     }
     if (idleRects_.empty()) return;
-    // The Monarch, then the mobile builders, then the factories; within each, basic to
+    // The Commander, then the mobile builders, then the factories; within each, basic to
     // advanced, which in TA:K's data is cheapest to dearest (no tech level is
     // authored), and by name on a tie.
     const auto rank = [](const ta::sim::UnitType* t) { return t->commander ? 0 : t->isStructure() ? 2 : 1; };
     std::stable_sort(idleRects_.begin(), idleRects_.end(), [&](const IdleBuilderIcon& a, const IdleBuilderIcon& b) {
         if (rank(a.type) != rank(b.type)) return rank(a.type) < rank(b.type);
-        if (a.type->buildCost != b.type->buildCost) return a.type->buildCost < b.type->buildCost;
+        if (a.type->buildCostMetal != b.type->buildCostMetal) return a.type->buildCostMetal < b.type->buildCostMetal;
         return a.type->name < b.type->name;
     });
     const float edge = ta::buildrow::kEdge;
@@ -2155,7 +1412,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
     for (int p=0;p<frameNumPlayers();++p)
         if (!resultParticipants_ || (*resultParticipants_ & (1u<<p))) players.push_back(p);
     const auto eligible=eligibleGiftRecipients();
-    const auto manaMask=requestedManaSharing_.value_or(framePlayer(localPlayer_).manaShareMask);
+    const auto shareMask=requestedSharing_.value_or(framePlayer(localPlayer_).shareResources);
     const float scale=std::min({1.0f,float(winW)/1080.0f,float(winH)/550.0f});
     const float width=1040*scale,rowH=38*scale;
     const float height=(172+44*(players.size()+1))*scale;   // the players, then SPECTATORS
@@ -2168,7 +1425,9 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
     SDL_SetRenderDrawColor(ren_,120,130,160,255);SDL_RenderDrawRectF(ren_,&panel);
     blockText("DIPLOMACY",x+24*scale,y+22*scale,2.5f*scale,{235,225,180,255});
     blockText("PLAYER",x+24*scale,y+66*scale,1.6f*scale,{190,190,200,255});
-    blockText("SHARE MANA",x+252*scale,y+66*scale,1.6f*scale,{190,190,200,255});
+    // TA's auto-share switches (ShareMetal / ShareEnergy, TotalA.exe 0x418d04 /
+    // 0x418dc4) are the local player's own, so they sit on your row.
+    blockText("SHARE M  E",x+252*scale,y+66*scale,1.6f*scale,{190,190,200,255});
     blockText("CHAT",x+394*scale,y+66*scale,1.6f*scale,{190,190,200,255});
     blockText("VOICE",x+456*scale,y+66*scale,1.6f*scale,{190,190,200,255});
     blockText("VOLUME",x+524*scale,y+66*scale,1.6f*scale,{190,190,200,255});
@@ -2224,8 +1483,11 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         const float ts=std::min(1.9f*scale,210*scale/std::max(1.0f,blockWidth(name,1)));
         blockText(name,x+24*scale,by+(rowH-7*ts)/2,ts,{235,235,240,255});
         const bool ally=p!=localPlayer_ && framePlayer(p).team==framePlayer(localPlayer_).team;
-        const bool sharing=ally && !framePlayer(p).defeated && !framePlayer(localPlayer_).defeated;
-        if(ally)checkbox(294,by,p,DiplomacyAction::Mana,manaMask & (1u<<p),sharing);
+        if(p==localPlayer_) {
+            const bool alive=!framePlayer(localPlayer_).defeated;
+            checkbox(270,by,1,DiplomacyAction::ShareMetal,shareMask & 1u,alive);
+            checkbox(322,by,0,DiplomacyAction::ShareEnergy,shareMask & 2u,alive);
+        }
         checkbox(402,by,p,DiplomacyAction::Chat,chatRecipients_ & (1u<<p),true);
         // VOICE: chat's column again, for voice chat. Your own voice never comes back to
         // you, so your own box is shown as it stands but cannot be changed.

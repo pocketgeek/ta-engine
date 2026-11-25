@@ -166,12 +166,13 @@
                             else voiceRecipients_ ^= uint8_t(1u<<hot.player);
                             break;
                         case DiplomacyAction::Volume: break;   // set on the press (above)
-                        case DiplomacyAction::Mana: {
-                            uint8_t mask=requestedManaSharing_.value_or(framePlayer(localPlayer_).manaShareMask);
-                            mask ^= uint8_t(1u<<hot.player);
-                            requestedManaSharing_=mask;
-                            ta::net::Command c;c.kind=ta::net::Cmd::ShareMana;
-                            c.targetId=hot.player;c.queue=bool(mask & (1u<<hot.player));
+                        case DiplomacyAction::ShareMetal: case DiplomacyAction::ShareEnergy: {
+                            uint8_t mask=requestedSharing_.value_or(framePlayer(localPlayer_).shareResources);
+                            const uint8_t bit=hot.action==DiplomacyAction::ShareMetal ? 1u : 2u;
+                            mask ^= bit;
+                            requestedSharing_=mask;
+                            ta::net::Command c;c.kind=ta::net::Cmd::ShareResources;
+                            c.targetId=hot.player;c.queue=(mask & bit) ? 1 : 0;
                             std::lock_guard<std::mutex> lock(simMutex_);issue(c);
                             break;
                         }
@@ -303,11 +304,6 @@
                    e.button.button == SDL_BUTTON_LEFT && hudShown() && taHudEvent(e)) {
             // TA sidebar page (build pictures, order buttons, tabs, paging)
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
-                   (gui_.gadgets.empty()
-                        ? orderColumnClick(float(e.button.x), float(e.button.y), winW)
-                        : guiClick(float(e.button.x), float(e.button.y)))) {
-            // command-panel button handled
-        } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
                    minimapArmedOrder(float(e.button.x), float(e.button.y), winW, winH)) {
             // An armed order + minimap press issues that order at the pressed point,
             // aimed at the dot there, when its cursor is an order cursor (retail acts
@@ -438,7 +434,7 @@
             dragging_ = false;
             // Screen-space marquee: a unit is boxed by where it's DRAWN (terrain lift
             // + flyer altitude), not its flat ground cell -- else a lifted/airborne
-            // unit (e.g. the flying Monarch) escapes a box drawn around its sprite.
+            // unit (e.g. the flying Commander) escapes a box drawn around its sprite.
             uint16_t selMod = SDL_GetModState();
             bool addSel = (selMod & KMOD_SHIFT) != 0;   // Shift: add to the selection
             bool subSel = (selMod & KMOD_CTRL) != 0;    // Ctrl:  remove from it
@@ -456,7 +452,7 @@
                 // The ONE unit under the press (hoveredUnitAt, the picker the cursor
                 // and every order use: the smallest drawn region wins), in SCREEN
                 // space with the render lift + flyer altitude, so a unit on a lifted
-                // wall top or a Monarch cruising overhead is picked where it's drawn.
+                // wall top or a Commander cruising overhead is picked where it's drawn.
                 // The click is at the press (re-projected), so a unit pressed on near
                 // the screen edge is still the one picked after edge scroll moved it
                 // under a held pointer.

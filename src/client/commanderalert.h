@@ -21,7 +21,7 @@ namespace ta {
 // text line "<unit type name>: Under Attack" ("%s: %s", 0x47ff69) into the message
 // area (0x463ca0) when the priority beats 10 - the UNITCHAT level (game +0x37f18,
 // 0x47ff26). With speech off nothing starts the cooldown.
-struct MonarchAlert {
+struct CommanderAlert {
     static constexpr uint32_t kCooldownTicks = 20 * 30;
     static constexpr int kEvent = 2;      // row 2 of 0x5086dc
     static constexpr int kPriority = 9;
