@@ -1349,12 +1349,14 @@ int main(int argc, char** argv) {
         // that ended goes back to its CONNECT screen, and (debug) a TA_MENU_PICK picks one
         // of its doors on its first visit -- TA's menus would wait for input there.
         bool engineMenu = lanReturnToConnect;
+        bool engineMenuPick = false;   // (debug) TA_MENU_PICK drives the engine menu's own doors
 #ifndef NDEBUG
         static bool menuPickPending = [] {
             const char* p = ta::devEnv("TA_MENU_PICK");
             return p && *p;
         }();
-        engineMenu = engineMenu || std::exchange(menuPickPending, false);
+        engineMenuPick = std::exchange(menuPickPending, false);
+        engineMenu = engineMenu || engineMenuPick;
 #endif
         if (!engineMenu && afterResult == ta::ResultChoice::Menu &&
             (!menuFailure || menuFailure.to == ta::FailTo::Notice || menuFailure.to == ta::FailTo::ServerSelect ||
@@ -1423,6 +1425,12 @@ int main(int argc, char** argv) {
                 menu.setDataFolder(std::move(row));
             }
             menu.setVoice(voiceOwner.get());
+            // A LAN game that ended, or GAME SELECT without a sign-in token, reopens
+            // CONNECT: like the title screen's MULTI, backing out of it goes back to
+            // TA's title screen, not to this menu's own (on TA data, empty) doors.
+            if (engineOnly == ta::MainMenu::Choice::None && !engineMenuPick &&
+                (lanReturnToConnect || afterResult == ta::ResultChoice::GameSelect))
+                engineOnly = ta::MainMenu::Choice::Multiplayer;
             if (engineOnly != ta::MainMenu::Choice::None) {
                 menu.openOnly(engineOnly);
                 std::fprintf(stderr, "menu: %s from TA's title screen\n",

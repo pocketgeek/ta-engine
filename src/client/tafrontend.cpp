@@ -285,6 +285,10 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 s.gadgets.push_back(c);
                 s.gadgets.push_back(o);
             }
+            // SINGLE opens the engine's skirmish setup, so it says so. The gadget keeps
+            // its name (SINGLE): only the label changes.
+            for (auto& g : s.gadgets)
+                if (upper(g.name) == "SINGLE") g.text = "SKIRMISH";
         }
         view = std::make_unique<TaGuiView>(ren_, vfs_, std::move(s), true);
         if (backdrop) view->setBackdrop(std::string("bitmaps/") + backdrop + ".pcx");
@@ -562,7 +566,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         }
         switch (page_) {
         case Page::Main:
-            if (h2 == "SINGLE") return Choice::EngineSingle;
+            if (h2 == "SINGLE" || h2 == "SKIRMISH") return Choice::EngineSingle;
             else if (h2 == "MULTI") return Choice::EngineMulti;
             else if (h2 == "OPTIONS") return Choice::Options;
             else if (h2 == "CAMPAIGN") goPage(Page::Campaigns);
