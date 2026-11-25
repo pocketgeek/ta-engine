@@ -72,9 +72,10 @@ void rosterDump(uint32_t roomId,const sim::World& world,const std::vector<ai::Co
     std::fprintf(f,"{\"kind\":\"sample\",\"tick\":%u,\"players\":[",tick);
     for(int p=0;p<world.numPlayers();++p) {
         const sim::Player& pl=world.player(p);
-        std::fprintf(f,"%s{\"p\":%d,\"controller\":\"%s\",\"mana\":%.1f,\"storage\":%.1f,\"defeated\":%s}",
-                     p?",":"",p,controllerOf(p,controllers),pl.mana,double(pl.manaCapacity()),
-                     pl.defeated?"true":"false");
+        std::fprintf(f,"%s{\"p\":%d,\"controller\":\"%s\",\"metal\":%.1f,\"metalStorage\":%.1f,"
+                     "\"energy\":%.1f,\"energyStorage\":%.1f,\"defeated\":%s}",
+                     p?",":"",p,controllerOf(p,controllers),double(pl.books.stored[1]),double(pl.books.cap[1]),
+                     double(pl.books.stored[0]),double(pl.books.cap[0]),pl.defeated?"true":"false");
     }
     std::fprintf(f,"],\"units\":[");
     bool comma=false;

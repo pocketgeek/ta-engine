@@ -25,8 +25,8 @@ inline bool parsePlayerCommands(const std::vector<uint8_t>& payload, std::vector
         // Kingdoms' lodestone area build and weapon switch are retired; the
         // area reclaim is an engine feature (TA has no RECLAIMAREA,
         // docs/ta-port-plan.md).
-        const bool retired=c.kind==ta::net::Cmd::BuildManaArea || c.kind==ta::net::Cmd::SetWeapon;
-        if (retired || (uint8_t(c.kind)>uint8_t(ta::net::Cmd::BuildManaArea) && !power && !resurrect && !ground && !late) ||
+        const bool retired=c.kind==ta::net::Cmd::RetiredAreaBuild || c.kind==ta::net::Cmd::SetWeapon;
+        if (retired || (uint8_t(c.kind)>uint8_t(ta::net::Cmd::RetiredAreaBuild) && !power && !resurrect && !ground && !late) ||
             !coordinate(c.x) || !coordinate(c.z) ||
             !coordinate(c.x2) || !coordinate(c.z2)) return false;
         if (power && (!ta::sim::simPowerCode(c.targetId) || c.queue>uint8_t(ta::sim::PowerArg::Invalid)))

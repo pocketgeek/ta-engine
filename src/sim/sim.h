@@ -31,10 +31,10 @@
 #include "sim/retailgroup.h"
 #include "sim/retailplayer.h"
 #include "sim/retailconstruction.h"
+#include "sim/retailscriptget.h"
 #include "sim/retaildeath.h"
 #include "sim/retailveterancy.h"
 #include "sim/retailconstructionparticles.h"
-#include "sim/retailai.h"
 #include "sim/retailgrade.h"
 #include "sim/retailmap.h"
 #include "cob/retailstate.h"
@@ -72,7 +72,7 @@ namespace ta::hpi { class Vfs; }
 namespace ta::sim {
 
 // Cheat: when true, construction and production complete instantly and cost no
-// mana (set via the taclient `--cheat` flag).
+// metal or energy (set via the taclient `--cheat` flag).
 extern bool gInstantBuild;
 
 // Unit stats loaded from .fbi files. Velocities are in map pixels per
@@ -281,7 +281,6 @@ struct UnitType {
     int32_t buildDist = 0;  // FBI builddistance (readInt): how far a builder reaches to build
 
     bool gate = false; // FBI gate low bit: closed passage cells use search grade 3
-    float buildCost = 0;    // legacy single-resource cost (= buildCostMetal for TA data)
     // Total Annihilation economy (FBI; TotalA.exe 0x42bf40, docs/retail-data.md 2.2).
     // buildcost* are read as INTEGERS then stored as float (12.9 -> 12).
     float buildCostMetal = 0, buildCostEnergy = 0;
@@ -296,11 +295,6 @@ struct UnitType {
     bool isAirBase = false, antiWeapons = false, targetingUpgrade = false;
     float buildTime = 0;    // work units; seconds = buildTime / builder workerTime
     float workerTime = 1;
-    // The engine's single-resource pool (Player::mana): per-second income and
-    // capacity. Zero for every TA type (its economy is Player::books); only
-    // synthetic test types set them.
-    float income = 0;
-    float storage = 0;
     int footX = 1, footZ = 1;
     std::string yardMap;      // footX*footZ chars; 'o' blocks, '.'/'c' passable
     // Lowercased general category tokens (FBI category/damagecategory/tedclass).
@@ -424,7 +418,7 @@ struct UnitType {
     int16_t landMaxWaterDepth=10000,landMinWaterDepth=-10000;
     uint8_t landMaxSlope=255;
     int32_t radar = 0;        // radardistance (readInt): fog-reveal radius (separate from sight)
-    bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
+    bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for metal / energy
     bool  canResurrect = false;   // canresurrect: can revive nearby corpses
     // cancapture (flagsB +0x245 bit 12): TotalA.exe's hit response reads it
     // (0x406fb4) for a computer's unit under fire.
@@ -1101,11 +1095,6 @@ struct alignas(64) Unit {
     // (That the shipped ceiling sits just under a 16-bit boundary is itself a hint at
     // what retail stored.) A mod declaring more than 32767 hp would wrap, so this is a
     // real limit, not a theoretical one.
-    //
-    // The economy pools are NOT Fixed for exactly this reason: `mana` accumulates
-    // without a cap and routinely passes 32768 (the tests alone set 200000 and 1e9,
-    // which wrap to 3392 and -13824). Converting it broke production outright. Doing
-    // mana in fixed point needs a 64-bit Fixed, which is a separate job.
     Fixed hp = Fixed::fromInt(100);
     // FIXED-POINT px/s. Retail's is too: its occupancy test compares two units' speeds
     // with an integer cmp/jl (0x4db79e), and the scaling either side runs through a
@@ -1153,8 +1142,10 @@ struct alignas(64) Unit {
     // the best usable weapon per target the way retail's fire-at-will scan does;
     // once the player has chosen, their pick is obeyed.
     bool  weaponAuto = true;
-    HeapOptional<RetailConstructionSite> retailSite;
-    HeapOptional<RetailConstructionJob> retailBuild;
+    // Were Kingdoms' restored construction site and job (the replayed
+    // RetailConstructionResources economy); kept for the Unit layout asserts.
+    void* padRetailSite_ = nullptr;
+    void* padRetailBuild_ = nullptr;
     HeapOptional<RetailConstructionEmitter> constructionEmitter;
     // Ordinary visual effects run on sim ticks but never affect gameplay/hash.
     HeapOptional<RetailConstructionEmitter> cosmeticConstructionEmitter;
@@ -1274,8 +1265,6 @@ struct alignas(64) Unit {
     bool legionShuffle = false;
     uint16_t variationPhase=0; // original per-unit random phase at +82
     // --- extended runtime state --------------------------------------------
-    // DOUBLE, like Player::mana and for the same reason: retail's pools are 64-bit
-    // floating point (the affordability check at 0x46e85f subtracts one with `fsubl`).
     double layoutPadMana_ = 0;   // was Kingdoms' per-unit mana; kept for the Unit layout asserts
     uint32_t missionEvents = 0; // read by every unit's mission dispatch each tick
     // Were the engine's authored veteran rank and the rank in effect (Kingdoms'
@@ -1458,8 +1447,7 @@ struct alignas(64) Unit {
         if (!underConstruction) return 1.0f;
         // TA: retail's remaining fraction (sim/taeconomy.cpp) once building began.
         if (buildStarted) return std::clamp(1.0f-buildRemaining,0.0f,1.0f);
-        return std::clamp(retailSite ? 1.0f-retailSite->progress.remaining :
-            (hp.toFloat()/std::max(1,type->maxHp)-0.05f)/0.95f,0.0f,1.0f);
+        return std::clamp((hp.toFloat()/std::max(1,type->maxHp)-0.05f)/0.95f,0.0f,1.0f);
     }
     uint32_t constructionVisualRandom=1;
     // Cumulative cosmetic work events (falling/rising), excluded from stateHash.
@@ -1472,8 +1460,8 @@ struct alignas(64) Unit {
     // room search (clearProductionRoom). 0 = not waiting. Hashed when set.
     uint32_t productionRetryTick = 0;
     // Factory/conjure progress past buildProgress, in 1/65536 of a tick of work.
-    // Nonzero only when the player's construction share (Player::constructionShare)
-    // bought part of a tick. Hashed when set.
+    // Nonzero when a TA build step (taProductionWork) left part of a tick of the
+    // producer's count. Hashed when set.
     uint16_t buildFraction = 0;
     // RALLY orders for a production building (or a mobile builder while it repeats
     // production): what the units it makes should do, from the moment they are
@@ -1498,7 +1486,7 @@ struct alignas(64) Unit {
     } ground;
     // Retail unit +0xcc: the tick before which the unit may not cloak. The cloak
     // step (icd 0x401160) decloaks while it lies ahead, and sets it to now + 90
-    // when the unit's own mana cannot pay a tick of cloaking. 0 when never set;
+    // when its owner's stored energy cannot pay a tick of cloaking. 0 when never set;
     // hashed when set. Cold: only cloakers read it, so it sits past the
     // prefetched lines.
     uint32_t cloakBlockedUntil = 0;
@@ -1580,7 +1568,7 @@ struct alignas(64) Unit {
     // retail AI leaves it out of its bases, and a computer's revive is never
     // abandoned (406ebb). Hashed when clear.
     bool selectable = true;
-    // An unfinished site's own GetBuilt (402220), every game: the dispatcher
+    // An unfinished site's own GetBuilt (TotalA.exe 0x402da0), every game: the dispatcher
     // state World::tick's decay pass runs it with (retailSiteTimer). A work
     // event from a worker in a later unit slot reaches the site's dispatch one
     // tick later (siteWorkLate; beingBuilt is the event at dispatch time).
@@ -1608,7 +1596,7 @@ struct alignas(64) Unit {
     int8_t attachPiece = -1;
     const std::string& displayName() const { return scenarioName.empty() ? type->name : scenarioName; }
     bool alive() const { return deadFor < 0; }
-    int32_t maximumHp() const { return retailSite ? int32_t(retailSite->type.maxHp) : type->maxHp; }
+    int32_t maximumHp() const { return type->maxHp; }
     bool embarked() const { return inTransport != 0; }
     // Paralyzed units can't move, turn, or fire.
     bool incapacitated() const { return paralyzedFor > 0; }
@@ -1657,7 +1645,7 @@ TA_UNIT_LINE(legionStill, 0); TA_UNIT_LINE(standingOrder, 0); TA_UNIT_LINE(moveS
 TA_UNIT_LINE(fireState, 0); TA_UNIT_LINE(active, 0); TA_UNIT_LINE(standbyActive, 0);
 TA_UNIT_LINE(guardNoMoveActive, 0); TA_UNIT_LINE(constructionHolding, 0); TA_UNIT_LINE(justFired, 0);
 TA_UNIT_LINE(weaponAuto, 0);
-TA_UNIT_LINE(retailSite, 1); TA_UNIT_LINE(retailBuild, 1); TA_UNIT_LINE(constructionEmitter, 1);
+TA_UNIT_LINE(padRetailSite_, 1); TA_UNIT_LINE(padRetailBuild_, 1); TA_UNIT_LINE(constructionEmitter, 1);
 TA_UNIT_LINE(cosmeticConstructionEmitter, 1); TA_UNIT_LINE(landing, 1);
 TA_UNIT_LINE(padFrozen_, 1); TA_UNIT_LINE(padStoned_, 1); TA_UNIT_LINE(paralyzedFor, 1);
 TA_UNIT_LINE(selfDestructT, 1); TA_UNIT_LINE(turnReqBam, 1); TA_UNIT_LINE(animationTurnBam, 1);
@@ -2047,11 +2035,6 @@ private:
 void blockFootprint(NavGrid& nav, const UnitType& t, float x, float z, bool blocked);
 
 struct Player {
-    // Accounting for the HUD and the server-side skirmish AI's mana-pressure test
-    // (src/ai): never read by the simulation itself or folded into stateHash().
-    // Only the server's AI reads it, from its own World, and it is built from
-    // hashed sim arithmetic alone, so it is the same in every run of a seed.
-    RetailResourceHistory displayResources;
     bool automaticGates=false; // normal AI capability; human gates remain manually controlled
     bool defensiveAi = false; // Passive AI defends in place from the moment units spawn
     // A campaign mission's brainless Player%i (villagers, wildlife, props: the
@@ -2062,84 +2045,7 @@ struct Player {
     // pairs with nobody; outside campaigns the owner's rule is the same. Hashed.
     bool passiveNeutral = false;
     RetailPlayerCacheClock cacheClock;
-    std::optional<RetailBuildCache> buildCache;
-    std::optional<RetailConstructionResources> retailResources;
-    void creditMana(double amount) {
-        displayResources.income=float(double(displayResources.income)+amount);
-        mana+=amount;
-        if (retailResources) {
-            auto& r=*retailResources;
-            mana=r.stored=float(mana);
-            r.produced=float(double(r.produced)+amount);r.totalProduced+=amount;
-        }
-        if (buildCache) buildCache->resources.income=float(double(buildCache->resources.income)+amount);
-    }
-    // Records a consumer's full-rate request: retail's resource object +0x10,
-    // which the HUD's -N and the AIs' shortfall test both average (401350).
-    // debitMana requests exactly what it pays; construction work requests
-    // through constructionShare and pays its share with payMana.
-    void requestMana(double amount) {
-        displayResources.usage=float(double(displayResources.usage)+amount);
-        if (retailResources) retailResources->requested=float(double(retailResources->requested)+amount);
-        if (buildCache) buildCache->resources.usage=float(double(buildCache->resources.usage)+amount);
-    }
-    void debitMana(double amount) {
-        requestMana(amount);
-        payMana(amount);
-    }
-    void payMana(double amount) {
-        mana-=amount;
-        if (retailResources) { auto& r=*retailResources; mana=r.stored=float(mana); }
-    }
-    // Restored retail AI is separate from the command-emitting skirmish AI.
-    // Unsupported planner branches stop diagnostic replay explicitly.
-    std::optional<RetailAiState> retailAi;
-    // Legacy World economy uses a double pool. Retail's resource object stores
-    // the current pool as float; only produced/excess lifetime totals are double.
-    // RetailConstructionResources preserves that arithmetic for the pending
-    // economy/construction integration.
-    double mana = 500;
-    // Construction work shares the pool, as retail does (51d837 sets allocation =
-    // stored / demand; 429af0 scales every worker's work by it and pro-rates the
-    // last one against what is left; see RetailConstructionResources). Without it
-    // each consumer paid its whole per-tick cost or did nothing, in unit order, so
-    // cheap low-id producers took every trickle and a costly later one could sit at
-    // zero progress for minutes while mana income was short.
-    //   constructionDemand: full-rate mana asked for by construction, repair and
-    //     production work this tick (retail records the request before scaling).
-    //     It is the demand the next tick's allocation divides by. Hashed when set.
-    //   constructionAllocation: this tick's share, recomputed after income.
-    // Unused for a player with retailResources, which runs the native object.
-    double constructionDemand = 0;
-    double constructionAllocation = 1;
-    // Retail's resource object +8: the fraction of full-rate work this tick's
-    // pool affords (stored / last demand, capped at 1). A float, as retail
-    // stores it.
-    float allocation() const {
-        return retailResources ? retailResources->allocation : float(constructionAllocation);
-    }
-    // The fraction of `cost` (one tick of full-rate work) this consumer may do
-    // now. Records the request; the caller pays cost * share, capped at mana,
-    // with payMana (the request is already counted).
-    double constructionShare(double cost) {
-        if (cost <= 0) return mana >= cost ? 1.0 : 0.0;
-        requestMana(cost);
-        if (!retailResources) constructionDemand += cost;
-        if (mana <= 0) return 0.0;
-        return std::min(constructionAllocation, mana / cost);
-    }
     float scenarioResourceLimit = 0; // map scenario action 16: caps both TA stores (taSettle)
-    float storage = 0;   // recomputed each tick from alive units
-    float income = 0;
-    float manaCapacity() const {
-        return retailResources ? retailResources->capacity :
-            (scenarioResourceLimit > 0 ? scenarioResourceLimit : std::max(storage,100.0f));
-    }
-    // Income multiplier (1.0 = normal). Only ever != 1 for an Absurd-difficulty AI,
-    // set once at match setup and applied to every mana source. Constant per game and
-    // its effect lands in `mana` (which IS hashed), so it need not be hashed itself,
-    // but every peer must set it identically or their mana diverges.
-    float manaMult = 1.0f;
     // Total Annihilation metal/energy (sim/taeconomy.h). Hashed.
     econ::PlayerBooks books;
     int32_t score = 0;   // authored kill points; GET40 reads this in campaign scripts
@@ -2163,7 +2069,12 @@ struct Player {
     // if diplomacy ever makes it mutable it must be a sequenced command AND
     // enter stateHash (see docs/multiplayer-design.md).
     int   team = 0;
-    uint8_t manaShareMask = 0xff; // outgoing overflow recipients; alliance still required
+    // TA's auto-share switches (TotalA.exe 0x457d30 reads the player's info
+    // +0x97: bit 1 metal, bit 2 energy; docs/retail-economy.md section 4):
+    // bit 0 shares metal, bit 1 energy, with the allies that store less, every
+    // 60 ticks above books.shareThreshold. Off by default, as retail's
+    // thresholds and switches start (0x4647b3). Set by Cmd::ShareResources. Hashed.
+    uint8_t shareResources = 0;
     // Fire-at-will sweep cursor (controller +0x1a1, icd 40f330): the unit slot
     // the last budget-limited pass stopped on. INT32_MAX is the constructor's
     // "last slot of the pool" (40fed0). Hashed.
@@ -2242,9 +2153,6 @@ public:
         const auto* script=unitScript(unitId);
         return script && script->activated;
     }
-    // A creation that credits its storage (512060's last argument): the unit's
-    // mogriumstorage joins its owner's pool and capacity at once.
-    void creditCreationStorage(int unitId);
 
     // A finished creation or completion of an isfeature type (the walls):
     // it dies with kind 9 and leaves its feature.
@@ -2431,7 +2339,7 @@ public:
     // Build now if the builder is free, else queue it (shift-click). A
     // non-queued order replaces any pending queue.
     void queueBuild(int builderId, const UnitType* type, float x, float z, bool queue);
-    // Persistent area job: explore and try each mana deposit, without allocating
+    // Persistent area job: explore and try each deposit spot, without allocating
     // a potentially map-sized list of commands or changing either pathfinder.
     // Abandon a builder's queued builds and drop any not-yet-started site.
     void cancelBuilds(int builderId);
@@ -2443,7 +2351,7 @@ public:
     // not `b`, has b's OWNER (allies do not qualify), and b is a builder with a
     // mover whose build menu holds the site's type when it is builderlimited.
     bool canHelpBuild(const Unit& b, const Unit& site) const;
-    // A player's production order (Train, RepeatTrain, Build, BuildManaArea:
+    // A player's production order (Train, RepeatTrain, Build:
     // applyCommand asks before anything is queued or cancelled): `b` is a live
     // builder, `type` is on b's own build menu -- the menu the HUD offers, the
     // same whoever owns b; retail's MobileBuild tests it too, 0x519850, and
@@ -2667,7 +2575,7 @@ public:
     // or the caster cannot move.
     uint8_t reviveKind(int casterId, int corpseId) const;
     // Order a mobile builder to repair damaged friendly `targetId` (restores HP at
-    // the builder's work rate, draining mana proportionally). tickRepair runs it.
+    // the builder's work rate, paid in energy through its books). tickRepair runs it.
     void repair(int builderId, int targetId, bool queue);
     void tickRepair(Unit& b, float dt);
     void tickPatrolRepair(Unit& b);
@@ -2873,7 +2781,12 @@ public:
     // Per-player unit limit: production and new builds stall a player once it has
     // this many live units (0 = unlimited). Set at match start (from the lobby).
     // The count it tests (Player::unitCount) is deterministic, so all peers agree.
-    void setManaSharing(int fromPlayer, int toPlayer, bool enabled);
+    // TA's auto-share switches and thresholds (Cmd::ShareResources; TotalA.exe
+    // ShareMetal / ShareEnergy toggle info +0x97 bits 2 / 4, 0x418d04 /
+    // 0x418dc4; SetShareMetal / SetShareEnergy store min(N, cap), 0x419340 /
+    // 0x419400). `resource` is econ::M or econ::E.
+    void setResourceSharing(int player, int resource, bool enabled);
+    void setShareThreshold(int player, int resource, float amount);
     bool canGiveUnit(int unitId, int fromPlayer, int toPlayer) const;
     bool giveUnit(int unitId, int fromPlayer, int toPlayer);
     // Authored scenario construction whitelist. Script-created and preplaced units
@@ -3364,6 +3277,9 @@ public:
     // pickup orders or unload route after current orders instead of replacing them.
     bool canLoadInto(int unitId, int transportId) const;
     bool scriptYardOpen(int unitId) const;
+    // The unit's words TotalA.exe's COB GET reads (0x480770; sim/retailscriptget.h):
+    // the client's display VM answers from the same.
+    RetailGetUnit scriptGetWords(int unitId) const;
     void loadInto(int unitId, int transportId, bool queue = false);
     void unloadAt(int transportId, float x, float z, Fixed destinationY = {},
                   bool queue = false);
@@ -3427,6 +3343,12 @@ public:
                    bool sound = true, explosion = true; };
     const std::vector<HitFx>& hits() const { return hits_; }
     const std::vector<int>& recordHurt() const { return recordHurt_; }
+    // TotalA.exe's unit speech requests this tick (0x47f780(unit, event, text):
+    // a row of the event table 0x5086dc and its line, or none for the row's
+    // own). The client keeps its local player's and feeds its speech queue
+    // (client/speechqueue.h). Cosmetic, not hashed.
+    struct SpeechRequest { int unitId = 0; uint8_t event = 0; const char* text = nullptr; };
+    const std::vector<SpeechRequest>& unitSpeech() const { return unitSpeech_; }
     // Cosmetic events captured at the mission callback, before mover updates.
     struct TransportFx {
         uint32_t tick = 0;
@@ -3644,7 +3566,6 @@ private:
     // work and every helper's advance the same counter; finishing releases the
     // output and frees the producer, once.
     int32_t productionTotal(const Unit& producer, const UnitType* t) const;
-    bool workProduction(Unit& producer, Unit& site, const UnitType* t, uint32_t step);
     void finishProduction(int producerId, Unit& site);
     // BuildingBuild's abort (0x401c20, flag 2): a dying factory takes its
     // unfinished output with it, and so does cancelling that output. Mobile
@@ -3664,9 +3585,6 @@ private:
     }
     bool guardDefend(Unit& u, const Unit& g);
     void helpApproach(Unit& b, const Unit& site, bool queue);
-    void initializeRetailSite(Unit& site, int builderId);
-    void tickRetailAiBase(int owner,unsigned index);
-    void tickRetailAiStrike(int owner,unsigned index);
     // Where a newly produced unit is sent: the nearest free, occupiable spot to the
     // factory's exit. See the definition -- the fixed five-point fan it replaced is
     // what made units walk at each other for ever.
@@ -3724,10 +3642,7 @@ private:
     void tickConjureHover(Unit& builder, const Unit& site, bool repair = false);
     void tickFlyingRepair(Unit& b, Unit& target, float dt);
     bool payRepair(Unit& b, Unit& target, float dt);
-    void tickRetailConstruction(Unit& u);
     void emitConstruction(Unit& u,bool rising);
-    void tickRetailGetBuilt(Unit& u);
-    void completeRetailConstruction(Unit& builder,Unit& site);
     void notifyUnitScript(Unit& u,const char* name);
     void notifyUnitScript(Unit& u,const char* name,uint32_t argument);
     void startWorkAnimation(Unit& u,Fixed targetX,Fixed targetZ);
@@ -4602,6 +4517,7 @@ private:
     // Units a damage record other than a weapon hit's asked the under-attack
     // alert for this tick (0x4071d8, taHitResponse). Cosmetic, not hashed.
     std::vector<int> recordHurt_;
+    std::vector<SpeechRequest> unitSpeech_;
     std::vector<TransportFx> transportEffects_;
     std::vector<ScriptEmission> scriptEmissions_;
     std::vector<ScriptSound> scriptSounds_;
@@ -4907,6 +4823,7 @@ private:
         const cob::File* file_=nullptr;   // TA_VERIFY_SCRIPT_SKIP re-runs the skipped ticks
 #endif
     };
+    static RetailGetUnit retailGetWords(const Unit& unit,const UnitScript* factory);
     std::map<int,UnitScript> unitScripts_;
     // Non-owning direct lookup; the map still owns stable script objects and
     // supplies the unchanged ID-ordered state-hash traversal.
@@ -4962,13 +4879,9 @@ private:
     std::vector<AbilityChunk> abilityChunks_;   // tickAbilities on the SimPool (WE E4.3)
     // The post-loop passes go to the SimPool from this many units.
     static constexpr size_t kPostMinParallel = 2048;
-    // Per player, this tick's retail construction demand (World::tick's economy step).
-    std::vector<float> retailDemand_;
-    // The economy walk on the SimPool (WE E4.3): per chunk, its units'
-    // nonzero contributions and its sites, in unit order.
-    enum class EconomyKind : uint8_t { Site, Income, Storage, Demand };
-    struct EconomyItem { uint32_t index; int16_t player; EconomyKind kind; float f; double d; };
-    std::vector<std::vector<EconomyItem>> economyChunks_;
+    // The site walk on the SimPool (WE E4.3): per chunk, its unfinished
+    // sites, in unit order.
+    std::vector<std::vector<uint32_t>> economyChunks_;
     // The tick prologue's passes go to the SimPool from this many units.
     static constexpr size_t kPrologueMinParallel = 2048;
     // Indices into units_ of this tick's construction sites, ascending, as the

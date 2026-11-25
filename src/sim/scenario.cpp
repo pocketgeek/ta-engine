@@ -187,8 +187,17 @@ bool ScenarioScript::evalCond(World& w, int player, const ta::crt::Rule& c, bool
             return c.opcode == 21 ? opp < toInt(s[0]) : opp > toInt(s[0]);
         }
         case 23: return w.scenarioRandomPercent(toInt(s[0]));
-        case 24: return w.player(player).mana < float(toInt(s[0]));   // Resources < v
-        case 25: return w.player(player).mana > float(toInt(s[0]));   // Resources > v
+        case 24: case 25: {
+            // Resources < v / > v. A map scenario's one "resources" figure is TA's
+            // metal and energy alike (World::applyScenarioResourceAction sets, adds
+            // and takes both); the figure tested is the scarcer store, so "less
+            // than" holds when either store is under v and "greater than" when
+            // both are over it. TA's own campaigns have no resource condition
+            // (docs/retail-campaign.md); these rules are the engine's.
+            const auto& b = w.books(player);
+            const float have = std::min(b.stored[0], b.stored[1]);
+            return c.opcode == 24 ? have < float(toInt(s[0])) : have > float(toInt(s[0]));
+        }
         default: return false;
     }
 }

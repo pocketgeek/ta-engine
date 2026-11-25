@@ -25,52 +25,18 @@ inline bool retailBuildWithinReach(Fixed x,Fixed z,Fixed gx,Fixed gz,
     return distance-edge(fx,fz)-edge(siteFx,siteFz)<=reach;
 }
 
-struct RetailConstructionResources {
-    float stored=0,allocation=1,requested=0,produced=0;
-    double totalProduced=0;
-    float capacity=1,capacityOverride=0;
-    double excess=0;
-
-    // 51d837: income and demand are accumulated by the host in unit-slot
-    // order. Retail uses this decimal tick scale, not exact 1/30.
-    void beginTick(float income,float storage,float demand) {
-        const double gain=double(capacityOverride>0 ? 0.f : income)*0.03333333;
-        stored=float(double(stored)+gain);
-        totalProduced+=gain;
-        produced=float(double(produced)+gain);
-        capacity=storage>0 ? storage : 1.f;
-        const double required=double(demand)*0.03333333;
-        allocation=required>double(stored) ? float(double(stored)/required) : 1.f;
-    }
-
-    // 401270 clamps only after unit work, immediately before history rolls.
-    void finishTick() {
-        if (capacityOverride>0) capacity=capacityOverride;
-        if (stored<0) { excess+=double(stored);stored=0; }
-        if (stored>capacity) {
-            excess+=double(stored)-double(capacity);stored=capacity;
-        }
-    }
-};
-
-struct RetailConstructionProgress {
-    float remaining=1;
-    uint16_t hp=0;
-    uint32_t events=0,flags=0;
-};
-
-// COB BUILD_PERCENT_LEFT (50d1ab): unfinished work maps to 1..100.
+// COB BUILD_PERCENT_LEFT (TotalA.exe GET 17, 0x480a44): unfinished work maps
+// to 1..100 (1 - ftol(remaining * -99)); none left is 0.
 inline uint32_t retailConstructionPercent(float remaining) {
     return remaining==0 ? 0u : uint32_t(1-int32_t(double(remaining)*-99.0));
 }
 
-struct RetailConstructionType {
-    float inverseTime=0,cost=0;
-    uint32_t maxHp=0;
-};
-
-// 4023fd..402490: GetBuilt while work remains. Completion, weapon hosts and
-// unconjure accounting are separate operations; the mission owns their timing.
+// TotalA.exe's GetBuilt (0x402da0) while work remains: stage 0 makes every
+// weapon slot automatic (0x4898b0(3)) and sleeps 300 ticks, stage 1 sleeps 30,
+// and stage 2 sleeps 30 more after any work event (0x8000) or, on a timer wake
+// with none, decays the site once (0x41bcd0(site, 11)) and sleeps 11; every
+// stage waits on the work event (mission +6 |= 0x8000). The host owns the
+// slots and the decay step (World::decayConstruction).
 template<class StopWeapons,class Decay>
 int retailGetBuiltWaiting(RetailMissionState& mission,uint32_t tick,uint32_t events,
                           StopWeapons stopWeapons,Decay decay) {
@@ -81,18 +47,18 @@ int retailGetBuiltWaiting(RetailMissionState& mission,uint32_t tick,uint32_t eve
         mission.sleep(tick,30);mission.waitMask|=0x10000000u;return 1;
     case 2:
         if (events&0x10000000u) mission.sleep(tick,30);
-        else if (events&1) { mission.sleep(tick,1);decay(); }
+        else if (events&1) { mission.sleep(tick,11);decay(); }
         mission.waitMask|=0x10000000u;return 2;
     default:return 7;
     }
 }
 
-// One dispatch (4d8450) of an unfinished site's GetBuilt (402220) when the
-// site's own mission is its only one: `worked` is the unit's 0x10000000 event
-// at dispatch time (429af0 sets it for any work >= 0, paid or not). A fresh
-// mission sleeps 300 ticks, a work event wakes it to sleep 30 more, and from
-// then on every work event restarts the 30 while a timer wake with no work
-// decays the site once and sleeps one tick. True when this dispatch decays.
+// One dispatch of an unfinished site's GetBuilt when the site's own mission is
+// its only one: `worked` is the site's work event at dispatch time (0x41ba9d
+// raises it for any work >= 0, paid or not; World keeps it as bit 0x10000000).
+// A fresh mission sleeps 300 ticks, a work event wakes it to sleep 30 more,
+// and from then on every work event restarts the 30 while a timer wake with
+// no work decays the site once and sleeps 11. True when this dispatch decays.
 inline bool retailSiteTimer(RetailMissionState& mission,uint32_t tick,bool worked) {
     struct Host {
         RetailMissionState& m;uint32_t tick;bool decay=false;
@@ -113,123 +79,11 @@ inline bool retailSiteTimer(RetailMissionState& mission,uint32_t tick,bool worke
     return host.decay;
 }
 
-// 429d70(site, 1): the decay is 429af0(site, site, 1 * -0.5f), unconjure work
-// done by the site on itself, so the refund goes to the SITE's owner. Each
-// call takes 0.5 / buildtime of the whole build off the site and pays back
-// float(that * buildcost), at full value whatever the owner's allocation.
-// 429af0 removes the site, refunding nothing, once its remaining work would
-// reach the whole build (remaining + progress >= 1).
-struct RetailSiteDecay { double progress=0; float refund=0; };
-inline RetailSiteDecay retailSiteDecay(float inverseTime,float cost) {
-    const double progress=0.5*double(inverseTime);
-    return {progress,float(progress*double(cost))};
-}
-
-struct RetailConstructionSite {
-    RetailConstructionProgress progress;
-    RetailConstructionType type;
-    std::optional<RetailMissionState> mission;
-    int builder=0;
-};
-
-struct RetailConstructionJob {
-    int target=0;
-    bool flying=false;
-    uint32_t flyingOwnerFlags=0;
-    int32_t flyingSlowSpeed=0,flyingFastSpeed=0;
-    uint16_t flyingBuildDistance=0;
-    float workerTime=0;
-    bool working=false;
-    uint32_t activityDeadline=0;
-    std::optional<uint16_t> turnHeading; // inserted Turn mission before build-stance wait
-    RetailMissionState mission;
-};
-
-// 429990's completion eligibility and notifications. The host performs the
-// returned attachment, activation and network effects in that order.
-struct RetailConstructionCompletion {
-    bool builderPresent=false,forced=false,sameUnit=false,allied=false;
-    uint32_t builderFlags=0,builderTypeFlags=0,builderSecondaryFlags=0,siteTypeFlags=0;
-    bool ownerPresent=false,attached=false;
-    uint8_t ownerRole=0,deathType=0;
-};
-struct RetailConstructionCompletionEffects {
-    bool applied=false,detach=false,activate=false,notify=false;
-    uint8_t deathType=0;
-};
-inline RetailConstructionCompletionEffects retailCompleteConstruction(
-        RetailConstructionProgress& site,const RetailConstructionCompletion& input) {
-    RetailConstructionCompletionEffects effects;effects.deathType=input.deathType;
-    const bool builderAllocated=input.builderPresent && (input.builderFlags&0x1000000u);
-    if ((!input.forced && !builderAllocated) || !(site.flags&0x1000000u)) return effects;
-    if (builderAllocated) {
-        const bool constructionAllowed=(input.builderTypeFlags&0x100u) &&
-            (!(input.builderSecondaryFlags&0x2000000u) || input.allied);
-        if (!constructionAllowed && !(input.builderSecondaryFlags&0x20001000u) && !input.sameUnit)
-            return effects;
-    }
-    effects.applied=true;site.remaining=0;site.flags|=0x800u;
-    const bool controlled=input.ownerPresent && (input.ownerRole==1 || input.ownerRole==2);
-    effects.detach=controlled && !(site.flags&0x2000000u) && input.attached;
-    effects.activate=(input.siteTypeFlags&0x40000u)!=0;
-    if (input.siteTypeFlags&0x1000000u) { effects.deathType=9;site.flags|=0x1000u; }
-    effects.notify=controlled && !input.forced;
-    return effects;
-}
-
 // 5d3d54 (_ftol): truncate through a 64-bit fistp and keep the low word. Out of
 // range stores the integer indefinite, whose low word is zero.
 inline uint32_t retailFtol(double x) {
     if (!(x>-9223372036854775808.0 && x<9223372036854775808.0)) return 0;
     return uint32_t(uint64_t(int64_t(x)));
-}
-
-// 429af0: work is the builder's per-update contribution. Negative work is
-// unconjuring. Requested consumption is recorded BEFORE affordability scaling.
-// Completion/death callbacks remain with the host; flags and return behavior
-// are independent of whether the caller chooses to display build particles.
-enum class RetailConstructionResult { Idle, Worked, Completed, Removed };
-inline RetailConstructionResult retailConstructionWork(
-        RetailConstructionProgress& site,const RetailConstructionType& type,
-        RetailConstructionResources& resources,float work) {
-    if (site.remaining==0) return RetailConstructionResult::Idle;
-    double amount;
-    if (work>=0) {
-        site.events|=0x10000000u;
-        amount=double(resources.allocation)*double(work);
-    } else amount=-double(work);
-    if (amount<=0) return RetailConstructionResult::Idle;
-    double progress=amount*double(type.inverseTime);
-    float cost=float(progress*double(type.cost));
-    if (work>0) {
-        resources.requested=float(double(resources.requested)+
-            double(type.inverseTime)*double(type.cost)*double(work));
-        if (cost>resources.stored && cost>0) {
-            const double fraction=resources.stored>0 ? double(resources.stored)/double(cost) : 0;
-            cost=float(fraction*double(cost));
-            progress*=fraction;
-        }
-        site.remaining=float(double(site.remaining)-progress);
-        resources.stored=float(double(resources.stored)-double(cost));
-        if (site.remaining<=0) {
-            site.remaining=0;site.hp=uint16_t(type.maxHp);
-            return RetailConstructionResult::Completed;
-        }
-        // 429c93 stores _ftol's low word: a lethal hit (51a3e0) can leave remaining
-        // above 1, so the product may be negative (UB through an unsigned cast).
-        site.hp=uint16_t(retailFtol((1.0-double(site.remaining))*double(type.maxHp)));
-        site.flags|=0x800u;
-        return RetailConstructionResult::Worked;
-    }
-    const double remaining=double(site.remaining)+progress;
-    site.remaining=float(remaining);
-    if (remaining>=1) { site.hp=0;return RetailConstructionResult::Removed; }
-    site.hp=uint16_t(retailFtol((1.0-remaining)*double(type.maxHp)));
-    site.flags|=0x800u;
-    resources.stored=float(double(resources.stored)+double(cost));
-    resources.totalProduced+=double(cost);
-    resources.produced=float(double(resources.produced)+double(cost));
-    return RetailConstructionResult::Idle;
 }
 
 // 4bff28..4bff79: the parser reads a nonpositive buildtime as 100 and keeps its

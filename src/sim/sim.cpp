@@ -1,6 +1,7 @@
 #include "sim/sim.h"
 #include "sim/taweapons.h"
 #include "util/virtualpath.h"
+#include "sim/retailscriptget.h"
 #include "sim/retailtransport.h"
 #include "sim/retailanimationqueries.h"
 #include "sim/retailaim.h"
@@ -237,7 +238,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // Integer-then-float (atol): 12.9 -> 12.
             t.buildCostMetal = float(int32_t(info->numberOr("buildcostmetal", 0)));
             t.buildCostEnergy = float(int32_t(info->numberOr("buildcostenergy", 0)));
-            t.buildCost = t.buildCostMetal;
             t.energyMake = float(info->numberOr("energymake", 0));
             t.energyUse = float(info->numberOr("energyuse", 0));
             t.metalMake = float(info->numberOr("metalmake", 0));
@@ -259,8 +259,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.targetingUpgrade = (int32_t(info->numberOr("istargetingupgrade", 0)) & 1) != 0;
             t.buildTime = float(info->numberOr("buildtime", 0));
             t.workerTime = float(info->numberOr("workertime", 1));
-            t.income = 0;    // the engine's single-resource pool: unused by TA data
-            t.storage = 0;
             t.footX = int(info->numberOr("footprintx", 1));
             t.footZ = int(info->numberOr("footprintz", 1));
             t.gate = (int(info->numberOr("gate",0))&1)!=0;
@@ -866,11 +864,6 @@ int World::spawn(const UnitType* type, float x, float z, std::optional<float> he
     u.type = type;
     startObjectOrders(u);
     startObjectStats(u);
-    if (retailAllocation_ && players_[size_t(player)].buildCache) {
-        const auto& entries=players_[size_t(player)].buildCache->entries;
-        auto entry=std::find_if(entries.begin(),entries.end(),[&](const auto& e){return e.type==type;});
-        if (entry!=entries.end() && entry->construction) u.constructionEmitter=entry->construction->emitter;
-    }
     // 511ba2..511cbb initializes both angle fields before speed variation.
     const uint32_t spread=type ? type->buildAngle : 0;
     const uint16_t birthHeading=uint16_t(32768u+(type ? type->orientation : 0u)-spread/2+gameRand(spread));
@@ -951,32 +944,6 @@ void World::switchScript(Unit& u,bool on,bool hold) {
     if (on && hold && script->createRunning(*u.type->script())) { script->activateHeld=true;return; }
     notifyUnitScript(u,on ? "Activate" : "Deactivate");
 }
-
-// 512060's last argument (5123ce..512417): set, the new unit's mogriumstorage
-// (type +0x206) is added at once to its owner's pool, its lifetime total and
-// its capacity, which the next economy pass (51d7d3) recounts. The skirmish
-// and multiplayer start's Monarch (4d3200), a mission's placement record
-// (514b40) and Create (4d35c0), and the CRT's start units (4cd080) and Create
-// action (4cad50 case 7) pass 1; production, the builders, a revive and a
-// change of owner pass 0 (check_new_unit_mana.py storage). So a game opens
-// with the pool its starting units can store: 5000, the Monarch's.
-void World::creditCreationStorage(int unitId) {
-    const Unit* u=unit(unitId);
-    if (!u || !u->type || !validUnitOwner(u->player)) return;
-    auto& p=players_[size_t(u->player)];
-    const double storage=double(u->type->storage);
-    if (p.retailResources) {
-        auto& r=*p.retailResources;
-        r.stored=float(storage+double(r.stored));
-        r.totalProduced+=storage;
-        r.capacity=float(storage+double(r.capacity));
-        p.mana=r.stored;p.storage=r.capacity;
-        return;
-    }
-    p.mana+=storage;
-    p.storage=float(storage+double(p.storage));
-}
-
 
 // A finished creation (512060 at 51230c) and a completion (429990 at 429a92)
 // of a type with isfeature (+0x260 & 0x1000000; the four walls) leave the
@@ -2269,7 +2236,7 @@ static bool plainFlightPatrol(const Unit& u) {
     if (!u.type || !u.type->canFly || u.orders.empty()) return false;
     const auto& order=u.orders.front();
     if (order.targetId || order.buildType || order.buildRectangle || order.reclaimFeat ||
-        order.repairTarget || u.retailBuild) return false;
+        order.repairTarget) return false;
     return order.flightMoveMission || order.patrol;
 }
 
@@ -2616,13 +2583,11 @@ void World::tickFlightMovement(Unit& u, bool persistent) {
             u.orders.erase(u.orders.begin());
             return;
         }
-        const bool flyingBuild=u.retailBuild && u.retailBuild->flying;
         // A builder at its build, reclaim or repair point holds there.
-        if (!flyingBuild && (order.buildType || order.reclaimFeat || order.repairTarget)) { holdFlight(u); return; }
+        if (order.buildType || order.reclaimFeat || order.repairTarget) { holdFlight(u); return; }
         // Point controllers used by both move and patrol are nonpersistent:
         // arrival posts 0x100 and releasing the controller posts 0x400.
-        if (flyingBuild) u.retailBuild->mission.pending|=0x500;
-        else if (plainFlightPatrol(u)) order.mission.pending|=0x500;
+        if (plainFlightPatrol(u)) order.mission.pending|=0x500;
         else {
             Order done=order;
             // The point controller retires on arrival before the native mover
@@ -3213,7 +3178,7 @@ uint32_t World::retailMissionFlags(Unit& u) {
 // A flyer's head order that Legion keeps with its formation: a plain move,
 // fight-move or patrol leg, nothing that carries its own target or job.
 static bool legionStationOrder(const Unit& u) {
-    if (u.orders.empty() || u.retailBuild) return false;
+    if (u.orders.empty()) return false;
     const Order& o=u.orders.front();
     if (o.targetId || o.load || o.unload || o.guard || o.wait>0 || o.waitAttack || o.buildType ||
         o.reclaimFeat || o.reclaimArea || o.repairTarget || o.patrolRepair ||
@@ -5101,6 +5066,28 @@ bool World::buildSiteReachable(int builderId, const UnitType* site, float x, flo
     return false;
 }
 
+// The unit words TotalA.exe's GET reads (sim/retailscriptget.h), for the
+// script host and the client's snapshot.
+RetailGetUnit World::retailGetWords(const Unit& unit,const UnitScript* factory) {
+    RetailGetUnit words;
+    if (factory) {
+        words.activated=factory->activated;words.ready=factory->ready;words.busy=factory->busy;
+        words.yardOpen=factory->yardOpen;words.buggerOff=factory->buggerOff;
+    }
+    words.moveState=uint32_t(unit.moveState);words.fireState=uint32_t(unit.fireState);
+    words.hp=unit.hp.floorInt();words.maxHp=unit.maximumHp();
+    words.remaining=!unit.underConstruction ? 0.0f : unit.buildStarted ? unit.buildRemaining : 1.0f;
+    words.heading=portHeadingToRetail(unit.heading);
+    return words;
+}
+
+RetailGetUnit World::scriptGetWords(int unitId) const {
+    const Unit* u=unit(unitId);
+    if (!u || !u->type) return {};
+    const auto it=unitScripts_.find(unitId);
+    return retailGetWords(*u,it!=unitScripts_.end() ? &it->second : nullptr);
+}
+
 bool World::scriptYardOpen(int unitId) const {
     return size_t(unitId)<scriptYardById_.size() && scriptYardById_[size_t(unitId)];
 }
@@ -6638,26 +6625,14 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // that tick returns before touching it -- no HP, no kill credit, no
         // death type, no HitByWeapon, no status. The CRT draw above (52a3ba)
         // is still consumed. Our hp<=0 sweep runs later in the tick, so the
-        // dying test is the sweep's own. A retail construction site at zero
-        // is not dying and keeps taking damage.
-        if (e.hp <= Fixed() && !(e.retailSite && e.underConstruction)) return;
+        // dying test is the sweep's own.
+        if (e.hp <= Fixed()) return;
         // Native HP is a 16-bit word that wraps; ours is 16.16 and saturates,
         // and `dealt` may exceed the whole-number range of fromInt (armour
         // and veterancy reach 33619). Subtract in 64 bits, clamped so that
         // -hp (the overkill below) is representable too.
         e.hp = Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(e.hp.v) - int64_t(dealt) * Fixed::kOne,
                                                       -int64_t(INT32_MAX), INT32_MAX)));
-        // Retail 51a3c2..51a408: every non-heal hit on an unfinished site (progress
-        // remaining at +0x108 nonzero) rewrites remaining = 1 - hp/maxdamage from
-        // the new SIGNED hp word (movsx 51a3e0), whatever the damage source. Without
-        // it the next work tick restored hp from the stale progress and erased the
-        // damage. A lethal hit leaves remaining above 1; read unsigned, the word made
-        // it hugely negative and the next work tick completed the site at full HP.
-        if (e.retailSite && e.underConstruction && e.retailSite->progress.remaining!=0) {
-            auto& progress=e.retailSite->progress;
-            progress.hp=uint16_t(e.hp.floorInt());
-            progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,e.maximumHp()));
-        }
         // The hitter player and damage kind of the record before this one
         // (victim +0xf4 / +0xf5): TotalA.exe's handler 0x489ce0 runs the hit
         // response 0x406f80 (0x489da2) before it writes them (0x489dac..0x489dc0).
@@ -6703,7 +6678,7 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // D-gun, retailTaAttackMission), and only when the previous record came
         // from another player (+0xf4 != +0xff; a new unit's 10 is "another") or
         // was an ordinary weapon hit (+0xf5 == 1). The owner, on-screen and
-        // repeat tests are the viewer's (client/monarchalert.h). Splash and fatal
+        // repeat tests are the viewer's (client/commanderalert.h). Splash and fatal
         // hits included; presentation only, no simulation or RNG change.
         if (dealt > 0 && e.type && !retailTaAttackMission(e) &&
             (previousHitPlayer != e.player || previousHitKind == tadeath::kWeapon))
@@ -8358,7 +8333,7 @@ void World::taHitResponse(Unit& e,const Unit* a) {
     if (e.underConstruction) return;
     if (allied(e.player,a->player)) return;
     const bool mobile=e.type->canMove && !e.type->isStructure();
-    const bool idle=e.orders.empty() && !e.retailBuild && e.buildQueue.empty();
+    const bool idle=e.orders.empty() && e.buildQueue.empty();
     bool mission=false;
     if (!e.type->weapons.empty() && idle && retailAnswersAttacker(e,*a,0,mobile)) {
         mission=retailIssueAutoAttack(e,a->id,false);
@@ -8372,7 +8347,7 @@ void World::taHitResponse(Unit& e,const Unit* a) {
 void World::taDamageRecord(Unit* attacker,Unit& victim,int32_t amount,uint8_t kind) {
     // 0x489d3f..0x489d53: a victim that lives and is not dying (+0x4000:
     // its HP word already at 0).
-    if (!victim.alive() || !victim.type || (victim.hp<=Fixed() && !(victim.retailSite && victim.underConstruction)))
+    if (!victim.alive() || !victim.type || victim.hp<=Fixed())
         return;
     // 0x489bc3..0x489c32: an activated unit takes a record under 30000
     // through its damagemodifier, then every record shrinks with the
@@ -8395,11 +8370,6 @@ void World::taDamageRecord(Unit* attacker,Unit& victim,int32_t amount,uint8_t ki
     if (attacker) { victim.lastHitBy=attacker->id;victim.lastHitPlayer=attacker->player; }
     victim.hp=Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(victim.hp.v)-int64_t(dealt)*Fixed::kOne,
                                                      -int64_t(INT32_MAX),INT32_MAX)));
-    if (victim.retailSite && victim.underConstruction && victim.retailSite->progress.remaining!=0) {
-        auto& progress=victim.retailSite->progress;
-        progress.hp=uint16_t(victim.hp.floorInt());
-        progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,victim.maximumHp()));
-    }
     if (victim.hp>Fixed()) return;
     victim.overkill=fxMax(victim.overkill,-victim.hp);
     switch (kind) {
@@ -8521,7 +8491,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     // friendly fire.
     const bool requiresEnemy=u.orders.front().autoTarget;
     if (!target || !target->alive() || (requiresEnemy && allied(u.player,target->player)) ||
-        (target->hp<=Fixed() && !(target->retailSite && target->underConstruction))) {
+        target->hp<=Fixed()) {
         // Clear both the order and script aim before a pending release can fire
         // at a dying target or an ally that has just been converted.
         if(u.scriptAimTarget)clearScriptWeaponTarget(u);
@@ -9271,15 +9241,6 @@ bool World::tickSuppress(Unit& u,bool& groundMovementHandled) {
     return true;
 }
 
-void World::setManaSharing(int fromPlayer, int toPlayer, bool enabled) {
-    if (fromPlayer < 0 || fromPlayer >= numPlayers() || toPlayer < 0 ||
-        toPlayer >= numPlayers() || fromPlayer == toPlayer || !allied(fromPlayer,toPlayer) ||
-        players_[size_t(fromPlayer)].defeated || players_[size_t(toPlayer)].defeated) return;
-    auto& mask=players_[size_t(fromPlayer)].manaShareMask;
-    if (enabled) mask |= uint8_t(1u << toPlayer);
-    else mask &= uint8_t(~(1u << toPlayer));
-}
-
 bool World::canGiveUnit(int unitId, int fromPlayer, int toPlayer) const {
     if (fromPlayer < 0 || fromPlayer >= numPlayers() || toPlayer < 0 ||
         toPlayer >= numPlayers() || fromPlayer == toPlayer || !allied(fromPlayer, toPlayer) ||
@@ -9336,7 +9297,6 @@ int World::scenarioCreate(const UnitType* type,int player,int lx,int lz,int hx,i
         return Fixed::raw(std::bit_cast<int32_t>(uint32_t(cell)*0x100000u+uint32_t(footprint)*0x80000u)).toFloat();
     };
     const int id=spawn(type,coordinate(cx,type->footX),coordinate(cz,type->footZ),0.f,player);
-    creditCreationStorage(id);   // 4caf16: the Create action's 512060 passes 1
     finishAsFeature(id);         // 51230c: created finished
     return id;
 }
@@ -9348,7 +9308,7 @@ void World::scenarioDestroy(int unitId,uint8_t deathType) {
     // can restore its HP. Keep unrelated queued production available afterward.
     for (auto& builder:units_) {
         if (builder.id==unitId) continue;
-        if (builder.buildSiteId==unitId || (builder.retailBuild && builder.retailBuild->target==unitId)) {
+        if (builder.buildSiteId==unitId) {
             builder.buildSiteId=0;
             cancelBuilds(builder.id);
             builder.productionSiteId=0;
@@ -9362,7 +9322,7 @@ void World::scenarioDestroy(int unitId,uint8_t deathType) {
     auto& u=*unit(unitId);
     const int owner=u.player;
     u.hp=Fixed();u.deathType=deathType;u.severity=0;
-    u.retailSite.reset();u.beingBuilt=false;
+    u.beingBuilt=false;
     beginUnitDeath(u);
     if (u.type->isStructure()) blockFoot(*u.type,u.x.toFloat(),u.z.toFloat(),false);
     retireCorpse(u);
@@ -9398,14 +9358,6 @@ void World::scenarioAdjustHealth(int unitId,int32_t raw,bool heal) {
         const int32_t next=std::bit_cast<int32_t>(uint32_t(u->hp.v)-(uint32_t(amount)<<16));
         u->overkill=Fixed::raw(next<0 ? int32_t(std::min<int64_t>(-int64_t(next),INT32_MAX)) : 0);
         u->hp=Fixed::raw(std::max(0,next));
-    }
-    if (u->retailSite) {
-        auto& progress=u->retailSite->progress;
-        progress.hp=uint16_t(u->hp.floorInt());
-        // Native healing leaves construction progress untouched; damage writes
-        // 1 - HP/maxHP while unfinished, before testing for a lethal result.
-        if (!heal && progress.remaining!=0)
-            progress.remaining=float(1.0-double(progress.hp)/std::max(1,u->maximumHp()));
     }
     if (!heal) {
         u->deathType=13;
@@ -9469,12 +9421,10 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     // The old object's death: its builders lose their target, a factory's
     // BuildingBuild aborts and its unfinished output dies.
     for (auto& builder:units_) if (builder.id!=unitId &&
-        (builder.buildSiteId==unitId || builder.repairId==unitId ||
-         (builder.retailBuild && builder.retailBuild->target==unitId))) {
+        (builder.buildSiteId==unitId || builder.repairId==unitId)) {
         if (builder.buildSiteId==unitId) builder.buildSiteId=0;
         cancelBuilds(builder.id);builder.productionSiteId=0;
     }
-    if (u.retailSite) u.retailSite->builder=0;
     killProductionOutput(u,true);
     retireReferences(unitId);
     // The old object dies (51a140 kind 6, then its 512610): its death packet
@@ -11324,22 +11274,6 @@ int World::startBuild(int builderId, const UnitType* type, float x, float z,
         blockFoot(*type, x, z, true);
     }
     b = unit(builderId);   // spawn may have reallocated units_
-    if (players_[size_t(b->player)].retailResources) {
-        initializeRetailSite(*site, builderId);
-        RetailConstructionJob job;
-        job.target=id;job.workerTime=b->type->workerTime;job.working=true;
-        for (const auto& entry:players_[size_t(b->player)].buildCache->entries)
-            if (entry.type==b->type && entry.construction) job.workerTime=entry.construction->workerTime;
-        job.mission.stage=2;
-        const uint16_t target=uint16_t(retailDirection(b->x-site->x,b->z-site->z).v);
-        job.turnHeading=target;
-        b->retailBuild=job;b->constructionHolding=true;
-        if (auto script=unitScripts_.find(builderId);script!=unitScripts_.end()) {
-            const auto& file=*b->type->script();
-            script->second.state().startArguments(file,file.scriptIndex("StartBuilding"),
-                {uint16_t(target-portHeadingToRetail(b->heading)),1,0,0},2);
-        }
-    }
     b->buildSiteId = id;
     b->buildStuckT = 0; b->buildStuckD = INT32_MAX;   // fresh job: reset the reach watchdog
     if (approach == Approach::Replace)
@@ -11474,14 +11408,6 @@ bool World::prepareBuildApproach(Unit& u) {
 void World::cancelBuilds(int builderId) {
     Unit* b = unit(builderId);
     if (!b) return;
-    // Retire the authoritative job as well as its presentation target.
-    // Otherwise replacement orders leave tickRetailConstruction running.
-    if(b->retailBuild) {
-        if(b->retailBuild->working)notifyUnitScript(*b,"StopBuilding");
-        b->retailBuild.reset();
-        b->constructionHolding=false;
-        b->standbyAllowed=true;
-    }
     stopWorkAnimation(*b);
     // Drop every pending build from the order queue (see queueBuild): a fresh
     // move/attack/stop cancels queued construction. A ground builder's
@@ -11499,9 +11425,7 @@ void World::cancelBuilds(int builderId) {
         Unit* site = unit(b->buildSiteId);
         // A site that never actually started building is just a ghost — remove
         // it so its marker/ghost doesn't linger.
-        // Retail GetBuilt sites own their abandonment/decay lifecycle, even
-        // before their first affordable work tick. Only legacy ghosts vanish.
-        if (site && site->underConstruction && !site->buildBegun && !site->retailSite) {
+        if (site && site->underConstruction && !site->buildBegun) {
             if (site->type && site->type->isStructure()) {
                 blockFoot(*site->type, site->x.toFloat(), site->z.toFloat(), false);
             }
@@ -11548,7 +11472,7 @@ bool World::repairTopAboveSea(const Unit& t) const {
 }
 
 Unit* World::productionOwnerOf(const Unit& site) {
-    if (!site.productionOwner || !site.underConstruction || site.retailSite) return nullptr;
+    if (!site.productionOwner || !site.underConstruction) return nullptr;
     Unit* p=unit(site.productionOwner);
     if (!p || !p->alive() || p->productionSiteId!=site.id || p->player!=site.player ||
         p->buildQueue.empty() || p->buildQueue.front()!=site.type) return nullptr;
@@ -11595,7 +11519,7 @@ void World::assist(int builderId, int siteId, bool queue) {
     if (!b || !site || b->underConstruction || !canHelpBuild(*b,*site)) return;
     // Latch onto the existing site; tickConstruction walks there and works at
     // this builder's rate. A factory's or conjurer's output shares its
-    // producer's progress (workProduction); any other site grows from its hp.
+    // producer's progress (taProductionWork); any other site its own.
     // A ground helper's leg is its job: queued behind other orders, it is
     // latched when it becomes current (the dispatch, as a repair is).
     if (b->type->canFly) {
@@ -12335,7 +12259,7 @@ void World::prepareReclaimApproach(Unit& u) {
 
 // 494fd0 at stage 5: the feature fades out (494ce0) and leaves the plane with
 // no featuredead replacement, so a reclaimed corpse leaves no rubble. While
-// it fades it still blocks but is no longer a target. No mana.
+// it fades it still blocks but is no longer a target.
 void World::finishReclaim(Unit&,int target) {
     if (target<0) {
         Unit* c=unit(-target);
@@ -12591,7 +12515,8 @@ void World::installReclaimUnitApproach(Unit& u, Order& goal, const Unit& t) {
 //   stage 2 (0x40485b) StartBuilding with the heading to the target less the
 //           unit's own (0x438590; no turn child);
 //   stage 3 (0x40489b) 0x438700: waits for INBUILDSTANCE (SET 5, event 4);
-//   stage 4 (0x4048b5) the work sound (0x47f780(unit, 0xb), not modelled);
+//   stage 4 (0x4048b5) the work event (0x47f780(unit, 0xb): "working",
+//           unitSpeech_);
 //   stage 5 (0x4048d2) every 2 ticks: out of reach (retailReclaimUnitInReach,
 //           builddistance + the target's +0x184) or no longer allowed, it
 //           stops (StopBuilding, 0x4385f0) and starts over at stage 0 after
@@ -12658,8 +12583,18 @@ void World::tickReclaimUnit(Unit& b) {
     for (int pass=0;pass<8;++pass) {
         switch (m.stage) {
         case 0:
-            if (!b.type->canMove || !b.type->canReclaim) { end(); return; }
-            if (!reclaimUnitAllowed(b,*t)) { end(); return; }
+            if (!b.type->canMove || !b.type->canReclaim) {
+                // 0x4047de / 0x414d61: event 7 ("cant") with the line.
+                unitSpeech_.push_back({b.id,7,"Reclamation failed"});
+                end(); return;
+            }
+            if (!reclaimUnitAllowed(b,*t)) {
+                // 0x404791..0x4047a6 (the ground mission asks for both lines; the
+                // queue keeps the first, one entry an event) / 0x414d89.
+                unitSpeech_.push_back({b.id,7,"That unit cannot be reclaimed"});
+                if (!fly) unitSpeech_.push_back({b.id,7,"Reclamation failed"});
+                end(); return;
+            }
             setSlotsManual(b,kSlotsWork);
             m.stage=1;
             if (fly) {
@@ -12684,6 +12619,7 @@ void World::tickReclaimUnit(Unit& b) {
                 leg->reclaimCountdown=0;
                 leg->x=t->x;leg->z=t->z;
                 m.stage=2;
+                unitSpeech_.push_back({b.id,11,nullptr});   // 0x414d20: the work event ("working")
                 return;
             }
             leg->reclaimUnitRate=retailReclaimUnitRate(uint16_t(int32_t(b.type->workerTime)),b.kills,
@@ -12721,6 +12657,7 @@ void World::tickReclaimUnit(Unit& b) {
             m.stage=4;
             continue;
         case 4:
+            unitSpeech_.push_back({b.id,11,nullptr});   // 0x4048be: the work event ("working")
             m.stage=5;
             continue;
         case 5: {
@@ -12742,8 +12679,7 @@ void World::creditReclaimDeath(const Unit& dead) {
     Unit* reclaimer=dead.lastHitBy ? unit(dead.lastHitBy) : nullptr;
     if (!reclaimer || !reclaimer->type || !dead.type) return;
     const float remaining=!dead.underConstruction ? 0.0f
-        : dead.buildStarted ? dead.buildRemaining
-        : dead.retailSite ? dead.retailSite->progress.remaining : 1.0f;
+        : dead.buildStarted ? dead.buildRemaining : 1.0f;
     const float mult=reclaimer->player>=0 && reclaimer->player<numPlayers()
         ? players_[size_t(reclaimer->player)].books.mult : 1.0f;
     auto& production=reclaimer->books.r[econ::M].prod;
@@ -13543,8 +13479,8 @@ void World::repair(int builderId, int targetId, bool queue) {
 }
 
 // A builder repairs a damaged friendly: restores HP at the same rate it would build
-// the unit (buildTime / workerTime), draining the owner's mana proportional to the
-// HP restored -- pauses if the mana runs out.
+// the unit, paid in energy through the builder's books (econRepairStep) -- pauses
+// while the builder is in debt.
 void World::tickRepair(Unit& b, float dt) {
     // A flying repair waits behind a pad landing pushed ahead of it
     // (VTOL_RepairPatrol 0x415397): its mission is not the head meanwhile.
@@ -13968,181 +13904,6 @@ void World::joinBuilderGroup(const Unit& builder,Unit& output) {
         output.player<0 || size_t(output.player)>=players_.size() || players_[size_t(output.player)].automaticGates)
         return;
     output.squad=builder.squad;
-}
-
-void World::completeRetailConstruction(Unit& builder,Unit& site) {
-    const auto& owner=players_[size_t(builder.player)];
-    if (!owner.buildCache) throw std::runtime_error("construction completion catalogue absent");
-    const RetailBuildCacheEntry *builderType=nullptr,*siteType=nullptr;
-    for (const auto& entry:owner.buildCache->entries) {
-        if (entry.type==builder.type) builderType=&entry;
-        if (entry.type==site.type) siteType=&entry;
-    }
-    if (!builderType || !siteType) throw std::runtime_error("construction completion type absent");
-    if (site.embarked() || (siteType->inputs.flags&0x1040000u))
-        throw std::runtime_error("special construction completion attachment/activation/death host is not ported");
-    RetailConstructionCompletion input;
-    input.builderPresent=true;input.builderFlags=builder.alive() ? 0x1000000u : 0;
-    input.builderTypeFlags=builderType->inputs.flags;input.builderSecondaryFlags=builderType->inputs.secondaryFlags;
-    input.siteTypeFlags=siteType->inputs.flags;input.sameUnit=builder.id==site.id;
-    input.allied=allied(builder.player,site.player);input.deathType=uint8_t(site.deathType);
-    // Retail's owner-role notification publishes completion on its wire.
-    // Our lockstep peers already execute this transition from shared commands.
-    if (!retailCompleteConstruction(site.retailSite->progress,input).applied)
-        throw std::runtime_error("construction completion rejected by original eligibility rules");
-    site.underConstruction=false;site.beingBuilt=false;
-    site.standbyAllowed=true;site.guardNoMoveAllowed=true;
-    if (!builder.type->isStructure()) joinBuilderGroup(builder,site);
-    // Completion publishes a solid mobile body before later movers/searches.
-    // Cached grades must see it even if its stationary mover never refreshes.
-    if (!site.type->canFly && !site.type->isStructure()) {
-        const int foot=footCells(site.type);
-        const int x=footprintOrigin(site.x,foot),z=footprintOrigin(site.z,foot);
-        for (int dz=0;dz<foot;++dz) for (int dx=0;dx<foot;++dx)
-            if (x+dx>=0 && z+dz>=0 && x+dx<occW_ && z+dz<occH_)
-                setOccupant(size_t(z+dz)*occW_+x+dx,site.id);
-        for (auto& plane:searchGrades_) refreshSearchRect(plane,x,z,foot,foot);
-    }
-}
-
-void World::tickRetailGetBuilt(Unit& site) {
-    struct Host {
-        World& w;Unit& u;
-        bool enabled() const { return u.alive() && !u.incapacitated(); }
-        RetailMissionState* head() { return u.retailSite && u.retailSite->mission ? &*u.retailSite->mission : nullptr; }
-        bool hasNext(const RetailMissionState&) const { return false; }
-        void idle() {}
-        uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
-        void remove(RetailMissionState&) { u.retailSite->mission.reset(); }
-        void rotate(RetailMissionState&) { throw std::runtime_error("unsupported GetBuilt rotation"); }
-        void clear() { u.retailSite->mission.reset(); }
-        int handle(RetailMissionState& m,uint32_t events) {
-            auto& state=*u.retailSite;
-            if (state.progress.remaining==0) {
-                auto* builder=w.unit(state.builder);
-                if (!u.type->isStructure() && builder && builder->alive() && builder->type->isStructure()) {
-                    if (!builder->rally.empty())
-                        throw std::runtime_error("factory rally completion host is not ported");
-                    w.joinFactoryGroup(*builder,u);
-                    const uint32_t first=random(6),second=random(3);
-                    if (u.type->canFly) { w.queueFlyerPark(u.id,builder->id,(first+second+6)*16); return 5; }
-                    Order order;order.goal=order.groundMission=true;order.park.emplace();
-                    order.park->target=builder->id;
-                    order.mission.flags=0x200u; // PARK definition retains its live target.
-                    order.park->padding=(first+second+3)*16;
-                    u.orders.push_back(order);
-                }
-                return 5;
-            }
-            return retailGetBuiltWaiting(m,w.tickCounter_,events,[&] {
-                // Fresh construction has no active weapon controller. Existing
-                // unfinished imports are already in the waiting stages.
-                if (!u.underConstruction) throw std::runtime_error("GetBuilt weapon host requires unfinished unit");
-            },[&] {
-                auto& owner=w.players_[size_t(u.player)];
-                if (!owner.retailResources) throw std::runtime_error("GetBuilt resource state absent");
-                state.progress.events=u.missionEvents;
-                const auto result=retailConstructionWork(state.progress,state.type,*owner.retailResources,-0.5f);
-                owner.mana=owner.retailResources->stored;u.hp=Fixed::fromInt(state.progress.hp);
-                u.missionEvents=state.progress.events;
-                if (result==RetailConstructionResult::Removed) {
-                    // 429cbb..429cea: 51a140(site, site, 30000, 11, 0), as decayConstruction.
-                    u.overkill=Fixed();u.deathType=11;u.lastHitBy=u.id;u.lastHitPlayer=u.player;
-                    w.sweepDeath(u);
-                }
-            });
-        }
-    } host{*this,site};
-    retailDispatchMissions(tickCounter_,site.missionEvents,host);
-    site.retailSite->progress.events=site.missionEvents;
-}
-
-void World::tickRetailConstruction(Unit& builder) {
-    if (!builder.alive() || builder.incapacitated() || builder.underConstruction || builder.embarked()) return;
-    auto& job=*builder.retailBuild;
-    if (job.turnHeading) {
-        if (portHeadingToRetail(builder.heading)!=*job.turnHeading) {
-            const Bam want=retailHeadingToPort(*job.turnHeading);
-            const int32_t diff=bamDiff(want,builder.heading);
-            builder.heading=builder.heading+Bam(std::clamp(diff,-builder.type->turnInPlaceRate,builder.type->turnInPlaceRate));
-            builder.turnReqBam=diff;builder.speed=Fixed();
-            return;
-        }
-        job.turnHeading.reset();
-    }
-    struct Host {
-        World& w;Unit& b;
-        bool enabled() const { return b.alive() && !b.incapacitated() && !b.underConstruction && !b.embarked(); }
-        RetailMissionState* head() { return b.retailBuild ? &b.retailBuild->mission : nullptr; }
-        bool hasNext(const RetailMissionState&) const { return false; }
-        void idle() {}
-        uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
-        void remove(RetailMissionState&) { clear(); }
-        void rotate(RetailMissionState&) { throw std::runtime_error("unsupported construction rotation"); }
-        void clear() {
-            if (b.retailBuild && b.retailBuild->working) w.notifyUnitScript(b,"StopBuilding");
-            b.retailBuild.reset();b.buildSiteId=0;b.constructionHolding=false;b.standbyAllowed=true;
-        }
-        int handle(RetailMissionState& m,uint32_t events) {
-            auto& job=*b.retailBuild;
-            auto* site=w.unit(job.target);
-            if (events&2) return 5;
-            if ((events&8) || !site || !site->alive()) return 8;
-            // TotalA.exe's VTOL_MobileBuild work stage (0x414145): a new
-            // hover point on every 150th game tick only, no draw
-            // (retailTaBuildHoverGoal); Kingdoms' 41ef00 re-picked on
-            // random(50) with a random point.
-            if (job.flying && m.stage==5) {
-                if (w.tickCounter_%kRetailTaBuildHoverPeriod!=0) return 1;
-                m.stage=4;return 4;
-            }
-            if (job.flying && m.stage==4) {
-                const RetailFlightGoal goal=retailTaBuildHoverGoal(
-                    {b.x.v,0,b.z.v},{site->x.v,0,site->z.v},job.flyingBuildDistance);
-                if (b.orders.empty()) throw std::runtime_error("flying construction order missing");
-                auto& order=b.orders.front();order.flightGoal=goal;
-                order.x=Fixed::raw(goal.point.x);order.z=Fixed::raw(goal.point.z);
-                m.pending&=~0x3700u;
-                m.stage=6;return 4;
-            }
-            if (job.flying && m.stage!=6)
-                throw std::runtime_error("unsupported flying construction stage");
-            if (m.stage==4) {
-                if (job.working) { job.working=false;w.notifyUnitScript(b,"StopBuilding"); }
-                return 5; // imported active jobs have exactly one build remaining
-            }
-            if (m.stage==2) {
-                const auto script=w.unitScripts_.find(b.id);
-                if (script!=w.unitScripts_.end() && script->second.ready) return 1;
-                m.waitMask=0xe;return 2;
-            }
-            if ((!job.flying && m.stage!=3) || !site->retailSite)
-                throw std::runtime_error("unsupported restored construction stage/site");
-            auto& owner=w.players_[size_t(b.player)];
-            if (!owner.retailResources) throw std::runtime_error("construction resource state absent");
-            auto& state=*site->retailSite;
-            state.progress.events=site->missionEvents;
-            const auto result=retailConstructionWork(state.progress,state.type,*owner.retailResources,
-                float(double(job.workerTime)*0.03333333));
-            owner.mana=owner.retailResources->stored;
-            site->hp=Fixed::fromInt(state.progress.hp);
-            site->missionEvents|=state.progress.events;
-            if (result==RetailConstructionResult::Completed) w.completeRetailConstruction(b,*site);
-            if (result==RetailConstructionResult::Worked || result==RetailConstructionResult::Completed) {
-                w.emitConstruction(b,false);w.emitConstruction(*site,true);
-            }
-            if (!job.flying) {
-                job.activityDeadline=std::max(job.activityDeadline,w.tickCounter_+300u);
-                w.blockCloak(b,300);   // the same +0xcc, on the unit (0x405bc8)
-            }
-            if (state.progress.remaining==0) return 1;
-            m.sleep(w.tickCounter_,1);m.waitMask|=0xa;
-            if (job.flying) { m.stage=5;return 4; }
-            return 2;
-        }
-    } host{*this,builder};
-    retailDispatchMissions(tickCounter_,builder.missionEvents,host);
-    noteOrders(builder.id);
 }
 
 // TotalA.exe's AirToGround (0x412710, retailTaAirToGround) and
@@ -15296,33 +15057,62 @@ void World::noteSiteWork(const Unit& worker, Unit& site) {
 }
 
 void World::decayConstruction(Unit& u) {
-    // 429d70(site, 1) -> 429af0(site, site, -0.5f) (E: tools/re/check_site_decay.py):
-    // the site unconjures 0.5 / buildtime of its build a tick and its owner gets
-    // float(that * buildcost) back, credited like income; once no work would be
-    // left it is removed instead, with no refund. Our sites keep their progress
-    // in hp itself (5% of maxdamage for no work, as placed, plus 95% of it for
-    // the whole build), so each gives back the same fraction there and loses
-    // the matching hp. A producer's output never gets here while its producer
-    // holds it (the decay pass); one it lost decays by its hp.
+    // TotalA.exe's GetBuilt (0x402da0) stage 2, on a timer wake with no work
+    // event: 0x41bcd0(site, 11) = 0x41ba60(site, site, amount) with amount =
+    // -(float)(buildtime * 11) / buildcostenergy (+0x1ea, +0x186), unconjure
+    // work the site does on itself. 0x41ba60 (amount < 0): the remaining work
+    // c = clamp(rem - amount / buildtime, 0, 1) (0x41bac1..0x41bb26), the HP
+    // word takes int(rem * maxdamage) - int(c * maxdamage) off, never below 0
+    // (0x41bbfa..0x41bc22), and the SITE's own metal accumulator gets the
+    // refund -(buildcostmetal * (rem - c)) as production (+0xd4, 0x41bba1..
+    // 0x41bbf4), x0.5 / x0.7 for an easy / medium computer owner
+    // (0x4fcc98 / 0x4fcc90), so it lands at the owner's next settle; energy is
+    // not refunded. Once c reaches 1 the site dies (0x41bc3f: 0x489bb0(site,
+    // site, 30000, 9)), after its last refund. A zero or NaN amount (buildtime
+    // 0) does nothing but raise the work event (0x41ba9d), which wakes
+    // GetBuilt again. A producer's output never gets here while its producer
+    // holds it (the decay pass).
     if (u.hp <= Fixed()) return;   // already killed: the death sweep has it
-    const auto step=retailSiteDecay(retailInverseBuildTime(u.type->buildTime),u.type->buildCost);
-    const Fixed drop=Fixed::fromFloat(float(double(u.type->maxHp)*0.95*step.progress));
-    bool removed=u.hp<=drop;
-    removed=removed || u.hp-drop<=Fixed::fromFloat(u.type->maxHp*0.05f);
-    if (!removed) {
-        u.hp=u.hp-drop;
-        players_[size_t(u.player)].creditMana(double(step.refund));
+    const UnitType& t = *u.type;
+    const int32_t buildTime = int32_t(t.buildTime);
+    const float amount = -float(double(int32_t(uint32_t(buildTime) * 11u)) / double(t.buildCostEnergy));
+    if (!(amount < 0.0f)) {
+        if (amount == 0.0f) u.siteWorkLate = true;
         return;
     }
-    // Retail's unconjure ends as a death (429cbb..429cea: the HP word 0, then
-    // 51a140(site, site, 30000, 11, 0)): the site is its own last hitter and
-    // dies with kind 11 and severity 0, so it retires at once (no Killed,
-    // corpse, death weapon, credit or loss) and its retirement reaches the
-    // mission's conditions, UnitDestroyed and a CRT game's lost tally like any
-    // other death (512b40, 512b4e).
+    if (!u.buildStarted) { u.buildStarted = true; u.buildRemaining = 1.0f; }
+    const float rem = u.buildRemaining;
+    const double v = double(rem) - double(amount) / double(buildTime);
+    const float c = v < 1.0 ? (v > 0.0 ? float(v) : 0.0f) : 1.0f;
+    const float d = rem - c;
+    const int hpMax = t.maxHp;
+    const int gain = int32_t(rem * float(hpMax)) - int32_t(c * float(hpMax));
+    u.hp = Fixed::fromInt(std::max(u.hp.floorInt() + gain, 0));
+    u.buildRemaining = c;
+    const float refund = -(t.buildCostMetal * d);
+    if (u.player >= 0 && u.player < numPlayers()) {
+        const float mult = players_[size_t(u.player)].books.mult;
+        const double k = mult == 0.5f ? 0.5 : mult == 0.7f ? 0.7 : double(mult);
+        auto& prod = u.books.r[econ::M].prod;
+        prod = float(double(prod) + double(refund) * k);
+    }
+    if (c < 1.0f && u.hp > Fixed()) return;
+    // The unconjure ends as a death (0x41bc49: 0x489bb0(site, site, 30000, 9,
+    // 0)): the site is its own last hitter and dies with kind 9 (deathType 11
+    // here, retailTaDeathKind) and severity 0, so it retires at once (no
+    // Killed, corpse, death weapon, credit or loss) and its retirement reaches
+    // the mission's conditions and UnitDestroyed like any other death.
     u.hp = Fixed(); u.overkill = Fixed();
     u.deathType = 11; u.lastHitBy = u.id; u.lastHitPlayer = u.player;
     sweepDeath(u);
+}
+
+// What stateHash folds where the engine's old single-resource pool (the
+// removed Player::mana double) went: the double it held at a tick's end -- a
+// TA player's stored metal (the pool mirrored the books), else the 100 its
+// overflow clamp left -- so the hashes of TA games keep their values.
+static double legacyPoolWord(const Player& t) {
+    return t.books.hasBase ? double(t.books.stored[econ::M]) : 100.0;
 }
 
 static void retireProductionItem(Unit& builder,size_t index) {
@@ -15336,245 +15126,6 @@ void World::train(int builderId, const UnitType* type, int count) {
     Unit* b = unit(builderId);
     if (!b || !b->alive() || !type) return;
     for (int i = 0, n = std::max(1, count); i < n; ++i) b->buildQueue.push_back(type);
-}
-
-void World::tickRetailAiStrike(int owner,unsigned index) {
-    auto unsupported=[&](const char* branch) {
-        throw std::runtime_error("unsupported retail AI strike "+std::string(branch)+
-                                 " at tick "+std::to_string(tickCounter_));
-    };
-    auto& player=players_[size_t(owner)];auto& ai=*player.retailAi;auto& squad=ai.squads[index];
-    if (!player.buildCache) unsupported("type catalogue");
-    RetailAiCentroid centroid;
-    for (int id:squad.members) if (const Unit* u=unit(id);u && u->alive()) centroid.add(u->x.v,u->z.v);
-    const auto center=centroid.center();if (!center) return;
-    // With only one occupied base, the strength-filtered search and its
-    // unfiltered fallback select the same recipient. Multiple bases need the
-    // original weapon-controller strength calculation.
-    unsigned bases=0;
-    for (unsigned i=1;i<=20;++i) if (ai.schedule.groups[i].present && !ai.squads[i].members.empty()) ++bases;
-    if (bases>1) unsupported("multiple retreat bases");
-    const int backup=squad.parameters[0];
-    if (backup<0 || backup>=100) unsupported("backup reference");
-    if (int(squad.members.size()+ai.squads[size_t(backup)].members.size())<=squad.parameters[2])
-        unsupported("squad dissolution");
-    const Unit* target=unit(int(uint32_t(squad.parameters[4])&65535));
-    if (!squad.parameters[5] || !target || !target->alive()) unsupported("target selection");
-    if (pathRand(250)==0) unsupported("target refresh");
-    int radius=10;
-    for (int id:squad.members) {
-        const Unit* u=unit(id);
-        if (!u || !u->alive() || u->type->isStructure() || u->type->canFly || u->type->weapons.empty() || u->embarked())
-            unsupported("member withdrawal");
-        const RetailBuildCacheEntry* type=nullptr;
-        for (const auto& entry:player.buildCache->entries) if (entry.type==u->type) { type=&entry;break; }
-        if (!type || !type->construction) unsupported("member maximum HP");
-        const unsigned divisor=pathRand(3)+3;
-        if (uint32_t(int32_t(int16_t(u->hp.floorInt())))<type->construction->type.maxHp/divisor)
-            unsupported("injured member withdrawal");
-        const auto& weapon=u->type->weapons[0];
-        if (!u->orders.empty() && u->orders[currentLeg(u->orders)].controller && pathRand(20)==0) {
-            const auto* nav=&navFor(u->type);
-            const auto plane=std::find_if(searchGrades_.begin(),searchGrades_.end(),[&](const auto& p) {
-                return p.nav==nav && p.footX==u->type->footX && p.footZ==u->type->footZ;
-            });
-            if (plane==searchGrades_.end() || plane->cells.empty() || plane->navVersion!=nav->version())
-                unsupported("member reachability plane");
-            const int range=std::max(1,weapon.range/16);
-            if (!retailRectangleReachable(nav->width(),nav->height(),
-                    footprintOrigin(u->x,u->type->footX),footprintOrigin(u->z,u->type->footZ),
-                    u->type->footX,u->type->footZ,
-                    footprintOrigin(target->x,target->type->footX),footprintOrigin(target->z,target->type->footZ),
-                    range,range,true,false,[&](int x,int z) { return plane->cells[size_t(z)*nav->width()+x]; }))
-                unsupported("unreachable member withdrawal");
-        }
-        radius=std::max(radius,std::max(sightDistance(*u->type),weapon.range));
-        if (u->orders.empty() || !u->orders[currentLeg(u->orders)].groundMission || u->orders[currentLeg(u->orders)].park)
-            unsupported("non-move member order");
-    }
-    auto distance=[](int32_t ax,int32_t az,int32_t bx,int32_t bz) {
-        const int64_t x=std::bit_cast<int32_t>(uint32_t(ax)-uint32_t(bx));
-        const int64_t z=std::bit_cast<int32_t>(uint32_t(az)-uint32_t(bz));
-        return std::bit_cast<int32_t>(uint32_t((x*x)>>32)+uint32_t((z*z)>>32));
-    };
-    const int threatRadius=(radius*3)/2;
-    TA_PASS();
-    for (const auto& enemy:units_) if (enemy.alive() && !allied(owner,enemy.player) &&
-        distance(center->first,center->second,enemy.x.v,enemy.z.v)<=threatRadius*threatRadius)
-        unsupported("nearby combat");
-    squad.parameters[5]=2;
-    bool close=false;
-    for (int id:squad.members) {
-        const auto& u=*unit(id);const auto& goal=u.orders[currentLeg(u.orders)];
-        if ((goal.mission.flags&0x400u) && distance(goal.missionTarget ? goal.missionTarget->first.v : goal.x.v,
-                goal.missionTarget ? goal.missionTarget->second.v : goal.z.v,target->x.v,target->z.v)<2500) {
-            close=true;break;
-        }
-    }
-    for (int id:squad.members) {
-        auto& u=*unit(id);const auto& goal=u.orders[currentLeg(u.orders)];
-        const bool force=(goal.mission.flags&0x10000u) && pathRand(50)==0;
-        if (!force && close && pathRand(10)!=0) continue;
-        // Issue the primary mission now; its stage-zero handler creates the
-        // controller on the unit's next update, retaining exact fixed positions.
-        Order next;next.x=goal.x;next.z=goal.z;next.goal=next.groundMission=true;
-        next.segmentX=goal.segmentX;next.segmentZ=goal.segmentZ;next.hasSegment=goal.hasSegment;
-        next.missionTarget=std::pair{target->x,target->z};
-        next.mission.flags=0x3001401u;next.issuedTick=tickCounter_;
-        next.groundResponse.mode=-1;
-        next.groundResponse.goal={int16_t(target->x.floorInt()),int16_t(target->z.floorInt())};
-        const size_t end=currentLeg(u.orders);
-        cancelPath(u);u.routeStamp=0;u.orders.resize(end+1);u.orders[end]=next;u.standbyActive=false;
-    }
-    squad.setActive(1);
-}
-
-void World::tickRetailAiBase(int owner,unsigned index) {
-    auto unsupported=[&](const char* branch) {
-        throw std::runtime_error("unsupported retail AI base "+std::string(branch)+
-                                 " at tick "+std::to_string(tickCounter_));
-    };
-    auto& player=players_[size_t(owner)];
-    auto& ai=*player.retailAi;auto& squad=ai.squads[index];
-    if (!player.buildCache || !player.buildCache->planner || !player.retailResources)
-        unsupported("planner metadata");
-    auto& cache=*player.buildCache;const auto& planner=*cache.planner;
-    auto typeIndex=[&](const Unit& u)->size_t {
-        for (size_t i=0;i<cache.entries.size();++i) if (cache.entries[i].type==u.type) return i;
-        unsupported("unit catalogue");return 0;
-    };
-    auto classify=[&](const Unit& u) {
-        const size_t i=typeIndex(u);const auto& inputs=cache.entries[i].inputs;
-        RetailAiUnitClass result;
-        result.flags=u.alive()?0x1000000u:0;
-        if (u.type->isStructure()) result.flags|=0x2000000u;
-        if (!u.type->weapons.empty()) result.flags|=0x8000000u;
-        result.typeFlags=inputs.flags;result.secondaryFlags=inputs.secondaryFlags;
-        result.constructor=!planner.types[i].choices.empty();result.mover=!u.type->isStructure();
-        result.capacity=inputs.weapon;
-        result.mission=u.retailBuild.has_value() || !u.orders.empty() || u.standbyActive;
-        result.missionFlags=u.retailBuild?8:(!u.orders.empty()?uint8_t(u.orders.back().mission.flags):0);
-        return result;
-    };
-    auto countCategory=[&](unsigned category,bool ready) {
-        int count=0;
-        for (int id:squad.members) {
-            const Unit* u=unit(id);
-            if (!u || !retailAiCategory(classify(*u),category)) continue;
-            if (ready) {
-                if (u->underConstruction || u->incapacitated()) continue;
-                if (u->embarked()) unsupported("attached member count");
-                const auto& type=cache.entries[typeIndex(*u)];
-                if (!type.construction) unsupported("member maximum HP");
-                if (uint32_t(int32_t(int16_t(u->hp.floorInt())))<(type.construction->type.maxHp*3u)/4u) continue;
-            }
-            ++count;
-        }
-        return count;
-    };
-    if (squad.parameters[0] && !ai.anchorsRestored) unsupported("anchor metadata");
-    if (squad.parameters[0] && !ai.anchors.contains(squad.parameters[0])) squad.parameters[0]=0;
-    std::optional<std::pair<int32_t,int32_t>> center;
-    if (auto anchor=ai.anchors.find(squad.parameters[0]);anchor!=ai.anchors.end()) {
-        center=std::pair{std::bit_cast<int32_t>(uint32_t(int32_t(anchor->second.first))*1048576u+524288u),
-                         std::bit_cast<int32_t>(uint32_t(int32_t(anchor->second.second))*1048576u+524288u)};
-    } else {
-        RetailAiCentroid centroid;
-        for (int id:squad.members) if (const Unit* u=unit(id);u && u->alive()) centroid.add(u->x.v,u->z.v);
-        center=centroid.center();
-    }
-    if (!center) return;
-    int32_t footprint=0;
-    for (int id:squad.members) if (const Unit* u=unit(id);u && u->alive() && u->type->isStructure())
-        footprint+=u->type->footX+u->type->footZ;
-    const int radius=retailAiBaseRadius(footprint,0);
-    TA_PASS();
-    for (const auto& enemy:units_) if (enemy.alive() && !allied(owner,enemy.player)) {
-        const int64_t dx=std::bit_cast<int32_t>(uint32_t(center->first)-uint32_t(enemy.x.v));
-        const int64_t dz=std::bit_cast<int32_t>(uint32_t(center->second)-uint32_t(enemy.z.v));
-        const int32_t distance=std::bit_cast<int32_t>(uint32_t((dx*dx)>>32)+uint32_t((dz*dz)>>32));
-        if (distance<=radius*radius) unsupported("nearby threat response");
-    }
-    unsigned population=0;
-    TA_PASS();
-    for (const auto& u:units_) if (u.alive() && u.player==owner) ++population;
-    for (int id:squad.members) {
-        Unit* u=unit(id);
-        if (!u || !u->alive() || u->underConstruction || u->incapacitated()) continue;
-        if (u->embarked()) unsupported("attached member planning");
-        const auto c=classify(*u);const size_t source=typeIndex(*u);
-        if (c.constructor && u->type->isStructure()) {
-            retailAiPlanFactory(player.retailResources->allocation,!u->buildQueue.empty(),uint16_t(population),[&] {
-                std::vector<RetailAiBuildChoice> choices;
-                for (uint16_t index:planner.types[source].choices) {
-                    const auto& entry=cache.entries[index-1];const auto& meta=planner.types[index-1];
-                    choices.push_back({index,retailAiBuildWeight(planner.limited,entry.inputs.desired,
-                        entry.inputs.count,meta.weight,int8_t(entry.priority)),meta.special,
-                        meta.faction==planner.types[source].faction});
-                }
-                return retailAiChooseBuild(choices,false,[&](int n){return pathRand(n);});
-            },[&](uint16_t index){return cache.entries[index-1].inputs.cost;},
-            [&](int n){return pathRand(n);},[&](uint16_t index){train(id,cache.entries[index-1].type);});
-        } else if (c.constructor && c.mover) {
-            if (!u->retailBuild) unsupported("idle mobile builder");
-            if (c.secondaryFlags&0x40000u) {
-                const auto& entry=cache.entries[source];
-                if (!entry.construction || u->hp.floorInt()<int(entry.construction->type.maxHp/2))
-                    unsupported("commander retreat");
-                if (countCategory(2,false)>=squad.parameters[1] || tickCounter_<ai.scenarioDeadline)
-                    unsupported("commander combat planning");
-            }
-            // An active construction mission owns the builder's next action.
-        } else if (c.mover) {
-            if (!c.mission || (!u->orders.empty() && (u->orders.back().mission.flags&0x2000u)))
-                unsupported("idle combat member");
-            if (pathRand(50)==0) {
-                if (!u->type->canFly || u->type->isBuilder || !u->type->weapons.empty())
-                    unsupported("combat member replanning");
-                const auto& definition=cache.entries[source];
-                if (!definition.construction || uint32_t(u->hp.floorInt())<definition.construction->type.maxHp/4)
-                    unsupported("injured flight patrol planning");
-                const auto points=retailAiPatrolPoints(center->first,center->second,radius,
-                    terW_*16,terH_*16,[&](int n){return pathRand(n);},
-                    [](int32_t,int32_t){return true;});
-                if (!points) unsupported("flight patrol candidate exhaustion");
-                if (fxLen(u->x-Fixed::raw(center->first),u->z-Fixed::raw(center->second))>Fixed::fromInt(radius))
-                    unsupported("flight patrol return to base");
-                cancelPath(*u);u->orders.clear();
-                for (size_t i=0;i<points->size();++i) {
-                    Order order;order.x=Fixed::raw((*points)[i].first);order.z=Fixed::raw((*points)[i].second);order.goal=true;
-                    order.flightMoveMission=i==0;order.patrol=i!=0;
-                    order.mission.flags=i==0?0x1000403u:0x1001413u;
-                    order.issuedTick=tickCounter_;u->orders.push_back(order);
-                }
-            }
-        }
-    }
-    if (int(population/(index==1?20:30))>squad.parameters[1]) {
-        for (unsigned i=1;i<=4;++i) {
-            const uint32_t delta=pathRand(squad.parameters[i]/2)+1u;
-            squad.parameters[i]=std::bit_cast<int32_t>(uint32_t(squad.parameters[i])+delta);
-        }
-    }
-    const int freeBuilders=countCategory(3,true)-(index==1?0:1);
-    const int builders=countCategory(2,true)-squad.parameters[1];
-    const int ground=countCategory(4,true)-(squad.parameters[5]<0?squad.parameters[2]:0);
-    const int air=countCategory(5,true)-(squad.parameters[6]<0?squad.parameters[3]:0);
-    const int transports=countCategory(6,true)-(squad.parameters[7]<0?squad.parameters[4]:0);
-    if (std::max(freeBuilders,builders)>0) unsupported("builder redistribution");
-    auto redistribute=[&](const char* branch) {
-        // The original recipient search excludes this base and all empty slots.
-        // A populated recipient still requires the transfer planner.
-        for (unsigned other=1;other<=20;++other)
-            if (other!=index && ai.schedule.groups[other].present && !ai.squads[other].members.empty())
-                unsupported(branch);
-    };
-    if (ground>0 && pathRand(10)==0) redistribute("ground redistribution");
-    if (air>0 && pathRand(10)==0) redistribute("air redistribution");
-    auto magnitude=[](int32_t n) { return n<0?-int64_t(n):int64_t(n); };
-    if (ground>=magnitude(squad.parameters[5]) || air>=magnitude(squad.parameters[6]))
-        unsupported("strike recruitment");
-    if (transports>=magnitude(squad.parameters[7])) unsupported("transport recruitment");
 }
 
 void World::dequeue(int builderId, const UnitType* type, int count) {
@@ -15714,17 +15265,10 @@ void World::tickAbilities(float) {
 
     for (const uint32_t ai : actorIdx_) {
         Unit& u = units_[size_t(ai)];
-        // A revive is a CHANNEL, not an instant: retail's Resurrect task (icd
-        // 0x4068b0; VTOL_Resurrect 0x41fe70 is the same), stages 4 and 5. It
-        // costs NOTHING and requests nothing -- the task never reaches
-        // 0x429af0/0x429d90 or the resource object -- but each tick's work is
-        // the owner's allocation (0x406d3b: work -= ftol(allocation x 65536)),
-        // so a starved economy slows it and an empty, contested store stops
-        // it. Nothing checks distance once it runs. At the end (0x406e79) a
-        // computer player's selectable caster (406ebb; a caster under a
-        // mission script keeps on) abandons it unraised under allocation 0.7.
-        // However it ends, reviveTarget goes to 0, the leg's stage to 5, and
-        // tickReclaim retires the leg on its next wake.
+        // A revive is a CHANNEL, not an instant: TotalA.exe's RESURRECT
+        // (0x404db0) stages 4 and 5, below. However it ends, reviveTarget goes
+        // to 0, the leg's stage to 5, and tickReclaim retires the leg on its
+        // next wake.
         // actor() saw the leg at the front; the end is its stage 5.
         auto ended = [&] { u.reviveTarget = 0; u.orders.front().mission.stage = 5; };
         if (u.reviveMode == 1) {
@@ -15754,25 +15298,7 @@ void World::tickAbilities(float) {
                 swapFeature(features_[it->second], -1);
             continue;
         }
-        Unit* c = unit(u.reviveTarget);
-        if (!c || !isCorpse(*c)) { ended(); continue; }
-        const UnitType* out = c->type;
-        const float allocation = players_[size_t(u.player)].allocation();
-        // 32-bit sub, signed test, as retail: a counter ftol wrapped negative
-        // finishes at once, and nothing here is C++ signed overflow.
-        u.reviveWork = int32_t(uint32_t(u.reviveWork) - retailFtol(double(allocation) * 65536.0));
-        // Work left: the caster stays visible 300 ticks (0x406e45, 0x420477).
-        if (u.reviveWork > 0) { blockCloak(u, 300); continue; }
-        ended();
-        if (computerOwned(u.player) && u.selectable && double(allocation) < 0.7) continue;
-        // 0x406f0c creates the unit through 0x512060, which refuses one
-        // past the type's totalallowed or the player's unit limit: the
-        // revive ends unraised (UNITCHATTER_NOMOREUNITS) and the corpse
-        // stays. Earlier revives this tick count as raised (`pending`).
-        if (reviveRefused(u.player, out)) continue;
-        ++pendingRevives[size_t(u.player)];
-        revives.push_back({out, c->x.toFloat(), c->z.toFloat(), u.player, 0, 0});
-        retire(*c);
+        ended();   // reviveMode is the leg's reviveKind: only 1 (resurrect) exists
     }
     for (const auto& r : revives) {
         int id = spawn(r.type, r.x, r.z, 3.14159f, r.player);
@@ -16152,21 +15678,14 @@ void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
     const uint16_t bit=uint16_t(1u<<player);
     Player& owner=players_[size_t(player)];
     switch (code) {
-        case PowerCode::Atm: {
-            // 425d30: d = capacity - stored (float); stored += d and the lifetime
-            // produced total += d. Income and the history are untouched.
-            if (owner.retailResources) {
-                auto& r=*owner.retailResources;
-                const float d=r.capacity-r.stored;
-                r.stored=float(r.stored+d);r.totalProduced+=double(d);
-                owner.mana=r.stored;
-            } else {
-                owner.mana=double(owner.manaCapacity());
-            }
+        case PowerCode::Atm:
+            // TotalA.exe 0x4170c0: stored energy (+0x8c) and metal (+0x98) each
+            // minus -1000.0f (0x4fcc7c), past the cap; the next settle caps them.
+            owner.books.stored[econ::E]=owner.books.stored[econ::E]-(-1000.0f);
+            owner.books.stored[econ::M]=owner.books.stored[econ::M]-(-1000.0f);
             break;
-        }
-        case PowerCode::ManaMe:
-            break;   // Kingdoms' per-unit mana cheat: TA units have no pool
+        case PowerCode::RetiredManaMe:
+            break;   // Kingdoms' per-unit mana cheat: never parsed, refused here
         case PowerCode::DoubleShot:
             damageMode_=damageMode_==DamageMode::Double ? DamageMode::Normal : DamageMode::Double;
             break;
@@ -16969,81 +16488,27 @@ constexpr uint32_t kAimCallback=0x100;
 struct World::ScriptHost {
     World& world; Unit& unit; UnitScript& factory;
     uint32_t random(int32_t bound) { return world.gameRand(bound); }
-    // TotalA.exe's GET (vtable +0x44, 0x480770; ids 1..20, any other 0). A
-    // packed XZ word is x's high word over z's: (x & 0xffff0000) + (z >> 16);
-    // unpacking adds 0x10000 to x when the z half is negative (0x480965).
-    static std::pair<int32_t,int32_t> unpackXZ(uint32_t value) {
-        uint32_t x=value&0xffff0000u;
-        const int32_t z=std::bit_cast<int32_t>(value<<16);
-        if (z<0) x+=0x10000u;
-        return {std::bit_cast<int32_t>(x),z};
-    }
-    static uint32_t packXZ(int32_t x,int32_t z) {
-        return (uint32_t(x)&0xffff0000u)+uint32_t(z>>16);
-    }
-    // 0x480868..0x48095e: a live unit by its id (0 is none).
-    const Unit* argumentUnit(uint32_t id) const {
-        const Unit* u=id ? world.unit(int(id)) : nullptr;
-        return u && u->type && u->alive() ? u : nullptr;
-    }
+    // TotalA.exe's GET (vtable +0x44, 0x480770; ids 1..20, any other 0):
+    // sim/retailscriptget.h, shared with the client's display VM.
     uint32_t get(int id,const std::array<uint32_t,4>& args) {
-        switch (id) {
-        case 1: return factory.activated;
-        case 2: return uint32_t(unit.moveState);
-        case 3: return uint32_t(unit.fireState);
-        case 4: return uint32_t(int32_t(int16_t(unit.hp.floorInt()))*100/std::max(unit.maximumHp(),1));
-        case 5: return factory.ready;
-        case 6: return factory.busy;                                  // 0x4807ff
-        case 7: case 8: {
-            // PIECE_XZ / PIECE_Y (0x480811 / 0x48083f): the piece's world
-            // point (0x43e060).
-            const auto point=world.unitPiecePoint(unit,std::bit_cast<int32_t>(args[0]),false);
-            return id==7 ? packXZ(point[0],point[2]) : uint32_t(point[1]);
-        }
-        case 9: case 10: case 11: {
-            // UNIT_XZ / UNIT_Y / UNIT_HEIGHT (0x480868 / 0x4808c2 / 0x48090f):
-            // the unit's +0x6a / +0x72, +0x6e, its type's +0x16e.
-            const Unit* other=argumentUnit(args[0]);
-            if (!other) return 0;
-            if (id==9) return packXZ(other->x.v,other->z.v);
-            if (id==10) return uint32_t((other->type->canFly ? other->flightY : other->groundY).v);
-            return uint32_t(other->type->modelTop);
-        }
-        case 12: {
-            // XZ_ATAN (0x480965): 0x4b715a's atan2(x, z) less the heading.
-            const auto [x,z]=unpackXZ(args[0]);
-            return uint16_t(uint16_t(retailDirection(Fixed::raw(x),Fixed::raw(z)).v)-portHeadingToRetail(unit.heading));
-        }
-        case 13: case 15: {
-            // XZ_HYPOT / HYPOT (0x480994 / 0x4809e5): hypot of the two words,
-            // truncated (0x4e43a0).
-            int64_t a,b;
-            if (id==13) { const auto [x,z]=unpackXZ(args[0]);a=x;b=z; }
-            else { a=std::bit_cast<int32_t>(args[0]);b=std::bit_cast<int32_t>(args[1]); }
-            return uint32_t(isqrt64(uint64_t(a*a)+uint64_t(b*b)));
-        }
-        case 14:   // ATAN (0x4809c7): 0x4b715a's atan2(a, b), a BAM word.
-            return uint16_t(retailDirection(Fixed::raw(std::bit_cast<int32_t>(args[0])),
-                                            Fixed::raw(std::bit_cast<int32_t>(args[1]))).v);
-        case 16: {
-            // GROUND_HEIGHT (0x480a0d): the terrain under the point (0x485070,
-            // -1 off the map), in 16.16.
-            const auto [x,z]=unpackXZ(args[0]);
-            const int height=world.heights_.empty() ? 0 : retailTerrainHeight(x,z,world.terW_,world.terH_,
-                [&](int cx,int cz){return int(world.heights_[size_t(cz)*size_t(world.terW_)+size_t(cx)]);});
-            return uint32_t(height)<<16;
-        }
-        case 17: return unit.retailSite ? retailConstructionPercent(unit.retailSite->progress.remaining)
-                                       : uint32_t(unit.underConstruction);
-        case 18: return factory.yardOpen;
-        case 19: return factory.buggerOff;
-        // 20 ARMORED (0x480aa9: +0x10e bit 1, which SET 20 writes through
-        // 0x48b090(2)): not stored here, so 0. TotalA.exe's table stops at 20
-        // (0x480781: id - 1 above 0x13 -> 0x480abb): 0, a negative id and
-        // every id past 20 -- Kingdoms' 27..46 (heading, terrain, animation
-        // speeds, veteran level, standing order) -- answer 0.
-        default: return 0;
-        }
+        const RetailGetUnit words=World::retailGetWords(unit,&factory);
+        struct Queries {
+            ScriptHost& h;
+            std::array<int32_t,3> piecePoint(int32_t piece) { return h.world.unitPiecePoint(h.unit,piece,false); }
+            bool unit(int id,RetailGetOther& out) {
+                // 0x480868..0x48095e: a live unit by its id.
+                const Unit* u=h.world.unit(id);
+                if (!u || !u->type || !u->alive()) return false;
+                out={u->x.v,(u->type->canFly ? u->flightY : u->groundY).v,u->z.v,u->type->modelTop};
+                return true;
+            }
+            int groundHeight(int32_t x,int32_t z) {
+                const World& w=h.world;
+                return w.heights_.empty() ? 0 : retailTerrainHeight(x,z,w.terW_,w.terH_,
+                    [&](int cx,int cz){return int(w.heights_[size_t(cz)*size_t(w.terW_)+size_t(cx)]);});
+            }
+        } queries{*this};
+        return retailScriptGet(id,args,words,queries);
     }
     void set(int id,int value) {
         switch (id) {
@@ -17883,7 +17348,7 @@ std::array<int32_t,3> World::retailLeadPoint(const Unit& u,const Unit& target,co
 std::optional<World::WeaponAimSolution> World::queryWeaponAim(int unitId,int targetId,int slot) {
     auto* u=unit(unitId);auto* target=unit(targetId);
     if(!u || !target || !u->type || !target->type || slot<0 || size_t(slot)>=u->type->weapons.size())return {};
-    if(!target->alive() || (target->hp<=Fixed() && !(target->retailSite && target->underConstruction)))return {};
+    if(!target->alive() || target->hp<=Fixed())return {};
     const auto& weapon=u->type->weapons[size_t(slot)];
     const std::array<int32_t,3> origin{u->x.v,(u->type->canFly ? u->flightY : u->groundY).v,u->z.v};
     WeaponAimSolution result;
@@ -18458,16 +17923,9 @@ void World::notifyMovementRate(Unit& u) {
         uint64_t(int64_t(v.x)*v.x)+uint64_t(int64_t(v.z)*v.z))) : u.speed.v;
     int32_t slow=(u.type->animationMoveRate1*multiplier).v;
     int32_t fast=(u.type->animationMoveRate2*multiplier).v;
-    if (u.retailBuild && u.retailBuild->flying) {
-        slow=u.retailBuild->flyingSlowSpeed;fast=u.retailBuild->flyingFastSpeed;
-    }
     const int16_t turn=std::bit_cast<int16_t>(uint16_t(uint16_t(u.heading.v)-u.tickStartHeadingBam));
     const uint32_t rate=retailAnimationMoveRate(u.speed.v,turn,horizontal,
         slow,fast,u.bodyBlockStreak>=2 || u.legionStill,u.embarked());
-    if (u.retailBuild && u.retailBuild->flying) {
-        auto& flags=u.retailBuild->flyingOwnerFlags;
-        flags=(flags&~0xcu)|(rate<<2);
-    }
     const auto it=unitScript(u.id);
     if (!it || it->movementRate==rate) return;
     auto& script=*it;
@@ -18512,7 +17970,7 @@ void World::tickUnitScript(Unit& u) {
     }
     // Keep the original VM until Killed can query its state. A dead owner keeps
     // executing Dying, including waits and calls, until its native stop signal.
-    if (u.alive() && u.hp<=Fixed() && !(u.retailSite && u.underConstruction)) return;
+    if (u.alive() && u.hp<=Fixed()) return;
     auto& factory=*script;
     const auto& file=*u.type->script();
     ScriptHost host{*this,u,factory};
@@ -18784,23 +18242,6 @@ void World::beginUnitDeath(Unit& u) {
     }
 }
 
-void World::initializeRetailSite(Unit& site,int builderId) {
-    const auto& owner=players_[size_t(site.player)];
-    if (!owner.buildCache) throw std::runtime_error("new construction catalogue absent");
-    const auto& entries=owner.buildCache->entries;
-    const auto entry=std::find_if(entries.begin(),entries.end(),[&](const auto& e){return e.type==site.type;});
-    if (entry==entries.end() || !entry->construction)
-        throw std::runtime_error("new construction type absent");
-    site.retailSite=RetailConstructionSite{{1,0,0,0x1000000u},entry->construction->type,{},0};
-    site.retailSite->mission.emplace();site.retailSite->builder=builderId;
-    site.hp=Fixed();site.routeStamp=0;
-    // 511ed3 executes Create at zero elapsed time while work remaining is 1.
-    if (auto script=unitScripts_.find(site.id);script!=unitScripts_.end()) {
-        ScriptHost host{*this,site,script->second};
-        script->second.state().tick(*site.type->script(),0,host);
-    }
-}
-
 bool World::canPlaceProduction(int builderId,const UnitType* t,float x,float z) const {
     const auto* producer=unit(builderId);
     if (!producer || !producer->type || !t || t->isStructure()) return false;
@@ -18868,7 +18309,7 @@ void World::tickProduction(Unit& u, float dt) {
     const int producerId=u.id, player=u.player;
     const int32_t total=productionTotal(u,t);
     Unit* site=u.productionSiteId ? unit(u.productionSiteId) : nullptr;
-    if (u.productionSiteId && (!site || !site->alive() || (site->hp<=Fixed() && !site->retailSite) || site->player!=player)) {
+    if (u.productionSiteId && (!site || !site->alive() || site->hp<=Fixed() || site->player!=player)) {
         u.productionSiteId=0; u.buildProgress=0; u.buildFraction=0;
         if (u.doorSerial&1u) ++u.doorSerial;   // a refusal for the next site is a new episode
         return;
@@ -18900,7 +18341,6 @@ void World::tickProduction(Unit& u, float dt) {
         site->underConstruction=site->buildBegun=true;
         site->productionOwner=producerId;
         site->hp=Fixed::fromFloat(t->maxHp*0.05f);
-        if (players_[size_t(player)].retailResources) initializeRetailSite(*site,producerId);
         unit(producerId)->productionSiteId=siteId;
         if (auto it=unitScripts_.find(producerId);it!=unitScripts_.end()) {
             const auto& file=*unit(producerId)->type->script();
@@ -18914,31 +18354,6 @@ void World::tickProduction(Unit& u, float dt) {
     if (!producer->type->isStructure() && producer->orders.empty()) {
         if (producer->type->canFly) tickConjureHover(*producer,*site);
         else turnBuilderToSite(*producer,*site);
-    }
-    Player& tm=players_[size_t(player)];
-    if (site->retailSite && tm.retailResources) {
-        float worker=producer->type->workerTime;
-        if (tm.buildCache) for (const auto& entry:tm.buildCache->entries)
-            if (entry.type==producer->type && entry.construction) worker=entry.construction->workerTime;
-        auto& s=*site->retailSite;
-        s.progress.events=site->missionEvents;
-        const auto result=retailConstructionWork(s.progress,s.type,*tm.retailResources,float(double(worker)*0.03333333));
-        tm.mana=tm.retailResources->stored;site->hp=Fixed::fromInt(s.progress.hp);
-        site->missionEvents|=s.progress.events;
-        if (result==RetailConstructionResult::Completed) completeRetailConstruction(*producer,*site);
-        if (result==RetailConstructionResult::Worked || result==RetailConstructionResult::Completed)
-            emitConstruction(*site,true);
-        if (result==RetailConstructionResult::Completed) {
-            notifyUnitScript(*producer,"StopBuilding");
-            producer->productionSiteId=0;producer->buildProgress=0;producer->buildFraction=0;
-            noteScriptedProduction(*producer,site->type);
-            retireProductionItem(*producer,0);
-            if (producer->buildQueue.empty()) {
-                if (auto it=unitScripts_.find(producerId);it!=unitScripts_.end()) it->second.activated=false;
-                notifyUnitScript(*producer,"Deactivate");
-            }
-        }
-        return;
     }
     if (gInstantBuild) {
         producer->buildProgress=total;
@@ -18970,47 +18385,6 @@ int32_t World::productionTotal(const Unit& producer,const UnitType* t) const {
     return std::max(1,truncSat32(t->buildTime/std::max(producer.type->workerTime,0.01f)*kTick+0.5f));
 }
 
-// The product's one progress: the producer's buildProgress + buildFraction,
-// in ticks of the PRODUCER's work. Its own tickProduction adds `step` (a full
-// tick when it can afford one) and every helper adds its own work converted
-// to these units (tickConstruction), so helpers really finish the unit
-// sooner. Mana is paid per unit of progress -- buildcost over the whole
-// count -- whoever does the work, so the total stays the buildcost.
-// True when the product is complete (its hp then corrected to full).
-bool World::workProduction(Unit& producer,Unit& site,const UnitType* t,uint32_t step) {
-    const int32_t total=productionTotal(producer,t);
-    const Fixed work=Fixed::fromFloat(t->maxHp*0.95f/float(total));
-    // Never buy past the end of the build. (Alone, the producer is only ever
-    // clamped on its last tick, exactly as before helpers shared the count.)
-    const int64_t left=int64_t(total-producer.buildProgress)*65536-producer.buildFraction;
-    if (left>0) {
-        step=uint32_t(std::min<int64_t>(step,left));
-        if (!step) return false;
-        Player& tm=players_[size_t(producer.player)];
-        const double cost=double(t->buildCost)/double(total);
-        tm.payMana(std::min(tm.mana,step==65536u ? cost : cost*double(step)/65536.0));
-        // Grow the site by what the cumulative work says it should have, so a run
-        // of partial ticks adds exactly `work` per whole tick and the completion
-        // rounding below still holds.
-        const auto grown=[&](int64_t ticks,uint32_t fraction) {
-            return int64_t(work.v)*ticks+((int64_t(work.v)*fraction)>>16);
-        };
-        const int64_t before=grown(producer.buildProgress,producer.buildFraction);
-        const uint64_t fraction=uint64_t(producer.buildFraction)+step;
-        producer.buildProgress+=int32_t(fraction>>16);
-        producer.buildFraction=uint16_t(fraction&0xffffu);
-        const int64_t after=grown(producer.buildProgress,producer.buildFraction);
-        site.hp=fxMin(Fixed::fromFloat(t->maxHp),site.hp+Fixed::raw(int32_t(after-before)));
-        emitConstruction(site,true);
-    }
-    if (producer.buildProgress<total) return false;
-    // Correct accumulated fixed-point rounding without undoing combat damage.
-    const Fixed rounding=Fixed::fromFloat(t->maxHp)-
-        (Fixed::fromFloat(t->maxHp*0.05f)+Fixed::raw(int32_t(int64_t(work.v)*total)));
-    site.hp=fxMin(Fixed::fromFloat(t->maxHp),site.hp+rounding);
-    return true;
-}
-
 // The product is finished, once: the producer is freed (its next item may
 // start this same tick) and the output is released with the producer's rally,
 // else its exit step / PARK, exactly once. An output that already holds orders
@@ -19040,7 +18414,7 @@ void World::killProductionOutput(Unit& producer,bool now) {
     if (!site || !site->alive() || !site->type || !site->underConstruction ||
         site->productionOwner!=producer.id || site->player!=producer.player) return;
     site->productionOwner=0;
-    site->retailSite.reset();site->beingBuilt=false;
+    site->beingBuilt=false;
     site->hp=Fixed();
     site->deathType=11;site->lastHitBy=producer.id;site->lastHitPlayer=producer.player;
     if (!now) return;
@@ -19674,20 +19048,6 @@ void World::tick(float dt) {
 #ifndef NDEBUG
     if (g_phase && probe::kPmu) _pmuPro = probe::pmuRead();
 #endif
-    // 51b890 runs before unit updates. Active squads publish whether they
-    // contain any completed mobile members (50b7a0), dirtying only on change.
-    for (auto& player:players_) if (player.retailAi) {
-        auto& ai=*player.retailAi;
-        for (unsigned i=1;i<100;++i) {
-            auto& squad=ai.squads[i];
-            if (!ai.schedule.groups[i].present || !squad.active) continue;
-            const bool populated=std::any_of(squad.members.begin(),squad.members.end(),[&](int id) {
-                const auto* u=unit(id);
-                return u && u->alive() && !u->underConstruction && u->type && !u->type->isStructure();
-            });
-            if (squad.parameters[8]!=int(populated)) { squad.parameters[8]=int(populated);squad.dirty=1; }
-        }
-    }
 #ifndef NDEBUG
     hashTrace();   // TA_HASHTRACE=lo:hi -- per-component dump, EVERY tick on both peers
 #endif
@@ -19747,75 +19107,18 @@ void World::tick(float dt) {
             u.weaponAnimations.add(event.kind,event.slot,event.heading,event.pitch,event.damage);
         u.pendingWeaponAnimations.clear();
     };
-    // Per unit, the economy walk's work (below): the beingBuilt clear and the
-    // site list for sites, and the unit's income, storage and retail demand
-    // contributions, handed to emit(kind, player, float, double) in the order
-    // the sums take them. It reads only the unit, its build site and player
-    // state the walk does not write (buildCache, retailResources).
-    auto economyOf = [&](Unit& u, auto&& emit, auto&& listSite) {
-        if (!u.alive()) return;
-        // A unit under construction contributes no economy until it finishes: a
-        // half-built one must not add its income or storage capacity yet.
-        if (u.underConstruction) {
-            u.beingBuilt = u.siteWorkLate;   // last tick's later-slot work (noteSiteWork)
-            u.siteWorkLate = false;
-            listSite();
-            return;
-        }
-        if (u.type) {
-            const auto& tm = players_[size_t(u.player)];
-            float income=u.type->income,storage=u.type->storage;
-            if (tm.buildCache) {
-                const auto& entries=tm.buildCache->entries;
-                auto entry=std::find_if(entries.begin(),entries.end(),[&](const auto& e){return e.type==u.type;});
-                if (entry!=entries.end() && entry->hasEconomy) {
-                    income=entry->income;storage=entry->storage;
-                }
-            }
-            emit(EconomyKind::Income,u.player,income,0.0);
-            emit(EconomyKind::Storage,u.player,storage,0.0);
-        }
-        const auto& builder=u;
-        if (size_t(builder.player)>=players_.size() || builder.embarked()) return;
-        const auto& tm=players_[size_t(builder.player)];
-        if (!tm.retailResources) return;
-        int target=0;
-        float worker=0;
-        if (builder.retailBuild && builder.retailBuild->working) {
-            target=builder.retailBuild->target;worker=builder.retailBuild->workerTime;
-        } else if (builder.productionSiteId && !builder.buildQueue.empty()) {
-            target=builder.productionSiteId;worker=builder.type->workerTime;
-            if (tm.buildCache) for (const auto& entry:tm.buildCache->entries)
-                if (entry.type==builder.type && entry.construction) worker=entry.construction->workerTime;
-        } else return;
-        const auto* site=unitNoRepair(target);
-        if (site && site->retailSite && site->alive()) {
-            const auto& type=site->retailSite->type;
-            emit(EconomyKind::Demand,builder.player,0.0f,double(worker)*double(type.inverseTime)*double(type.cost));
-        }
-    };
-    auto applyEconomy = [&](EconomyKind kind, int player, float f, double d) {
-        auto& tm = players_[size_t(player)];
-        switch (kind) {
-        case EconomyKind::Income: tm.income += f; break;
-
-        case EconomyKind::Storage: tm.storage += f; break;
-        case EconomyKind::Demand: {
-            float& demand=retailDemand_[size_t(player)];
-            demand=float(double(demand)+d);
-            break;
-        }
-        case EconomyKind::Site: break;
-        }
+    // Per unit, the site walk's work (below): an unfinished site's beingBuilt
+    // clear and its place in the decay list.
+    auto siteOf = [&](Unit& u, auto&& listSite) {
+        if (!u.alive() || !u.underConstruction) return;
+        u.beingBuilt = u.siteWorkLate;   // last tick's later-slot work (noteSiteWork)
+        u.siteWorkLate = false;
+        listSite();
     };
     // At kPrologueMinParallel units, with workers, the turn reset and the
-    // economy walk's per-unit work run in one job on the SimPool (WE E4.3, P2).
-    // Each chunk writes only its own units and its own list of contributions,
-    // in unit order; the sums are then taken serially, chunk after chunk, in
-    // exactly the serial order. A contribution of zero is left out of the
-    // list: every sum starts at +0, a sum of finite floats starting at +0 is
-    // never -0, and x + 0 is then exactly x (also through the double round
-    // trip of the demand sum), so the totals are unchanged.
+    // site walk's per-unit work run in one job on the SimPool (WE E4.3, P2).
+    // Each chunk writes only its own units and its own list of sites, in unit
+    // order; the lists are then joined serially, chunk after chunk.
     const bool prologuePool = units_.size() >= kPrologueMinParallel && simPool().workers();
     if (!prologuePool) {
         TA_PASS();
@@ -19829,11 +19132,7 @@ void World::tick(float dt) {
             for (size_t i = begin; i < end; ++i) {
                 Unit& u = units_[i];
                 resetTickState(u);
-                economyOf(u,
-                    [&](EconomyKind kind, int player, float f, double d) {
-                        if (f != 0.0f || d != 0.0) items.push_back({uint32_t(i), int16_t(player), kind, f, d});
-                    },
-                    [&] { items.push_back({uint32_t(i), 0, EconomyKind::Site, 0.0f, 0.0}); });
+                siteOf(u, [&] { items.push_back(uint32_t(i)); });
             }
         });
     }
@@ -19842,141 +19141,34 @@ void World::tick(float dt) {
     scriptSounds_.clear();
     hits_.clear();   // per-tick weapon impacts (drained by the viewer for sounds/fx)
     recordHurt_.clear();
-    // Economy: recompute income/storage, apply income.
-    for (auto& tm : players_) { tm.income = 0; tm.storage = 0; }
+    unitSpeech_.clear();
     const size_t unitsAtEconomy = units_.size();
-    // One walk (WE D4) does three things per unit, in unit order:
-    //  - the beingBuilt clear for sites (factory and mobile construction mark
-    //    them again below). It used to run after the god summon; nothing in
-    //    between reads beingBuilt or changes alive/underConstruction, and the
-    //    summon's spawn starts complete with beingBuilt false.
-    //  - the income/storage sums, in the same order;
-    //  - the retail construction demand of every retail-resources player (it
-    //    was one walk per player). Each player's sum still adds its own builders
-    //    in unit order, and nothing between here and the player loop below
-    //    changes a unit, so every float comes out the same.
-    // It also lists the sites for the decay pass below (A4).
-    retailDemand_.assign(players_.size(),0.0f);
+    // One walk (WE D4) clears beingBuilt for every unfinished site (factory and
+    // mobile construction mark them again below) and lists the sites for the
+    // decay pass below (A4), in unit order.
     sitesIdx_.clear();
     if (prologuePool) {
         const size_t chunks = (unitsAtEconomy + SimPool::kUnitChunk - 1) / SimPool::kUnitChunk;
 #ifndef NDEBUG
         if (verifyPool()) {
-            std::vector<EconomyItem> serial;
+            std::vector<uint32_t> serial;
             for (size_t i = 0; i < units_.size(); ++i)
-                economyOf(units_[i],
-                    [&](EconomyKind kind, int player, float f, double d) {
-                        if (f != 0.0f || d != 0.0) serial.push_back({uint32_t(i), int16_t(player), kind, f, d});
-                    },
-                    [&] { serial.push_back({uint32_t(i), 0, EconomyKind::Site, 0.0f, 0.0}); });
+                if (units_[i].alive() && units_[i].underConstruction) serial.push_back(uint32_t(i));
             size_t at = 0;
             for (size_t k = 0; k < chunks; ++k)
-                for (const EconomyItem& item : economyChunks_[k]) {
-                    const EconomyItem& o = serial.size() > at ? serial[at] : item;
-                    if (serial.size() <= at || o.index != item.index || o.player != item.player || o.kind != item.kind ||
-                        std::bit_cast<uint32_t>(o.f) != std::bit_cast<uint32_t>(item.f) ||
-                        std::bit_cast<uint64_t>(o.d) != std::bit_cast<uint64_t>(item.d))
-                        poolMismatch("economy walk", tickCounter_);
+                for (const uint32_t index : economyChunks_[k]) {
+                    if (serial.size() <= at || serial[at] != index) poolMismatch("site walk", tickCounter_);
                     ++at;
                 }
-            if (at != serial.size()) poolMismatch("economy walk", tickCounter_);
+            if (at != serial.size()) poolMismatch("site walk", tickCounter_);
         }
 #endif
         for (size_t k = 0; k < chunks; ++k)
-            for (const EconomyItem& item : economyChunks_[k]) {
-                if (item.kind == EconomyKind::Site) sitesIdx_.push_back(item.index);
-                else applyEconomy(item.kind, item.player, item.f, item.d);
-            }
+            for (const uint32_t index : economyChunks_[k]) sitesIdx_.push_back(index);
     } else {
         TA_PASS();
         for (size_t i = 0; i < units_.size(); ++i)
-            economyOf(units_[i], applyEconomy, [&] { sitesIdx_.push_back(uint32_t(i)); });
-    }
-    // Difficulty income cheat: scale the summed income so the boost flows through the
-    // mana accrual below, allied surplus sharing, and god-favour alike. manaMult is 1
-    // for everyone but an Absurd AI, so this is an exact no-op (x1.0) otherwise.
-    for (auto& tm : players_) {
-        tm.income *= tm.manaMult;
-        if (tm.scenarioResourceLimit > 0) {
-            tm.income = 0;
-            tm.storage = tm.scenarioResourceLimit;
-        }
-    }
-    // Apply income, then share the economy across allies: mana that would
-    // overflow a player's storage flows to teammates that still have headroom,
-    // so a maxed-out ally feeds the team instead of wasting mogrium. It is truly
-    // wasted only when the whole team is capped. Deterministic -- collected in
-    // player order, shared by lowest fill percentage. A solo/FFA player has no
-    // teammate to receive the surplus, so this reduces exactly to the old clamp.
-    for (size_t player=0;player<players_.size();++player) {
-        auto& tm=players_[player];
-        if (!tm.retailResources) { tm.creditMana(tm.income*dt);continue; }
-        tm.retailResources->beginTick(tm.income,tm.storage,retailDemand_[player]);
-        tm.mana=tm.retailResources->stored;tm.storage=tm.retailResources->capacity;
-    }
-    const int np = int(players_.size());
-    auto cap = [&](int i) { return players_[size_t(i)].manaCapacity(); };
-    bool teamDone[kMaxPlayers] = {};
-    for (int lead = 0; lead < np; ++lead) {
-        int team = players_[size_t(lead)].team;
-        if (team < 0 || team >= kMaxPlayers || teamDone[team]) continue;
-        teamDone[team] = true;
-        uint8_t teamMask=0;
-        for (int i=0;i<np;++i)
-            if (players_[size_t(i)].team==team) teamMask |= uint8_t(1u<<i);
-        // Pool only donors with the same allowed recipients. With the default
-        // sharing settings this is the original single team pool and arithmetic.
-        std::map<uint8_t,double> pools;
-        for (int i = 0; i < np; ++i)
-            if (!players_[size_t(i)].retailResources && players_[size_t(i)].team == team && players_[size_t(i)].mana > cap(i)) {
-                const auto recipients=uint8_t(players_[size_t(i)].manaShareMask & teamMask);
-                pools[recipients] += players_[size_t(i)].mana - cap(i);
-                players_[size_t(i)].mana = cap(i);
-            }
-        for (auto [recipients,pool]:pools) {
-            std::array<int, kMaxPlayers> needy{};
-            int count = 0;
-            for (int i = 0; i < np; ++i)
-                if (!players_[size_t(i)].retailResources && !players_[size_t(i)].defeated &&
-                    (recipients & (1u<<i)) && players_[size_t(i)].mana < cap(i))
-                    needy[size_t(count++)] = i;
-            auto fill = [&](int i) { return players_[size_t(i)].mana / double(cap(i)); };
-#pragma GCC diagnostic push   // GCC sees std::sort's 16-element path past this 8-slot array
-#pragma GCC diagnostic ignored "-Warray-bounds"
-            std::sort(needy.begin(), needy.begin()+count, [&](int a, int b) {
-                return fill(a) != fill(b) ? fill(a) < fill(b) : a < b;
-            });
-#pragma GCC diagnostic pop
-            // Raise the emptiest stores together toward the next fill percentage.
-            // Equal need shares proportionally to capacity, without slot preference.
-            double capacity = 0, stored = 0, level = 0;
-            int receiving = 0;
-            for (int n = 0; n < count && pool > 0; ++n) {
-                const int i = needy[size_t(n)];
-                capacity += cap(i);
-                stored += players_[size_t(i)].mana;
-                receiving = n+1;
-                const double next = n+1 < count ? fill(needy[size_t(n+1)]) : 1.0;
-                level = std::min(next, (stored+pool)/capacity);
-                if (level < next) break;
-            }
-            for (int n = 0; n < receiving; ++n) {
-                const int i = needy[size_t(n)];
-                const double give = std::min(pool, std::max(0.0, level*cap(i)-players_[size_t(i)].mana));
-                if (give > 0) { players_[size_t(i)].creditMana(give); pool -= give; }
-            }
-            // Any pool left (every allowed recipient capped) is wasted, as before.
-        }
-    }
-    // Construction allocation for the tick (51d837's allocation, computed after
-    // income and the allied share): the stored pool over last tick's full-rate
-    // demand, so every consumer advances at the same fraction instead of the first
-    // in unit order taking it all. See Player::constructionShare.
-    // A retailResources player runs the native object's allocation instead.
-    for (auto& tm : players_) {
-        const double demand=tm.retailResources ? 0.0 : tm.constructionDemand;
-        tm.constructionAllocation=demand>tm.mana ? (tm.mana>0 ? tm.mana/demand : 0.0) : 1.0;
-        tm.constructionDemand=0;
+            siteOf(units_[i], [&] { sitesIdx_.push_back(uint32_t(i)); });
     }
     // Total Annihilation metal/energy: each player settles once a second.
     taEconomyTick();
@@ -19989,10 +19181,7 @@ void World::tick(float dt) {
             u.conjureHoverTarget!=u.productionSiteId && u.conjureHoverTarget!=u.repairId) {
             u.conjureHoverTarget=0;u.conjureHoverGoal.reset();
         }
-        if (u.alive() && u.type && u.retailBuild) {
-            u.constructionHolding=!u.retailBuild->flying;
-            if (auto* site=unit(u.retailBuild->target);site) site->beingBuilt=true;
-        } else if (u.alive() && u.type && u.buildSiteId) tickConstruction(u, dt);
+        if (u.alive() && u.type && u.buildSiteId) tickConstruction(u, dt);
         else if (u.alive() && u.type && u.reclaimId) tickReclaim(u);
         else if (u.alive() && u.type && u.repairId) tickRepair(u, dt);
     }
@@ -20007,7 +19196,7 @@ void World::tick(float dt) {
     // it once its producer stops working it). Its timer counts that as work,
     // so an output its producer lost starts the decay 30 ticks later.
     auto decay = [&](Unit& u) {
-        if (u.alive() && u.type && u.underConstruction && !u.retailSite && u.siteGetBuilt &&
+        if (u.alive() && u.type && u.underConstruction && u.siteGetBuilt &&
             retailSiteTimer(u.siteTimer,tickCounter_,u.beingBuilt || productionOwnerOf(u)))
             decayConstruction(u);
     };
@@ -20293,9 +19482,6 @@ void World::tick(float dt) {
             PhaseSpan span(g_scriptMs,probe::kScripts);
             tickUnitScript(units_[unitIndex]);
         } else tickUnitScript(units_[unitIndex]);
-        if (units_[unitIndex].retailSite && units_[unitIndex].retailSite->mission)
-            tickRetailGetBuilt(units_[unitIndex]);
-        if (units_[unitIndex].retailBuild) tickRetailConstruction(units_[unitIndex]);
         const auto generationBefore=spawnGeneration_;
         const int currentId=units_[unitIndex].id;
         if (units_[unitIndex].alive()) tickProduction(units_[unitIndex],dt);
@@ -20349,7 +19535,7 @@ void World::tick(float dt) {
             u.hpPct1s = u.hpPctCur;
             u.hpPctCur = retailHpSample(retailHpWord(u.hp.floorInt()), u.maximumHp());
         }
-        if (u.hp <= Fixed() && !(u.retailSite && u.underConstruction)) {
+        if (u.hp <= Fixed()) {
             sweepDeath(u);
             continue;
         }
@@ -20376,12 +19562,6 @@ void World::tick(float dt) {
             u.lastHitKind = tadeath::kWater;
             u.hp = Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(u.hp.v) - int64_t(taken) * Fixed::kOne,
                                                           -int64_t(INT32_MAX), INT32_MAX)));
-            // 51a3c2: an unfinished site's progress follows its new HP.
-            if (u.retailSite && u.underConstruction && u.retailSite->progress.remaining!=0) {
-                auto& progress=u.retailSite->progress;
-                progress.hp=uint16_t(u.hp.floorInt());
-                progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,u.maximumHp()));
-            }
             if (u.hp <= Fixed()) {
                 u.overkill = fxMax(u.overkill, -u.hp); u.deathType = 13;
                 // 51e357..51e36c: the update that hurt it ends with 512610, so
@@ -20389,7 +19569,7 @@ void World::tick(float dt) {
                 // of retail's update does nothing more for a dying unit here:
                 // self-repair and the missions (4d8450) skip it; World runs no
                 // mover step for a dying unit at any death.
-                if (!(u.retailSite && u.underConstruction)) { sweepDeath(u); continue; }
+                sweepDeath(u); continue;
             }
         }
         // Self-repair (KINGDOMS.icd 0x51e152..0x51e1bc). healtime is the unit's own
@@ -20428,9 +19608,7 @@ void World::tick(float dt) {
         // your command and fades. A lethal hit's death (512610) ends the same
         // update (51e357..51e36c), as deadly water's does. World runs it before
         // the unit's orders here, so a dying unit's orders get no last run.
-        if (tickSelfDestruct(u)) {
-            if (!(u.retailSite && u.underConstruction)) { sweepDeath(u); continue; }
-        }
+        if (tickSelfDestruct(u)) { sweepDeath(u); continue; }
         // A WANDERER keeps its spawn point as home -- that anchor is what stops its
         // stroll turning into a migration.
         if (u.orders.empty() && !u.type->wanders) { u.homeX = u.x; u.homeZ = u.z; }
@@ -20566,7 +19744,7 @@ void World::tick(float dt) {
         if (!u.orders.empty() && u.orders.front().scripted) {
             tickScriptedOrder(u);
             // SelfDestructFG's hit: the update ends with the death (51e36c).
-            if (u.hp<=Fixed() && !(u.retailSite && u.underConstruction)) { sweepDeath(u); continue; }
+            if (u.hp<=Fixed()) { sweepDeath(u); continue; }
         }
 
         // Wildlife and villagers roam. Retail gives them Standby_wander and they
@@ -20954,7 +20132,7 @@ void World::tick(float dt) {
         // this dispatch. Do not run a second movement or construction step.
         if (siteId && (o.mission.pending & o.mission.waitMask & 0x100))
             turnBuilderToSite(*unit(bid),*unit(siteId));
-        // startBuild may have failed (the spot is taken now, or mana ran out). Drop
+        // startBuild may have failed (the spot is taken now). Drop
         // the order rather than parking the builder on it forever.
         if (Unit* b2 = unit(bid); b2 && b2->buildSiteId == 0 && !b2->orders.empty() &&
                                   b2->orders.front().buildType)
@@ -20980,103 +20158,9 @@ void World::tick(float dt) {
                 sweepIds_[size_t(member.player)].push_back(member.id);
     }
     for (auto& player:players_) {
-        if (player.retailResources) {
-            auto& r=*player.retailResources;
-            r.finishTick();player.mana=r.stored;player.storage=r.capacity;
-            player.displayResources.income=r.produced;
-            player.displayResources.usage=r.requested;
-            if (player.buildCache) {
-                auto& history=player.buildCache->resources;
-                history.income=r.produced;history.usage=r.requested;history.advance();
-            }
-            r.produced=r.requested=0;
-        }
-        if (scenario_ && !player.retailResources)
-            player.mana = std::clamp(player.mana,0.0,double(player.manaCapacity()));
-        player.displayResources.advance();
-        if (player.retailAi) {
-            auto& ai=*player.retailAi;
-            const int owner=int(&player-players_.data());
-            auto unsupported=[&](const char* branch) {
-                throw std::runtime_error("unsupported retail AI "+std::string(branch)+
-                                         " at tick "+std::to_string(tickCounter_));
-            };
-            retailTickAiSchedule(ai.schedule,tickCounter_,[&](int n){return pathRand(n);},
-                [&] {
-                    for (auto& squad:ai.squads)
-                        std::erase_if(squad.members,[&](int id) {
-                            const Unit* member=unit(id);
-                            return !member || !member->alive() || member->player!=owner;
-                        });
-                },
-                [&] {
-                    if (!ai.initialized && tickCounter_<=30) unsupported("initial assignment");
-                    ai.initialized=true;
-                    if (ai.scenarioDeadline && tickCounter_>=ai.scenarioDeadline)
-                        unsupported("scenario assignment");
-                    TA_PASS();
-                    for (auto& member:units_) {
-                        if (member.player!=owner || !member.alive() || member.underConstruction ||
-                            !member.type || member.type->isStructure()) continue;
-                        bool assigned=false;
-                        for (const auto& squad:ai.squads)
-                            if (std::find(squad.members.begin(),squad.members.end(),member.id)!=squad.members.end()) {
-                                assigned=true;break;
-                            }
-                        if (assigned || member.incapacitated()) continue;
-                        if (member.embarked()) unsupported("attached unit assignment");
-                        std::array<RetailAiBaseCandidate,20> bases;
-                        for (unsigned i=1;i<=20;++i) {
-                            const auto& base=ai.squads[i];
-                            if (!ai.schedule.groups[i].present || base.members.empty()) continue;
-                            if (base.kind!=RetailAiSquadKind::Base) unsupported("non-base selection slot");
-                            if (base.parameters[0] && !ai.anchorsRestored) unsupported("missing base anchors");
-                            auto& candidate=bases[i-1];candidate.occupied=true;
-                            if (auto anchor=ai.anchors.find(base.parameters[0]);anchor!=ai.anchors.end()) {
-                                candidate.center=std::pair{std::bit_cast<int32_t>(uint32_t(int32_t(anchor->second.first))*1048576u+524288u),
-                                                          std::bit_cast<int32_t>(uint32_t(int32_t(anchor->second.second))*1048576u+524288u)};
-                            } else {
-                                RetailAiCentroid centroid;
-                                for (int id:base.members) {
-                                    const Unit* u=unit(id);
-                                    if (!u || !u->alive()) continue;
-                                    centroid.add(u->x.v,u->z.v);
-                                }
-                                candidate.center=centroid.center();
-                            }
-                        }
-                        unsigned selected=retailNearestAiBase(bases,member.x.v,member.z.v);
-                        if (!selected) selected=2;
-                        if (!ai.schedule.groups[selected].present) unsupported("missing assignment group");
-                        member.moveState=1;member.fireState=2;member.stance=0;member.standingOrder=2;
-                        ai.squads[selected].members.push_back(member.id);
-                    }
-                },
-                [&](unsigned index,auto& clock) {
-                    auto& squad=ai.squads[index];
-                    retailTickAiSquad(squad,clock,tickCounter_,[&](int n){return pathRand(n);},
-                        [&](auto& strike) {
-                            const int backup=strike.parameters[0];
-                            if (backup<0 || backup>=100) unsupported("backup index");
-                            if (backup!=int(index) && ai.schedule.groups[size_t(backup)].present &&
-                                !ai.squads[size_t(backup)].members.empty()) unsupported("strike recruitment");
-                        },
-                        [&](auto&) {
-                            if (squad.kind==RetailAiSquadKind::Base && player.buildCache && player.buildCache->planner) {
-                                tickRetailAiBase(owner,index);return;
-                            }
-                            if (squad.kind==RetailAiSquadKind::Strike && player.buildCache && player.buildCache->planner) {
-                                tickRetailAiStrike(owner,index);return;
-                            }
-                            const auto detail="occupied squad planner slot "+std::to_string(index);
-                            unsupported(detail.c_str());
-                        });
-                });
-        }
         // 40fe00 -> 40f330: the fire-at-will sweep, after the AI scheduler and
         // before the bookkeeping clock. Every seat runs it; neutral does not.
         if (const int seat=int(&player-players_.data()); !isNeutralPlayer(seat)) tickFireSweep(seat);
-        if (player.buildCache && !player.retailResources) player.buildCache->resources.advance();
         // 411a90 -> 411700: the visibility lists are rebuilt on the bookkeeping
         // clock, before its rand(30) draw. A player without that clock uses
         // the same 7-tick rule on its own stamp.
@@ -21087,33 +20171,16 @@ void World::tick(float dt) {
                 if (!player.cacheClock.enabled) player.visibleRefresh=tickCounter_;
             }
         }
-        if (retailTickPlayerCache(player.cacheClock,tickCounter_,[&](int n){return pathRand(n);}) && player.buildCache) {
-            auto& cache=*player.buildCache;
-            const int owner=int(&player-players_.data());
-            unsigned population=0;
-            for (auto& entry:cache.entries) entry.inputs.count=entry.inputs.completed=0;
-            TA_PASS();
-            for (const auto& member:units_) {
-                if (member.player!=owner || !member.alive()) continue;
-                ++population;
-                const auto entry=std::find_if(cache.entries.begin(),cache.entries.end(),
-                    [&](const auto& candidate){return candidate.type==member.type;});
-                if (entry==cache.entries.end()) throw std::runtime_error("unit missing from restored build catalogue");
-                ++entry->inputs.count;
-                if (!member.underConstruction) ++entry->inputs.completed;
-            }
-            const float stored=float(player.mana);
-            const float capacity=player.manaCapacity(); // current World economy host
-            const float ratio=double(capacity)>0.01 ? stored/capacity : 0.0f;
-            const bool shortfall=cache.resources.shortfall(stored);
-            for (auto& entry:cache.entries)
-                entry.priority=retailBuildPriority(entry.inputs,uint16_t(population),ratio,shortfall,
-                    [&](int n){return pathRand(n);});
-        }
+        // The bookkeeping clock's rand(30) draw (its priority cache refresh was
+        // Kingdoms' restored AI catalogue and is gone).
+        (void)retailTickPlayerCache(player.cacheClock,tickCounter_,[&](int n){return pathRand(n);});
     }
     if (windEnabled_)
         taTickWind(wind_, tickCounter_, [&](int n) { return pathRand(n); },
                    [&] { return crtRand(0x525248); });
+    // TotalA.exe's tick runs the auto-share after the wind (0x49558f, then
+    // 0x457d30 at 0x49563a).
+    taShare();
 
     // Drain the [EXPLODEAS] death blasts queued by the sweep above. Done here, after
     // the loop, because applyHit can kill further units (chain-detonating a pack of
@@ -21350,8 +20417,8 @@ void World::hashTrace() const {
         for (int i = 0; i < 8; ++i) { h ^= (v >> (i * 8)) & 0xFF; h *= 1099511628211ULL; }
         return h;
     };
-    // Fold fixed-point positions and angles as raw integers below. Mana is a
-    // double, so preserve all eight bytes rather than narrowing it to a float.
+    // Fold fixed-point positions and angles as raw integers below; doubles keep
+    // all eight bytes rather than narrowing to a float.
     auto bits64 = [](double d) { uint64_t b; std::memcpy(&b, &d, 8); return b; };
     const uint64_t seed = 1469598103934665603ULL;
 
@@ -21439,7 +20506,7 @@ void World::hashTrace() const {
     uint64_t hPlayers = seed;
     for (const auto& t : players_)
     {
-        hPlayers = fnv(fnv(hPlayers, bits64(t.mana)), uint32_t(t.team));
+        hPlayers = fnv(fnv(hPlayers, bits64(legacyPoolWord(t))), uint32_t(t.team));
         for (int r = 0; r < 2; ++r) {
             hPlayers = fnv(hPlayers, std::bit_cast<uint32_t>(t.books.stored[r]));
             hPlayers = fnv(hPlayers, std::bit_cast<uint32_t>(t.books.own[r].debt));
@@ -22017,31 +21084,10 @@ uint64_t World::stateHash() const {
         if (u.buildFraction) {mix(0x46524143u);mix(u.buildFraction);}
         if (u.productionRetryTick) {mix(0x52455452u);mix(u.productionRetryTick);}
         mix(u.underConstruction); mix(u.buildBegun);
-        if (u.underConstruction && !u.retailSite) {
+        if (u.underConstruction) {
             const auto& m=u.siteTimer;
             mix(0x44454341u);mix(m.stage);mix(m.waitMask);mix(m.deadline);mix(m.pending);mix(u.siteWorkLate);
             if (!u.siteGetBuilt) mix(0x4e4f4742u);
-        }
-        if (u.retailSite) {
-            mix(0x53495445u);const auto& s=*u.retailSite;
-            mixf(s.progress.remaining);mix(s.progress.hp);mix(s.progress.events);mix(s.progress.flags);
-            mixf(s.type.inverseTime);mixf(s.type.cost);mix(s.type.maxHp);
-            mix(s.mission.has_value());mix(uint32_t(s.builder));
-            if (s.mission) {
-                const auto& m=*s.mission;
-                mix(m.stage);mix(m.waitMask);mix(m.deadline);mix(m.pending);mix(m.flags);
-            }
-        }
-        if (u.retailBuild) {
-            mix(0x4255494cu);const auto& b=*u.retailBuild;
-            mix(b.target);mixf(b.workerTime);mix(b.working);mix(b.activityDeadline);
-            if (b.flying) {
-                mix(0x464c5942u);mix(b.flyingOwnerFlags);mix(uint32_t(b.flyingSlowSpeed));
-                mix(uint32_t(b.flyingFastSpeed));mix(b.flyingBuildDistance);
-            }
-            mix(b.mission.stage);mix(b.mission.waitMask);mix(b.mission.deadline);
-            mix(b.mission.pending);mix(b.mission.flags);
-            if (b.turnHeading) { mix(0x5455524eu);mix(*b.turnHeading); }
         }
         if (u.constructionEmitter) {
             mix(0x454d4954u);const auto& e=*u.constructionEmitter;
@@ -22061,7 +21107,7 @@ uint64_t World::stateHash() const {
             mix(queued->id.size());
             for (unsigned char c : queued->id) mix(c);
         }
-        mix(uint64_t(uint32_t(u.repairId)));   // build-power target -> HP/mana divergence
+        mix(uint64_t(uint32_t(u.repairId)));   // build-power target -> HP/economy divergence
         mix(u.workScriptWorking);
         mix(uint64_t(uint32_t(int32_t(u.squad))));   // control squad: formation<0 drives movement
         if (u.aiGroup) { mix(0x41494750u); mix(uint64_t(uint8_t(u.aiGroup))); }   // retail AI squad
@@ -22114,9 +21160,11 @@ uint64_t World::stateHash() const {
     mix(uint64_t(0));
     for (const auto& t : players_) {
         mix(uint32_t(t.automaticGates) | (uint32_t(t.defensiveAi)<<1) | (uint32_t(t.passiveNeutral)<<2));
-        if (t.manaShareMask != 0xff) { mix(0x53484152454d414eull); mix(t.manaShareMask); }
-        { uint64_t b; std::memcpy(&b, &t.mana, 8); mix(b); }   // double: fold all 8 bytes
-        if (t.constructionDemand != 0) { mix(0x434f4e5344454d44ull); mix(std::bit_cast<uint64_t>(t.constructionDemand)); }
+        if (t.shareResources) { mix(0x5348415245544100ull); mix(t.shareResources); }
+        if (t.books.shareThreshold[0] != 0 || t.books.shareThreshold[1] != 0) {
+            mix(0x5348415245544852ull); mixf(t.books.shareThreshold[0]); mixf(t.books.shareThreshold[1]);
+        }
+        mix(std::bit_cast<uint64_t>(legacyPoolWord(t)));
         if (t.scenarioResourceLimit != 0) { mix(0x4352544c494d4954ull); mixf(t.scenarioResourceLimit); }
         mix(t.cacheClock.enabled); mix(t.cacheClock.lastRefresh);
         mix(uint32_t(t.sweepCursor));
@@ -22124,58 +21172,6 @@ uint64_t World::stateHash() const {
         mix(t.visibleRefresh);
         mix(t.visibleEnemies.size());for (int id:t.visibleEnemies) mix(uint32_t(id));
         mix(t.visibleAllies.size());for (int id:t.visibleAllies) mix(uint32_t(id));
-        if (t.retailResources) {
-            mix(0x5245534fu);const auto& r=*t.retailResources;
-            mixf(r.stored);mixf(r.allocation);mixf(r.requested);mixf(r.produced);
-            mixf(r.capacity);mixf(r.capacityOverride);
-            mix(std::bit_cast<uint64_t>(r.totalProduced));mix(std::bit_cast<uint64_t>(r.excess));
-        }
-        if (t.buildCache) {
-            mix(0x4255494c44434143ull);
-            const auto& cache=*t.buildCache;
-            if (cache.planner) {
-                mix(0x504c414eu);mix(cache.planner->limited);mix(cache.planner->types.size());
-                for (const auto& type:cache.planner->types) {
-                    mix(type.weight);mix(type.special);mix(type.faction.size());
-                    for (unsigned char c:type.faction) mix(c);
-                    mix(type.choices.size());for (auto choice:type.choices) mix(choice);
-                }
-            }
-            mixf(cache.resources.income); mixf(cache.resources.usage);
-            for (const auto& sample:cache.resources.samples) for (float value:sample) mixf(value);
-            mix(cache.entries.size());
-            for (const auto& entry:cache.entries) {
-                mix(entry.type->id.size()); for (unsigned char c:entry.type->id) mix(c);
-                const auto& p=entry.inputs;
-                mix(p.flags);mix(p.secondaryFlags);mix(uint16_t(p.count));mix(uint16_t(p.completed));
-                mix(uint16_t(p.weapon));mix(uint32_t(p.desired));mixf(p.cost);mix(entry.priority);
-                mix(entry.hasEconomy);
-                if (entry.hasEconomy) { mixf(entry.income);mixf(entry.storage); }
-                if (entry.construction) {
-                    mix(0x434f4e53u);const auto& c=*entry.construction;
-                    mixf(c.type.inverseTime);mixf(c.type.cost);mix(c.type.maxHp);mixf(c.workerTime);
-                    mix(c.emitter.capacity);mix(uint32_t(c.emitter.radius));mix(uint32_t(c.emitter.height));
-                }
-            }
-        }
-        if (t.retailAi) {
-            mix(0x524149u);
-            const auto& ai=*t.retailAi;
-            mix(uint32_t(ai.schedule.assignmentCountdown));mix(ai.initialized);mix(ai.scenarioDeadline);
-            if (ai.anchorsRestored) {
-                mix(0x414e4348u);mix(ai.anchors.size());
-                for (const auto& [reference,cell]:ai.anchors) {
-                    mix(uint32_t(reference));mix(uint16_t(cell.first));mix(uint16_t(cell.second));
-                }
-            }
-            for (unsigned i=0;i<100;++i) {
-                const auto& clock=ai.schedule.groups[i];const auto& squad=ai.squads[i];
-                mix(clock.present);mix(clock.deadline);mix(unsigned(squad.kind));
-                mix(squad.active);mix(squad.dirty);
-                for (int value:squad.parameters) mix(uint32_t(value));
-                mix(squad.members.size());for (int id:squad.members) mix(uint32_t(id));
-            }
-        }
         // Team assignment drives sim behaviour (splash/acquire/auras) but is set
         // from setup -- fold it in so a lobby/config mismatch faults immediately
         // as a desync instead of diverging mysteriously.
@@ -22198,7 +21194,7 @@ uint64_t World::stateHash() const {
     }
     checkpoint("players");
     // Reclaimable features: fold a cheap signature so a reclaim divergence faults as
-    // a desync directly (mana/nav already reflect it indirectly). Order-independent.
+    // a desync directly (the books/nav already reflect it indirectly). Order-independent.
     uint64_t fAlive = 0, fWork = 0;
     for (const auto& f : features_)
         if (f.alive) {
@@ -22384,7 +21380,7 @@ void World::applyScenarioResourceAction(int player, int opcode, int32_t value) {
     // there is no TotalA.exe routine to follow. The stores are float32 as the settle
     // keeps them; one may sit above its cap until the next settle wastes the
     // overflow (taeconomy pay()), but never below zero, which the settle's pay
-    // fractions cannot take. The legacy pool mirrors the metal, as taEconomyTick does.
+    // fractions cannot take. Conditions 24 / 25 read the scarcer store.
     auto& b=p.books;
     switch (opcode) {
         case 16: case 20:
@@ -22395,7 +21391,6 @@ void World::applyScenarioResourceAction(int player, int opcode, int32_t value) {
         case 19: for (float& r : b.stored) r=std::max(r-float(value),0.f); break;
         default: return;
     }
-    p.mana=double(b.stored[1]);
 }
 
 void World::clearScenarioState() {

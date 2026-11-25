@@ -9,7 +9,6 @@
 #include "hpi/hpi.h"
 #include "sim/detmath.h"
 #include "sim/footprint.h"
-#include "sim/retailai.h"
 #include "util/devenv.h"
 #include <algorithm>
 #include <chrono>
@@ -41,7 +40,7 @@ DiffParams paramsFor(Difficulty d) {
     switch (d) {
         // Defensive: local interception without offensive waves, and production with
         // no AI-imposed limits -- every idle producer may act each think and spending
-        // is held to income by the affordability gate and the low-mana throttle alone.
+        // is held to income by the affordability gate and the low-resource throttle alone.
         // 256 bounds one think's orders for the wire frame, not the pace.
         case Difficulty::Defensive: return {30, 5, 256, 100, false, 0, true};
         // Defensive's behaviour, plus Absurd's 2x income cheat (incomeMultFor).
