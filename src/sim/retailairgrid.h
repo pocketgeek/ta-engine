@@ -9,51 +9,31 @@
 
 namespace ta::sim {
 
-// Retail's secondary (airborne) map occupant: map cell word +2, with each
-// flyer's overlap list at unit +0x117 (count, -1 = overflow) / +0x118 (seven
-// ids) and the footprint origin it was inserted at, +0x126/+0x128.
+// A flyer's word +2 record: the footprint origin it last stamped (+0x76 /
+// +0x78 as the setter left them; -9999 when it holds no cells) and the two
+// overlap flags 0x47cc30 raises on a shared cell (+0x110 0x4000000 on the
+// cell's holder, 0x8000000 on the flyer that did not get it).
 struct RetailAirOccupant {
-    int16_t recordedX=-9999,recordedZ=-9999; // 507030: not inserted
-    int8_t count=0;
-    std::array<int,7> links{};
-    // 519bd0
-    bool has(int id) const {
-        if (count>7 || count<=0) return false;
-        for (int i=0;i<count;++i) if (links[size_t(i)]==id) return true;
-        return false;
-    }
-    // 519c10
-    void add(int self,int id) {
-        if (id==self) return;
-        if (count==7 || count>7 || count<-1) count=-1;
-        if (count==-1) return;
-        links[size_t(count++)]=id;
-    }
-    // 519c70: drops the LAST entry when `id` is absent. Callers test has() first.
-    void remove(int self,int id) {
-        if (id==self) return;
-        if (count>7 || count<-1) count=-1;
-        if (count==-1) return;
-        for (int i=0;i<count-1;++i)
-            if (links[size_t(i)]==id) { links[size_t(i)]=links[size_t(count-1)]; break; }
-        --count;
-    }
+    int16_t recordedX=-9999,recordedZ=-9999;
+    bool overlapped=false;   // +0x110 0x4000000: another flyer wants a cell it holds
+    bool waiting=false;      // +0x110 0x8000000: it wants a cell another holds
 };
 
-// Persistent secondary occupancy. Cells hold 0 (none), -1 (the 0xffff
-// overflow sentinel) or an entity id. Stale ids of entities that stopped
-// being live without a removal stay until a later write, exactly as retail's
-// grid does; every reader re-checks liveness.
-//
-// Host: `RetailAirOccupant* state(int id)` -- live entities only (retail's
-// +0x130 bit 0x1000000); `bool footprint(int id,int& x,int& z,int& fx,int& fz)`
-// -- current origin +0x74/+0x76 and size +0x78/+0x7a; `bool airborne(int id)`
-// -- flight mode 2; `forEachFlyer(f)` -- every live canfly entity.
+// Persistent secondary occupancy. Cells hold 0 (none) or an entity id.
 class RetailAirOccupancy {
     PackedWhenKept<int> cells_;   // a keyframe of the world holds it as runs (sim/copymember.h)
     int width_=0,height_=0;
-    template<class Host> static bool footprint(Host& host,int id,int& x,int& z,int& fx,int& fz) {
-        return host.footprint(id,x,z,fx,fz);
+    // One cell of a stamp (0x47cfb3..0x47d03e; the restamp's 0x47ca04..
+    // 0x47ca92): an empty cell takes the flyer; an occupied one -- even one
+    // holding the flyer itself, on a restamp -- keeps its holder, which is
+    // marked overlapped, and the flyer is marked waiting. (A holder whose
+    // owner is a remote player, +0x73 == 3, would give the cell up with the
+    // flags the other way round, 0x47cfe5 / 0x47ca37: every owner is local to
+    // the lockstep simulation, so the holder keeps it.)
+    template<class Host> void stampCell(int id,RetailAirOccupant& self,int& cell,Host& host) {
+        if (!cell) { cell=id; return; }
+        if (auto* holder=host.state(cell)) holder->overlapped=true;
+        self.waiting=true;
     }
 public:
     void reset(int width,int height) { width_=width;height_=height;cells_.assign(size_t(width)*height,0); }
@@ -67,171 +47,63 @@ public:
     // commit 0x43d6d0 -> 0x43d775, and 0x43da0e) compares the new footprint
     // origin ((x - footx << 19) + 0x80000) >> 20 and layer (+0x110 & 3) with
     // the recorded ones (+0x76 / +0x78, 0x48aa35..0x48aa56); on a change it
-    // leaves the old cells (0x47d0e0) and takes the new ones (0x47cc30). There
-    // are no overlap lists and no random owner: the Kingdoms passes above are
-    // not TA's.
+    // leaves the old cells (taUnstamp, 0x47d0e0) and takes the new ones
+    // (taStamp, 0x47cc30).
     //
-    // 0x47d0e0, layer 2 (0x47d23b..0x47d284): every cell of the recorded
-    // footprint still holding this unit's index is cleared; one another flyer
-    // holds stays its. Not run when the last stamp was off the map (+0x82 is
-    // the sentinel G+0x142b7, 0x47d0f7..0x47d0ff).
-    void taUnstamp(int id,int x,int z,int fx,int fz) {
+    // Host: `RetailAirOccupant* state(int id)` (a live flyer's record, or
+    // null), `bool footprint(int id, int& x, int& z, int& fx, int& fz)` (its
+    // current origin and size) and `forEachTouching(x, z, fx, fz, f)` -- f(id) for every live
+    // flyer whose stamped footprint overlaps that rectangle (0x47e5c0's
+    // sector walk, the strict overlap test 0x47e674..0x47e697), in the
+    // engine's deterministic order.
+    //
+    // 0x47d0e0: layer 2 (0x47d23b..0x47d284) clears every cell of the recorded
+    // footprint still holding this unit's index -- one another flyer holds
+    // stays its; `stamped` false (the last stamp was off the map, +0x82 =
+    // G+0x142b7, 0x47d0f7..0x47d0ff) clears none. Then, whatever the layer
+    // (0x47d286..0x47d2ca): the unit's own waiting flag goes, and if it was
+    // overlapped the flag goes too and every flyer touching the old footprint
+    // is restamped (0x47e5c0 -> 0x47ed30 -> 0x47c790): a waiting one drops
+    // its flag and stamps its footprint again, so it takes the cells this
+    // one left.
+    template<class Host> void taUnstamp(int id,RetailAirOccupant& self,bool stamped,int x,int z,int fx,int fz,
+                                        Host& host) {
+        if (stamped)
+            for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
+                int& cell=cells_[size_t(z+r)*width_+x+c];
+                if (cell==id) cell=0;
+            }
+        self.waiting=false;
+        if (!self.overlapped) return;
+        self.overlapped=false;
+        if (!stamped) return;
+        host.forEachTouching(x,z,fx,fz,[&](int other) { restamp(other,host); });
+    }
+    // 0x47c790, layer 2 (0x47c9e3..0x47cab9): only a waiting flyer; the flag
+    // goes and its footprint at its current origin is stamped cell by cell.
+    template<class Host> void restamp(int id,Host& host) {
+        auto* self=host.state(id);
+        if (!self || !self->waiting || self->recordedX<0) return;
+        self->waiting=false;
+        int x,z,fx,fz;
+        if (!host.footprint(id,x,z,fx,fz)) return;
         for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
-            int& cell=cells_[size_t(z+r)*width_+x+c];
-            if (cell==id) cell=0;
+            const int cx=self->recordedX+c,cz=self->recordedZ+r;
+            if (cx<0 || cz<0 || cx>=width_ || cz>=height_) continue;
+            stampCell(id,*self,cells_[size_t(cz)*width_+cx],host);
         }
     }
     // 0x47cc30, layer 2 (0x47cf98..0x47d042): an origin off the map stamps
     // nothing (0x47cc57..0x47cca3: x or z negative, x + footx or z + footz past
-    // the last cell); else an empty cell takes the unit, and an occupied one
-    // keeps its flyer unless that flyer's owner is a remote player (player
-    // +0x73 == 3, 0x47cfda..0x47cfe9). Every owner the engine runs is local to
-    // the simulation (lockstep: no peer's view of "remote" may decide it), so
-    // the cell's flyer is kept. Returns whether the footprint was on the map.
-    bool taStamp(int id,int x,int z,int fx,int fz) {
+    // the last cell); else each cell as stampCell. Returns whether the
+    // footprint was on the map.
+    template<class Host> bool taStamp(int id,RetailAirOccupant& self,int x,int z,int fx,int fz,Host& host) {
         if (x<0 || z<0 || x+fx>=width_ || z+fz>=height_) return false;
-        for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
-            int& cell=cells_[size_t(z+r)*width_+x+c];
-            if (!cell) cell=id;
-        }
+        for (int r=0;r<fz;++r) for (int c=0;c<fx;++c)
+            stampCell(id,self,cells_[size_t(z+r)*width_+x+c],host);
         return true;
     }
-
-    // 507050(unit,1): the end-of-update pass clears the recorded footprint
-    // unconditionally and resets the overlap list.
-    template<class Host> void clear(int id,Host& host) {
-        auto* self=host.state(id);
-        if (!self) return;
-        int x,z,fx,fz;
-        footprint(host,id,x,z,fx,fz);
-        const int rx=self->recordedX,rz=self->recordedZ;
-        if (rx>=0 && rz>=0 && rx+fx<width_ && rz+fz<height_)
-            for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) cells_[size_t(rz+r)*width_+rx+c]=0;
-        self->count=0;
-    }
-
-    // 507050(unit,0), reached from map removal 5066a0 at retirement 512ae0:
-    // owned cells pass to a random overlapping list member (535cc0).
-    template<class Host,class Random> void remove(int id,Host& host,Random random) {
-        auto* self=host.state(id);
-        if (!self) return;
-        int x,z,fx,fz;
-        footprint(host,id,x,z,fx,fz);
-        const int rx=self->recordedX,rz=self->recordedZ;
-        if (rx<0 || rz<0 || rx+fx>=width_ || rz+fz>=height_) { self->count=0; return; }
-        bool overflow=self->count==-1;
-        for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
-            int& cell=cells_[size_t(rz+r)*width_+rx+c];
-            if (!cell) continue;
-            if (cell==-1) { cell=0; overflow=true; continue; }
-            if (cell!=id) continue;
-            if (self->count<=0) { cell=0; continue; }
-            std::array<int,7> candidates{};
-            int n=0;
-            for (int k=0;k<self->count;++k) {
-                const int other=self->links[size_t(k)];
-                const auto* state=other ? host.state(other) : nullptr;
-                if (!state) continue;
-                int ox,oz,ofx,ofz;
-                footprint(host,other,ox,oz,ofx,ofz);
-                // The candidate's RECORDED origin, unlike insertion's current one.
-                if (state->recordedX>rx+c || state->recordedX+ofx-1<rx+c ||
-                    state->recordedZ>rz+r || state->recordedZ+ofz-1<rz+r || n>=7) continue;
-                candidates[size_t(n++)]=other;
-            }
-            cell=n ? candidates[size_t(random(unsigned(n)))] : 0;
-        }
-        if (overflow) {
-            host.forEachFlyer([&](int other) {
-                auto* state=host.state(other);
-                if (state && state->has(id)) state->remove(other,id);
-            });
-        } else {
-            for (int k=0;k<self->count;++k) {
-                const int other=self->links[size_t(k)];
-                auto* state=other ? host.state(other) : nullptr;
-                if (state && state->has(id)) state->remove(other,id);
-            }
-        }
-        self->count=0;
-    }
-
-    // 506c40: insert an airborne footprint, building reciprocal overlap lists
-    // and selecting each shared cell's owner with a bounded random draw.
-    template<class Host,class Random> void insert(int id,Host& host,Random random) {
-        auto* self=host.state(id);
-        if (!self) return;
-        int x,z,fx,fz;
-        footprint(host,id,x,z,fx,fz);
-        if (!host.airborne(id) || x<0 || z<0 || x+fx>=width_ || z+fz>=height_) {
-            self->recordedX=self->recordedZ=-9999;
-            return;
-        }
-        for (int r=0;r<fz;++r) for (int c=0;c<fx;++c) {
-            int& cell=cells_[size_t(z+r)*width_+x+c];
-            if (!cell) { cell=id; continue; }
-            if (cell==-1) { self->count=-1; continue; }
-            const int previous=cell;
-            auto* owner=host.state(previous);
-            if (!owner || owner->count<=-1) { cell=-1; self->count=-1; continue; }
-            if (!owner->has(id)) owner->add(previous,id);
-            if (!self->has(previous)) self->add(id,previous);
-            std::array<int,7> candidates{previous,id};
-            int n=2;
-            for (int k=0;k<owner->count;++k) {
-                const int other=owner->links[size_t(k)];
-                if (other==id || !other) continue;
-                auto* state=host.state(other);
-                if (!state) continue;
-                int ox,oz,ofx,ofz;
-                footprint(host,other,ox,oz,ofx,ofz);
-                if (ox>x+c || ox+ofx-1<x+c || oz>z+r || oz+ofz-1<z+r) continue;
-                if (n>=7) {
-                    cell=-1;state->count=-1;
-                    for (int candidate:candidates)
-                        if (auto* listed=candidate ? host.state(candidate) : nullptr) listed->count=-1;
-                    break;
-                }
-                if (!state->has(id)) state->add(other,id);
-                if (!self->has(other)) self->add(id,other);
-                candidates[size_t(n++)]=other;
-            }
-            if (cell!=-1) cell=candidates[size_t(random(unsigned(n)))];
-        }
-        self->recordedX=int16_t(x);self->recordedZ=int16_t(z);
-    }
 };
-
-// Fresh single pass (all lists reset, empty grid), the projectile fixture.
-struct RetailAirCollisionBody {
-    int id=0,x=0,z=0,width=1,height=1;
-    bool airborne=true;
-};
-struct RetailAirCollisionHost {
-    const std::vector<RetailAirCollisionBody>& bodies;
-    std::vector<RetailAirOccupant>& states;
-    int index(int id) const {
-        for (size_t i=0;i<bodies.size();++i) if (bodies[i].id==id) return int(i);
-        return -1;
-    }
-    RetailAirOccupant* state(int id) { const int i=index(id); return i<0 ? nullptr : &states[size_t(i)]; }
-    bool footprint(int id,int& x,int& z,int& fx,int& fz) const {
-        const auto& b=bodies[size_t(index(id))];
-        x=b.x;z=b.z;fx=b.width;fz=b.height;return true;
-    }
-    bool airborne(int id) const { return bodies[size_t(index(id))].airborne; }
-    template<class F> void forEachFlyer(F f) const { for (const auto& b:bodies) f(b.id); }
-};
-template<class Random>
-std::vector<int> retailAirCollisionGrid(int width,int height,
-        const std::vector<RetailAirCollisionBody>& bodies,Random random) {
-    std::vector<RetailAirOccupant> states(bodies.size());
-    RetailAirCollisionHost host{bodies,states};
-    RetailAirOccupancy grid;
-    grid.reset(width,height);
-    for (const auto& body:bodies) grid.insert(body.id,host,random);
-    return {grid.cells().begin(),grid.cells().end()};
-}
 
 // 509400: may a flyer touch down with its footprint centred at (x,z)?
 // Host: `int width()`, `int height()`, `uint16_t exploration(size_t coarse)`;

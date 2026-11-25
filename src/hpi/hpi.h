@@ -339,7 +339,7 @@ Vfs::Files modFiles(const std::filesystem::path& root, ModKind kind,
 // silently). Each later layer wins. A cosmetic layer is its own choice
 // and must never stop a game, so one that cannot load (a damaged archive, past
 // the 256 MiB / 65536-file budget) or that would change gameplayHash (anims/
-// frame timing or availability the sim reads: storms, nimbus, feature burns) is
+// frame timing the sim reads: feature burns) is
 // left out and named, with the reason, in `skipped`.
 Vfs mountPlayVfs(const std::filesystem::path& root, Vfs::Files gameFiles,
                  std::vector<std::string> cosmeticPacks, bool withCosmetic = true,

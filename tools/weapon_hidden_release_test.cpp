@@ -35,7 +35,8 @@ int main() {
     shooter.maxHp=targetType.maxHp=1000;
     Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
     weapon.projVel=300;weapon.energyPerShot=3;   // paid from the player's store (econPayShot)
-    weapon.straight=true;weapon.taFlags=1u|1u<<19;weapon.taAim=Weapon::TaAim::Turret;   // lineofsight turret
+    weapon.velocityFx=300*65536/30;   // weaponvelocity 300, fx16 per tick (taweapons.cpp)
+    weapon.taFlags=1u|1u<<19;weapon.taAim=Weapon::TaAim::Turret;   // lineofsight turret
     shooter.weapons.push_back(weapon);shooter.weapon=weapon;
 
     const int shooterId=world.spawn(&shooter,200,200,{},0);
@@ -96,7 +97,10 @@ int main() {
         require(!world.playerSees(2,*world.unit(targetId)),"the target remains hidden up to the release tick");
         fired=world.unit(shooterId)->justFired;
     }
-    require(fired && world.projectiles().size()==1 && world.books(0).stored[0]==17 &&
+    // One shot, paid once (20 - 3). A TA line-of-sight shot takes its first
+    // step in its firing tick's projectile pass (0x495513), where this
+    // model-less shooter's ground-level muzzle may already have burst it.
+    require(fired && world.projectiles().size()<=1 && world.books(0).stored[0]==17 &&
             !world.unit(shooterId)->weaponAim[0].requested(),
             "the hidden live target receives exactly one shot, which consumes the aim");
 

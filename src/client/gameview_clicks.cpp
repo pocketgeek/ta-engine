@@ -119,17 +119,17 @@ namespace {
             f.flies = t.canFly;
             f.transport = t.canTransport;
             f.loaded = t.canTransport && !u.cargo.empty();
-            if (f.attacker) f.airstrike = unitHasAirstrikeCursor(t, u.weaponSlot);
+            if (f.attacker) f.airstrike = unitHasAirstrikeCursor(t, 0);
             // Armed ATTACK at a point (ground or a friendly unit): the sim's own
             // resolver rule (World::suppressRule).
             if (mode == 'a' && f.attacker && target.kind != HoverKind::Enemy) {
                 using Rule = ta::sim::World::SuppressRule;
-                const Rule r = ta::sim::World::suppressRule(t, u.weaponSlot);
+                const Rule r = ta::sim::World::suppressRule(t, 0);
                 f.pointFire = r == Rule::Fire;
             }
             if (hovered && hovered->type) {
                 if (f.attacker && target.kind == HoverKind::Enemy && (mode == 0 || mode == 'a'))
-                    f.canHit = cursorCanAttackEnemy(t, u.weaponSlot, u.worldPosition, *hovered->type,
+                    f.canHit = cursorCanAttackEnemy(t, 0, u.worldPosition, *hovered->type,
                                                     hovered->worldPosition, hovered->flightGroundMode);
                 if (friendlyTarget && (mode == 0 || mode == 'm' || mode == 'f' || mode == 'r')) {
                     f.assist = canAssistSite(u, *hovered);
@@ -422,13 +422,13 @@ namespace {
             BoxUnit f;
             const auto& t = *u->type;
             f.attacker = isCursorAttacker(*u);
-            f.airstrike = f.attacker && unitHasAirstrikeCursor(t, u->weaponSlot);
+            f.airstrike = f.attacker && unitHasAirstrikeCursor(t, 0);
             f.reclaimer = canReclaimAsLocal(*u, localPlayer_);
             f.raiser = t.canResurrect;
             f.transport = t.canTransport;
             if (f.attacker && mode != BoxMode::ArmedLoad && mode != BoxMode::ArmedClear)
                 for (const UnitR* e : enemies)
-                    f.hits += cursorCanAttackEnemy(t, u->weaponSlot, u->worldPosition, *e->type,
+                    f.hits += cursorCanAttackEnemy(t, 0, u->worldPosition, *e->type,
                                                    e->worldPosition, e->flightGroundMode);
             if (f.transport && transports == 1)
                 for (const UnitR* p : own) f.loadable += p != u && canLoadPassenger(*p, *u);
@@ -496,7 +496,7 @@ namespace {
             for (size_t i = 0; i < plan.units.size(); ++i) {
                 if (plan.orders[i] != ClickOrder::Attack) continue;
                 const UnitR* u = frameUnitP(plan.units[i]);
-                if (!u || !ta::client::cursorCanAttackEnemy(*u->type, u->weaponSlot, u->worldPosition, *e->type,
+                if (!u || !ta::client::cursorCanAttackEnemy(*u->type, 0, u->worldPosition, *e->type,
                                                 e->worldPosition, e->flightGroundMode)) continue;
                 ta::net::Command c;
                 c.kind = ta::net::Cmd::Attack; c.unitId = u->id; c.targetId = enemyId;

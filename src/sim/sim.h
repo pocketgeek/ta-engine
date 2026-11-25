@@ -13,8 +13,6 @@
 #include "sim/retailpiecepose.h"
 #include "sim/retailprojectile.h"
 #include "sim/retailairgrid.h"
-#include "sim/retailflame.h"
-#include "sim/retailhweffect.h"
 #include "sim/retaileffectclock.h"
 #include "sim/retailheight.h"
 #include "sim/retailfeaturesink.h"
@@ -69,7 +67,6 @@
 #include <string>
 #include <vector>
 
-namespace ta { struct RetailLightningDefinition; }
 namespace ta::hpi { class Vfs; }
 
 namespace ta::sim {
@@ -103,20 +100,8 @@ struct Weapon {
     // firing only when the heading matched EXACTLY.
     int32_t aimTol = 1024;   // aimtolerance: how close to on-target to fire
     bool ballistic = false;  // FBI weapon type = Ballistic (lobbed arc, not flat)
-    // Line-of-Sight is a trajectory family; its subtypes have distinct updates.
-    bool beam = false;
-    bool straight = false; // Ordinary LOS class: any subtype the classes below do not claim.
-    bool lightning = false;
-    // Kingdoms' Line-of-Sight status classes (mind control, stone, freeze).
-    // TA data never sets them (taweapons.cpp) and their effects are gone; the
-    // field stays only for the line-of-sight shot path's untouched branches
-    // (docs/ta-port-plan.md Open (d)).
-    enum class LosStatus : uint8_t { None, MindControl, Stone, Frozen };
-    LosStatus losStatus = LosStatus::None;
-    std::string hwEffectName;
-    std::shared_ptr<const RetailLightningDefinition> lightningEffect;
+    bool beam = false;     // beamweapon
     std::array<uint16_t,3> shotSpin{}; // roll, heading, pitch per collision substep.
-    int8_t flameKind = -1; // -1: other class; 0 fire, 1 bluefire, 2 dieselflame.
     bool groundBounce = false,waterWeapon = false;
     int32_t emitTime = 0;    // emittime (readInt): ticks the flame/beam is emitted
     // The weapon's class beyond ballistic / line-of-sight (taweapons.cpp):
@@ -128,7 +113,7 @@ struct Weapon {
     // Retail's BallisticWeapon class: a plain Ballistic shell (not Dropped, a
     // flame or a beam). Its inRange (52bc60) solves the launch arc first.
     bool ballisticClass() const {
-        return ballistic && kind == Kind::Normal && !beam && flameKind < 0;
+        return ballistic && kind == Kind::Normal && !beam;
     }
     // Does a shot from this weapon need the engine's 2D clear-line test? That
     // test is a deviation (retail has none: its weapon update admits a shot on
@@ -191,10 +176,6 @@ struct Weapon {
     // the game is the same hand-drawn streak.
     std::string weaponArt;    // weaponart: anims/<name>_4444.taf sprite sequence
     std::string shotModel;    // model: objects3d/<name>.3do projectile mesh
-    bool  nimbus = false;     // nimbus: faction caster effect and conditional launch delay
-    // nimbustime (WeaponType+0x7c, seconds * 30 truncated): the launch delay a
-    // nimbus caster with nimbus art adds to the shot's start tick.
-    int32_t nimbusTicks = 0;
     bool  hasBoltColor = false;
     uint8_t inner[3] = {255, 255, 255};    // innercolor: lightning bolt core
     uint8_t middle[3] = {200, 230, 255};   // middlecolor
@@ -257,7 +238,6 @@ struct UnitType {
     uint16_t orientation=0,buildAngle=0; // original spawn-heading range in BAM
     std::string name;      // display name, e.g. "Archer"
     std::string side;      // FBI side= (ARM / CORE)
-    bool hasNimbusArt = false;
     Fixed maxVel = Fixed::fromInt(1);                 // px/tick  (= 30 px/s)
     Fixed animationMoveRate1=Fixed::fromInt(2),animationMoveRate2=Fixed::fromInt(2);
     Fixed accel = Fixed::fromFloat(15.0f / 900.0f);   // px/tick^2 (= 15 px/s^2)
@@ -620,8 +600,6 @@ public:
     }
 
 private:
-    bool effectsLoaded_=false;
-    std::map<std::string,std::shared_ptr<const RetailLightningDefinition>> lightningEffects_;
     std::map<std::string, int> catIds_;
     std::map<std::string, UnitType> types_;
     std::set<std::string> canonicalTypes_;   // ids whose defining .fbi filename == objectname
@@ -1140,7 +1118,7 @@ struct alignas(64) Unit {
     // Wrapping is a mask, two angles added
     // cannot drift, and there is no rounding for two libms to disagree about.
     Bam heading;
-    int   weaponSlot = 0;          // active weapon (0=primary); player-selectable
+    int   padWeaponSlot_ = 0;      // was Kingdoms' player-selected weapon (Ctrl+W); TA fires slot 0 first
     bool underConstruction = false;
     bool  cloaked = false; // currently invisible to enemies
     bool  beingBuilt = false;  // site: transient -- a work event at its GetBuilt dispatch
@@ -1672,7 +1650,7 @@ struct alignas(64) Unit {
                   "Unit::" #field " must sit on cache line " #line)
 TA_UNIT_LINE(id, 0); TA_UNIT_LINE(player, 0); TA_UNIT_LINE(type, 0);
 TA_UNIT_LINE(x, 0); TA_UNIT_LINE(z, 0); TA_UNIT_LINE(deadFor, 0); TA_UNIT_LINE(inTransport, 0);
-TA_UNIT_LINE(hp, 0); TA_UNIT_LINE(speed, 0); TA_UNIT_LINE(heading, 0); TA_UNIT_LINE(weaponSlot, 0);
+TA_UNIT_LINE(hp, 0); TA_UNIT_LINE(speed, 0); TA_UNIT_LINE(heading, 0); TA_UNIT_LINE(padWeaponSlot_, 0);
 TA_UNIT_LINE(underConstruction, 0); TA_UNIT_LINE(cloaked, 0); TA_UNIT_LINE(beingBuilt, 0);
 TA_UNIT_LINE(squad, 0); TA_UNIT_LINE(flightGroundMode, 0); TA_UNIT_LINE(legionLift, 0);
 TA_UNIT_LINE(legionStill, 0); TA_UNIT_LINE(standingOrder, 0); TA_UNIT_LINE(moveState, 0);
@@ -1853,8 +1831,7 @@ struct Projectile {
     std::array<uint16_t,3> angles{};
     uint32_t start=0,end=0,substeps=1;
     int slot=0;
-    bool straight=false;
-    bool guided3d=false;    // GuidedWeapon's simulation-owned XYZ state.
+    bool guided3d=false;    // drawn as a 3D shot (taSelfProp)
     bool ballistic3d=false; // BallisticWeapon XYZ motion and collision, also used to pose the authored shot.
     // TotalA.exe selfprop/vlaunch motion (0x49b9c2..0x49bb5b, retailtashot.h):
     // also guided3d for drawing. `end` is the expiry tick (+0x46): powered
@@ -1877,7 +1854,6 @@ struct Projectile {
     int32_t taSpeed=0;          // +0x3a
     std::array<int32_t,3> taTargetPoint{}; // +0x28
     std::array<int32_t,3> muzzle{};
-    std::optional<RetailLightningEffect> lightningEffect;
     // Position in the same 16.16 as a unit's: retail's world is 0x100000 per 16px
     // cell, i.e. 65536 per pixel (docs/retail-engine.md), and a projectile is bounded
     // by the map exactly as a unit is, so the range that rules mana out does not bite.
@@ -1903,17 +1879,6 @@ struct Projectile {
     int fromId = 0;        // firing unit id (for kill attribution / veterancy)
     const Weapon* wsrc = nullptr;   // source weapon (splash + per-category damage)
     WeaponFx fx = WeaponFx::Arrow;   // how the viewer draws it
-};
-
-struct FlameShot {
-    const Weapon* weapon=nullptr;
-    int owner=0,fromId=0,slot=0;
-    int targetId=0;        // the unit it was fired at, for the blocked-shot count
-    std::array<int32_t,3> position{},velocity{},endpoint{};
-    std::array<int32_t,3> muzzle{},aimPoint{}; // display-only native admission endpoints
-    uint32_t start=0,end=0,lifetime=1,speed=0,substeps=1;
-    bool impacted=false,expired=false;
-    std::vector<ta::RetailFlameParticle> particles;
 };
 
 // Walkability grid derived from TNT heights: a cell is blocked when the
@@ -2359,10 +2324,6 @@ public:
     const PathService& pathStats() const { return paths_; }
     void setPathfindingMode(PathfindingMode mode);
     PathfindingMode pathfindingMode() const { return pathfindingMode_; }
-    // Retail mode's native group record for a unit (null outside Retail or ungrouped).
-    const RetailGroupRecord* retailGroupRecord(int unitId) const {
-        const Unit* u=unit(unitId);return u?retailGroupOf(*u):nullptr;
-    }
 
     // Legion mode's formation slot for a member of a formation -- an Alt+N
     // formation or a classic AI squad flagged as one (legionFormationGroup) --
@@ -2845,7 +2806,7 @@ public:
         // Legion's formation slots (hashed, by unit id) likewise.
         legionFormationSlots_.clear();legionFormationClasses_={};legionSlotDests_.clear();
         groundOwner_.clear();groundLinkSerial_=0;
-        projectiles_.clear();flames_.clear();bursts_.clear();
+        projectiles_.clear();bursts_.clear();
         hits_.clear();
         pendingSounds_.clear();soundReq_={};
         transportEffects_.clear();
@@ -3076,16 +3037,24 @@ public:
                               uint32_t weaponFlags) const;
     // Retail's persistent secondary (airborne) occupant grid, map word +2.
     // Each flyer moves its own stamp when its position is set (TotalA.exe
-    // 0x48a9f0 -> 0x47d0e0 / 0x47cc30; stampAirOccupant, after each unit's
-    // update in the units' pass); read by the projectiles (0x49b222) and by
+    // 0x48a9f0 -> 0x47d0e0 / 0x47cc30; stampAirOccupant, from the flight
+    // commit tickFlightBody and groundMove's layer change); read by the projectiles (0x49b222) and by
     // the landing-site predicate (0x47e2d0).
     RetailAirOccupancy airOccupancy_;
     std::span<const int> updateAirOccupancy();
     void stampAirOccupant(Unit& u);
     void retireAirOccupant(Unit& u);
+    void ensureAirGrid();
+    struct AirGridHost;
+#ifndef NDEBUG
+    void verifyAirOccupant(const Unit& u) const;
+#endif
     // TotalA.exe 0x49b090, every shot kind's test of one point: 0 clear (or a
     // bounce), 1 off the map, 2 a burst (unitId the body struck, or 0).
-    struct ProjectileCollisionResult { int code=0,unitId=0; };
+    // `intercepted`: an interceptor's point was within reach of the shot it
+    // chases (targetShot), which bursts it (0x49b1a9 -> 0x499eb0) before the
+    // body tests run on (0x49b1ae): a body struck there bursts it again.
+    struct ProjectileCollisionResult { int code=0,unitId=0; bool intercepted=false; };
     ProjectileCollisionResult projectileCollision(const std::array<int32_t,3>& point,
         int32_t& verticalSpeed,uint32_t weaponFlags,int owner,std::span<const int> airGrid,
         std::optional<std::array<int32_t,3>> targetShot={},uint16_t proximityRadius=0) const;
@@ -3425,7 +3394,6 @@ public:
     std::vector<Unit>& units() { return units_; }
     const std::vector<Unit>& units() const { return units_; }
     const std::vector<Projectile>& projectiles() const { return projectiles_; }
-    const std::vector<FlameShot>& flames() const { return flames_; }
     Unit* unit(int id);
     const Unit* unit(int id) const {
         return const_cast<World*>(this)->unit(id);
@@ -3687,7 +3655,6 @@ private:
     void tickFlyingGuard(Unit& u);
     void guardHelpPick(Unit& u, const Unit& g, int& help, int& mend);
     void guardInsertJob(Unit& u, int help, int mend);
-    void pushGuardFormation(Unit& u);
     RetailRingGoal guardRing(const Unit& u, const Unit& g) const;
     bool guardInDoorLane(const Unit& u, const Unit& g, int64_t x, int64_t z) const;
     void guardDoorPoint(const Unit& u, const Unit& g, Fixed& x, Fixed& z) const;
@@ -4128,7 +4095,10 @@ private:
     void groundRestamp(Unit&);               // 5062d0
     void groundRestampRect(int,int,int,int); // 5065b0 -> 5097f0
     // 51b3b0's cell or mode change: unstamp, then stamp at the current spot.
-    void groundMove(Unit& u) { groundUnstamp(u); groundStamp(u); }
+    // A flyer's layer change is committed by its position setter too
+    // (0x43d6d0 compares mover +0x2e & 3 with unit +0x110 & 3, then 0x48a9f0),
+    // which moves its word +2 stamp.
+    void groundMove(Unit& u) { groundUnstamp(u); groundStamp(u); if (u.type && u.type->canFly) stampAirOccupant(u); }
     void groundRebuild();
     int cellScoreWithBodies(const UnitType*,int,int,int,const SearchBodyRect*) const;
     bool gatePassageAt(int,int,const std::vector<int>* gates=nullptr) const;
@@ -4234,6 +4204,7 @@ private:
     void setSlotMode(Unit& u,int slot,bool automatic);   // 519b10/519b70 on one slot
     void dropSlotTarget(Unit& u,int slot);         // 51a7f0
     void setSlotTarget(Unit& u,int slot,int id);   // 51a700
+    void noteSlotOutOfRange(Unit& u,int slot);   // 0x49e53a / 0x49d664
     void syncSlotMode(Unit& u);
     bool slotInRange(const Unit& u,const Unit& t,int slot) const;
     // 52bc60 (BallisticWeapon::inRange) for a shooter standing at (x,y,z).
@@ -4257,12 +4228,7 @@ private:
     bool slotClearShot(const Unit& u,const Unit& t,int slot) const;
     // Blocked shots (engine deviation, see noteShotImpact in sim.cpp).
     // Called after the shot's applyHit, with the target's hit points from before it.
-    void noteShotImpact(int fromId,int targetId,const Weapon& w,const std::array<int32_t,3>& impact,int hitUnit,Fixed targetHp,
-                        bool refused=false);
-    // Kingdoms' status shots (mind control, stone, freeze) are gone and TA sets
-    // no Weapon::losStatus; the straight-shot update's status branch still asks
-    // this until the line-of-sight shot path drops that branch.
-    bool statusShotRefused(const Weapon&,int,int,int) const { return false; }
+    void noteShotImpact(int fromId,int targetId,const Weapon& w,const std::array<int32_t,3>& impact,int hitUnit,Fixed targetHp);
     void noteNoArc(Unit& u,const Unit& t);
     bool impactIndestructible(const Weapon& w,int cx,int cz) const;
     bool shotBlockedHere(const Unit& u,const Unit& t) const;
@@ -4617,9 +4583,6 @@ private:
     std::unordered_map<int, size_t> featureIdx_;   // feature id -> index in features_
     std::vector<Projectile> projectiles_;
     std::vector<BurstEmitter> bursts_;
-    std::vector<FlameShot> flames_;
-    void tickFlames(std::span<const int> airGrid);
-    void tickStraightProjectiles(std::span<const int> airGrid);
     // TotalA.exe 0x49b9c2..0x49bb5b plus the collision test 0x49b090: one
     // selfprop/vlaunch shot's tick.
     void tickTaSelfProp(Projectile& p,std::span<const int> airGrid);
@@ -4781,7 +4744,7 @@ private:
         placementDirty_.push_back({x,z,w,h});
     }
     // (Kingdoms' group records and their pacing, 51b890 / 4d95f0, are gone:
-    // TotalA.exe keeps none, World::retailGroupOf.)
+    // TotalA.exe keeps none.)
     std::array<std::bitset<100>,kMaxPlayers> aiFormation_{};   // retail AI records' +8 (setAiGroup)
     // Legion: where a flyer in a mixed formation (squad < 0 with ground
     // members) keeps station this tick, by unit index. Rebuilt each tick from
@@ -4818,7 +4781,6 @@ private:
     const LegionFlightStation* legionFlightStation(const Unit& u) const;
     static int retailGroupIndex(const Unit& u);
     RetailGroupMember retailGroupMember(const Unit& u) const;
-    const RetailGroupRecord* retailGroupOf(const Unit& u) const;
     uint32_t retailMissionFlags(Unit& u);
     // The registry flags (+0x5a) of the mission an order runs: its
     // Order::mission.flags, with the row's own flags for SUPPRESS and the
@@ -4833,29 +4795,13 @@ private:
     static bool retailTaAttackMission(const Unit& u);
     // The next mission's flags (+0x66's +0x5a) behind orders[index]; 0 for none.
     uint32_t retailNextMissionFlags(const Unit& u,size_t index) const;
-    // 51d1e0(unit, 1, level) for an attack's group check (its flags lack 0x4000000).
-    bool retailAttackOutOfSlot(const Unit& u,int level) const;
     // The attack a formation leg its group check put ahead of it leads
     // (SUPPRESS, a flyer's attack), or null: the push left its slots as they were.
     static const Order* formationAttack(const std::vector<Order>& orders);
-    // Kingdoms' flyer attack group check, the base of the AirStrike,
-    // AirToAir and VTOL_SeekAttack hosts: VTOL_Move_Formation (level -4)
-    // would go ahead once the dispatch is done (push). No TotalA.exe flyer
-    // mission has a group check (docs/ta-port-plan.md), so none of them calls
-    // formation() and push() never fires.
+    // The base of the AirStrike, AirToAir and VTOL_SeekAttack hosts. (No
+    // TotalA.exe flyer mission has a group check, docs/ta-port-plan.md.)
     struct AirAttackGroup {
         World& w; Unit& u;
-        bool formationTo=false;
-        bool outOfSlot() const { return w.retailAttackOutOfSlot(u,5); }
-        // 50c480 then 4d6a50(unit, 0): a guard's group check lets it go.
-        void cancel() const { w.cancelPath(u);u.orders.clear();u.routeStamp=-1; }
-        uint32_t nextFlags() const { return w.retailNextMissionFlags(u,0); }
-        void leave() const {}   // 50c480: no TA group record to leave
-        bool formation() { formationTo=true;return true; }
-        // Puts the formation ahead (level -4) and runs it at once, as the
-        // dispatcher goes on to the head it was handed: true when it did
-        // (the caller's mover is done for the tick).
-        bool push();
     };
 
     void planLegionFlightStations();

@@ -302,9 +302,6 @@ void flyerPatrols(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::
           "a flyer's patrol legs carry VTOL_PATROL's flags: outbound 0x1004412, anchor and a Shift leg 0x1000412",
           flags);
     for (int i = 0; i < 3; ++i) s.w.tick(kTick);
-    // TotalA.exe keeps no group records (World::retailGroupOf): a formation
-    // of patrolling flyers has no moving aggregate to be counted in.
-    check(!s.w.retailGroupRecord(ids[0]), "a formation of patrolling flyers has no group record (TA)", "");
 }
 
 void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
@@ -478,12 +475,6 @@ GroupRun groupFire(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim:
         sim::Bam preHeading;
         if (const sim::Unit* u = s.w.unit(id)) {
             for (const auto& q : u->orders) if (q.suppress) preFlagged = (q.mission.flags & 0x8000000u) != 0;
-            if (const auto* g = s.w.retailGroupRecord(id)) {
-                sim::RetailGroupMember m;
-                m.position = {u->x.floorInt(), 0, u->z.floorInt()};
-                m.area = u->type->footX * u->type->footZ;
-                preOut = sim::retailGroupOutOfSlot(*g, m, true, 4, false);
-            }
             preHeading = u->heading;
         }
         const int now = int(s.w.tickCount());
@@ -498,11 +489,6 @@ GroupRun groupFire(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim:
         }
         if (u->firedWeapons) r.shotTicks.push_back(now);
         const size_t leg = sim::World::currentLeg(o);
-        if (i == 2)
-            if (const auto* g = s.w.retailGroupRecord(id)) {
-                r.movers = g->moving[size_t(sim::RetailGroupClass::Ground)].count;
-                r.members = g->all[size_t(sim::RetailGroupClass::Ground)].count;
-            }
         const bool lead = !o.empty() && o[leg].formationLevel && leg + 1 < o.size() && o[leg + 1].suppress;
         if (!o.empty() && o[leg].formationLevel && !lead) r.otherLegs = true;
         const bool pushed = lead && !walking;
@@ -716,7 +702,7 @@ void groups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitTy
         check(r.hits >= 1 && r.hitDist < 48, "its shots land on the point", describe(r));
         check(groupFire(vfs, reg, turret, archer, 1500).hash == r.hash, "the same run gives the same state hash");
         // TA's Suppress row is 0x410 (0x4fc74c): no group bits, and no
-        // group record to count it in (World::retailGroupOf).
+        // group record to count it in (TotalA.exe keeps none).
         check(r.members == -1 && r.movers == -1, "on SUPPRESS it is in no group record (TA)",
               std::to_string(r.movers) + " moving of " + std::to_string(r.members));
     }

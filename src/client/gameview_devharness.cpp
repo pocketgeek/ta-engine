@@ -12,7 +12,6 @@
 #include "client/gamespeed.h"
 #include "client/renderdriver.h"
 #include "client/retailaim.h"
-#include "gaf/nimbus.h"
 #include "client/shadowmask.h"
 #include "client/retailfeatureclock.h"
 #include "client/retailbuilderanimation.h"
@@ -4333,7 +4332,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             const auto* art=effectFor("bigsmoke");
             if(passengerId<0 || carrierId<0 || !art || art->frames.empty())
                 throw std::runtime_error("transport attached-effect assets unavailable");
-            smokeSprites_.clear();pointParticles_.clear();damageFlames_.clear();nimbusEffects_.clear();
+            smokeSprites_.clear();pointParticles_.clear();damageFlames_.clear();
             const std::array<int32_t,3> point{int32_t(cx*65536),0,int32_t(cz*65536)};
             ta::RetailSmokeParticle smoke;smoke.position=point;
             smokeSprites_[passengerId].push_back({smoke,art});
@@ -4341,7 +4340,6 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             pointParticles_[passengerId].push_back(wake);
             DamageFlameSprite flame;flame.position=point;flame.art=art;flame.clock.start(art->durations);
             damageFlames_[passengerId].push_back(flame);
-            nimbusEffects_[passengerId]={art,world_.tickCount()};
             int width=0,height=0;SDL_GetRendererOutputSize(ren_,&width,&height);
             winW_=width;winH_=height; // draw normally sets these before culling
             mapView_.setZoom(1);
@@ -4352,14 +4350,14 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 collectWorldFx(mapViewW(width),height,false);drawLateFx();
                 const int expected=aboard ? 0 : 1;
                 if(debugSmokeDrawCount_!=expected || debugPointDrawCount_!=expected ||
-                   debugDamageFlameDrawCount_!=expected || debugNimbusDrawCount_!=expected) {
-                    std::fprintf(stderr,"cargo effects: aboard=%d smoke=%d points=%d flames=%d nimbus=%d\n",
-                        int(aboard),debugSmokeDrawCount_,debugPointDrawCount_,debugDamageFlameDrawCount_,debugNimbusDrawCount_);
+                   debugDamageFlameDrawCount_!=expected) {
+                    std::fprintf(stderr,"cargo effects: aboard=%d smoke=%d points=%d flames=%d\n",
+                        int(aboard),debugSmokeDrawCount_,debugPointDrawCount_,debugDamageFlameDrawCount_);
                     throw std::runtime_error("passenger attached effects did not hide aboard and resume after unloading");
                 }
             }
             if(smokeSprites_[passengerId].size()!=1 || pointParticles_[passengerId].size()!=1 ||
-               damageFlames_[passengerId].size()!=1 || !nimbusEffects_.contains(passengerId))
+               damageFlames_[passengerId].size()!=1)
                 throw std::runtime_error("boarding discarded attached effect lifetime state");
             // A passenger destroyed aboard must not spawn visible death
             // sprites/bursts at the carrier's position or run its death scripts.

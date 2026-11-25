@@ -14,13 +14,10 @@
 #include "client/orderoverlay.h"
 #include "client/reclaimfade.h"
 #include "client/featuredie.h"
-#include "client/retaillightningquad.h"
 #include "client/tabeamdraw.h"
-#include "client/retailflame.h"
 #include "client/retaileffectframe.h"
 #include "client/retailviewport.h"
 #include "client/texturefilter.h"
-#include "sim/retailhweffectdata.h"
 #include "sim/retailheight.h"
 
 // Out-of-line GameView method definitions (render concern), split from the
@@ -2469,7 +2466,7 @@
 
         // The late fx pass: only the world effects collectWorldFx left out of the
         // painter list (far outside the view), in the old family order -- shots,
-        // particles, rings, blood, debris, glows, nimbus, explosions, unit smoke.
+        // particles, rings, blood, debris, glows, explosions, unit smoke.
         // Everything near the view drew in its depth place in the replay above.
         float zm = mapView_.zoom();
         {
@@ -4501,8 +4498,6 @@
     }
 
     void GameView::destroyGpuTextures() {
-        for(auto& [size,texture]:lightningTextures_)gpuvram::destroy(texture);
-        lightningTextures_.clear();
         for (auto& [id, nano] : nanoTextures_) if (nano.texture) SDL_DestroyTexture(nano.texture);
         nanoTextures_.clear();
         invalidateRenderTargets();   // colour atlases + the shadow mask
@@ -4612,7 +4607,6 @@
         }
         for (auto& [name, anim] : effectAnims_) for (auto& f : anim.frames) set(f.tex);
         for (auto& [name, shadow] : shadowTex_) set(shadow.tex);
-        for (auto& [size, t] : lightningTextures_) set(t);
         mapView_.setBilinear(on);
     }
 
@@ -5867,39 +5861,9 @@
             SDL_RenderGeometry(ren_, nullptr, fan.data(), int(fan.size()), nullptr, 0);
             SDL_SetRenderDrawBlendMode(ren_, pbm);
         }
-        auto constructionParticles=[&](bool frontPass) {
-            if (!topShows || u.constructionParticles.empty()) return;
-            SDL_FPoint anchor{ax,ay};
-            if (u.replacementModel) {
-                // Particle offsets belong to the new site even while its old
-                // model is dissolving at the old footprint's center.
-                anchor=unitScreen(u);anchor.y+=12.0f*zm;
-            }
-            std::string side=u.type->side;
-            std::transform(side.begin(),side.end(),side.begin(),::tolower);
-            const char* name=side=="tar" ? "tarosbuild" : side=="ver" ? "verunabuild" :
-                             side=="zon" ? "zhonbuild" : side=="cre" ? "creonbuild" : "aramonbuild";
-            const auto* effect=effectFor(name);
-            if (!effect || effect->frames.empty()) return;
-            for (const auto& particle:u.constructionParticles) {
-                if ((particle.z>=0)!=frontPass) continue;
-                const auto index=ta::retailEffectFrame(effect->durations,effect->loop,particle.displayAge);
-                if (!index || *index>=effect->frames.size()) continue;
-                const auto& frame=effect->frames[*index];
-                auto high=[](int32_t base,int32_t offset) {
-                    return int32_t(int16_t((uint32_t(base)+uint32_t(offset))>>16));
-                };
-                const auto& origin=u.worldPosition;
-                const int ox=high(origin[0],0),oy=high(origin[1],0),oz=high(origin[2],0);
-                const float dx=float(high(origin[0],particle.x)-ox);
-                const float dy=float(high(origin[2],particle.z)-(high(origin[1],particle.y)>>1)
-                                     -oz+(oy>>1));
-                SDL_FRect rect{anchor.x+(dx-frame.ax)*zm,anchor.y+(dy-frame.ay)*zm,
-                               float(frame.w)*zm,float(frame.h)*zm};
-                SDL_RenderCopyF(ren_,frame.tex,nullptr,&rect);
-            }
-        };
-        constructionParticles(false);
+        // (Kingdoms drew its conjure sparkles here from per-side art --
+        // aramonbuild, tarosbuild, verunabuild, zhonbuild, creonbuild -- that TA
+        // does not ship; TA's nanolathe is drawn by the nano spray.)
         // Submit the pre-built, depth-sorted vertex runs -- one SDL_RenderGeometry
         // per texture (usually 1 per unit). The veterancy/conjure colour tint was
         // already baked into the vertices on the worker pool.
@@ -5923,7 +5887,6 @@
             }
         }
 
-        constructionParticles(true);
 
         // Occluded: re-draw the hidden lower part as a faint, flat player-coloured
         // silhouette through the wall, so a unit behind cover is never fully lost.
@@ -7166,27 +7129,6 @@
             SDL_RenderGeometry(ren_, triangle.tex, triangle.v, 3, nullptr, 0);
     }
 
-    size_t GameView::nimbusFrame(const NimbusEffect& effect) const {
-        uint32_t elapsed = front().gameTick - effect.started;
-        size_t index = 0;
-        // Retail's faction loader forces nimbus to play once, regardless of
-        // the file's loop flag. Each frame uses its authored tick duration.
-        while (index < effect.anim->frames.size()) {
-            const auto duration = uint32_t(std::max(1, effect.anim->frames[index].ticks));
-            if (elapsed < duration) break;
-            elapsed -= duration;
-            ++index;
-        }
-        return index;   // == frames.size() once it has played out
-    }
-
-    void GameView::pruneNimbusEffects() {
-        std::erase_if(nimbusEffects_, [&](const auto& entry) {
-            const auto* u = frameUnitP(entry.first);
-            return !u || !u->alive() || nimbusFrame(entry.second) == entry.second.anim->frames.size();
-        });
-    }
-
     // ---- world effects in the painter list --------------------------------------
     // Retail draws every shot and effect after all the ground units and features
     // (docs/retail-engine.md, "The world draw order"), so a spear thrown behind a
@@ -7208,8 +7150,7 @@
         namespace hu = ta::hiddenunits;
         fxItems_.clear();++beamDrawFrame_;
 #ifndef NDEBUG
-        debugFlameDrawCount_=0;
-        debugGlowDrawCount_=0;debugNimbusDrawCount_=0;
+        debugGlowDrawCount_=0;
         debugSmokeDrawCount_=0;debugDamageFlameDrawCount_=0;debugPointDrawCount_=0;
         debugFxReplayed_=0;debugFxLate_=0;
         if(ta::devEnv("TA_GLOW_TEST") && explosionGlows_.empty()) {
@@ -7219,10 +7160,6 @@
         }
 #endif
         fxSpanMs_ = 0;
-        // The one lifetime rule of the effect draws (a finished or orphaned nimbus
-        // is dropped): once a frame, before any item can refer to an entry, and on a
-        // Tactical Dots frame too, which draws no world effect at all.
-        pruneNimbusEffects();
         if (!worldFxFrame()) return;
         (void)heightAbove(0,0);   // the lazy height datum, before any item draws
         const float zm=mapView_.zoom(),offX=mapView_.offX(),offY=mapView_.offY();
@@ -7240,19 +7177,6 @@
         };
         const auto whole=[](int32_t v) {return float(int(std::bit_cast<int16_t>(uint16_t(uint32_t(v)>>16))));};
         const Frame& frame=front();
-        // Flame streams, a particle at a time, behind the stream's own admission.
-        const auto flameInViewport=[&](const std::array<int,2>& point) {
-            const float sx=(float(point[0])-offX)*zm,sy=(float(point[1])-offY)*zm;
-            return sx>=0 && sx<=mvw && sy>=0 && sy<=winH;
-        };
-        for(const auto& stream:frame.flames) {
-            if(!ta::retailFlameStreamVisible(stream.muzzle,stream.aimPoint,
-                [&](const auto& point) {return flameInViewport(ta::retailFlameEndpointPoint(point));},
-                [&](const auto& point) {return effectVisibleR(point);}))continue;
-            for(const auto& particle:stream.particles)
-                if(flameInViewport(ta::retailFlameParticlePoint(particle.position)))
-                    add(FxKind::Flame,&particle,0,float(particle.position[0]>>16),float(particle.position[2]>>16));
-        }
         // Hitscan bolts: a model or sprite where its head is; a drawn bolt at its
         // southern end, so it is over the unit at either end of it.
         for(const auto& b:beams_) {
@@ -7262,20 +7186,8 @@
             if(b.model.empty() && b.sprite.empty() && b.z1>hz) add(FxKind::Beam,&b,0,b.x1,b.z1);
             else add(FxKind::Beam,&b,0,hx,hz);
         }
-        // Projectiles, at the ground point under them (a lightning quad at its
-        // southern end, like a bolt).
+        // Projectiles, at the ground point under them.
         for(const auto& p:frame.projectiles) {
-            if(p.straight) {
-                if(frame.gameTick<p.start || !p.wsrc)continue;
-                const float x=whole(p.position[0]),y=whole(p.position[1]),z=whole(p.position[2]);
-                const float mx=whole(p.muzzle[0]),my=whole(p.muzzle[1]),mz=whole(p.muzzle[2]);
-                const bool lightning=p.wsrc->lightning;
-                if(!projectedVisibleR(x,z-float(int(y)>>1)) &&
-                   !(lightning && projectedVisibleR(mx,mz-float(int(my)>>1))))continue;
-                if(lightning && mz>z) add(FxKind::Projectile,&p,0,mx,mz);
-                else add(FxKind::Projectile,&p,0,x,z);
-                continue;
-            }
             if(p.taLineOfSight && p.wsrc && (p.wsrc->renderType==0 || p.wsrc->renderType==7)) {
                 // A beam or lightning line (0x49be60): shown when its head's
                 // point is (0x49bee8), sorted at its southern end.
@@ -7331,12 +7243,6 @@
         }
         // A unit's own effects go where the unit is: never under it (its z, when
         // larger, keys them), and into the air layer with an airborne flyer.
-        for(const auto& [id,effect]:nimbusEffects_) {
-            const auto* u=frameUnitP(id);   // pruned above: alive, still playing
-            if(!u || u->embarked() || !unitShownR(*u))continue;
-            add(FxKind::Nimbus,&effect,uint32_t(id),whole(u->worldPosition[0]),
-                std::max(whole(u->worldPosition[2]),u->z),fxOwnerLayer(id));
-        }
         for(const auto& e:effects_) {
             if(!e.anim || e.anim->frames.empty() || e.age-e.delay<0)continue;
             if(e.worldPosition ? !effectVisibleR(*e.worldPosition) : (!noFog_ && !cellVisibleR(e.x,e.z)))continue;
@@ -7419,23 +7325,6 @@
     void GameView::drawFxItem(const FxItem& item) {
         const float zm = mapView_.zoom();
         switch (item.kind) {
-        case FxKind::Flame: {
-            const auto& particle = *static_cast<const ta::RetailFlameParticle*>(item.p);
-            const char* name=particle.kind==1 ? "bluefire" : particle.kind==2 ? "dieselflame" : "flame";
-            const auto* art=effectFor(name);
-            if(!art || art->frames.empty())return;
-            const auto projected=ta::retailFlameParticlePoint(particle.position);
-            const int frame=particle.frame(uint16_t(art->frames.size()));
-            if(frame<0 || size_t(frame)>=art->frames.size())return;
-            const auto& f=art->frames[size_t(frame)];
-            SDL_FRect dst{(float(projected[0])-mapView_.offX()-f.ax)*zm,
-                (float(projected[1])-mapView_.offY()-f.ay)*zm,f.w*zm,f.h*zm};
-            SDL_RenderCopyF(ren_,f.tex,nullptr,&dst);
-#ifndef NDEBUG
-            ++debugFlameDrawCount_;
-#endif
-            return;
-        }
         case FxKind::Beam:
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_ADD);
             drawFxBeam(*static_cast<const BeamFx*>(item.p));
@@ -7539,27 +7428,6 @@
             SDL_RenderGeometry(ren_,nullptr,triangles.data(),int(triangles.size()),nullptr,0);
 #ifndef NDEBUG
             ++debugGlowDrawCount_;
-#endif
-            return;
-        }
-        case FxKind::Nimbus: {
-            const auto& effect = *static_cast<const NimbusEffect*>(item.p);
-            const auto* u = frameUnitP(int(item.a));
-            const size_t index = nimbusFrame(effect);
-            if (!u || index >= effect.anim->frames.size()) return;   // pruned this frame: never
-            const auto whole = [](int32_t value) {
-                return int(std::bit_cast<int16_t>(uint16_t(uint32_t(value) >> 16)));
-            };
-            const int x = whole(u->worldPosition[0]), y = whole(u->worldPosition[1]),
-                      z = whole(u->worldPosition[2]);
-            (void)heightAbove(float(x), float(z));
-            const auto& f = effect.anim->frames[index];
-            SDL_FRect dst{(float(x) - mapView_.offX() - f.ax) * zm,
-                (float(z - (y >> 1)) - mapView_.offY() - f.ay) * zm,
-                f.w * zm, f.h * zm};
-            SDL_RenderCopyF(ren_, f.tex, nullptr, &dst);
-#ifndef NDEBUG
-            ++debugNimbusDrawCount_;
 #endif
             return;
         }
@@ -7793,75 +7661,8 @@
     // One projectile, drawn per weapon family.
     void GameView::drawFxProjectile(const ta::sim::Projectile& p) {
         const float zm = mapView_.zoom();
-        const int winW = winW_, winH = winH_;
         if(p.taLineOfSight && p.wsrc && (p.wsrc->renderType==0 || p.wsrc->renderType==7)) {
             drawTaLineShot(p);
-            return;
-        }
-        if(p.straight) {
-            if(front().gameTick<p.start || !p.wsrc)return;
-            auto whole=[](int32_t v){return int(std::bit_cast<int16_t>(uint16_t(uint32_t(v)>>16)));};
-            const int x=whole(p.position[0]),y=whole(p.position[1]),z=whole(p.position[2]);
-            const bool lightning=p.wsrc->lightning;
-            const int mx=whole(p.muzzle[0]),my=whole(p.muzzle[1]),mz=whole(p.muzzle[2]);
-            if(!projectedVisibleR(float(x),float(z-(y>>1))) &&
-               !(lightning && projectedVisibleR(float(mx),float(mz-(my>>1)))))return;
-            (void)heightAbove(float(x),float(z));
-            const auto& w=*p.wsrc;
-            auto sprite=[&](const std::string& name,float projectedY,bool shadow) {
-                if(name.empty())return;
-                const auto* art=effectFor(name);
-                if(!art || art->frames.empty())return;
-                const auto index=ta::retailEffectFrame(art->durations,art->loop,uint32_t(p.age));
-                if(!index || *index>=art->frames.size())return;
-                const auto& f=art->frames[*index];
-                // effectFor loaded the native mode for each authored frame:
-                // format-4 flag FF uses coverage alpha, other format-4 frames
-                // add. Only shadows override that mode to darken terrain.
-                if(shadow)SDL_SetTextureBlendMode(f.tex,SDL_BLENDMODE_BLEND);
-                SDL_SetTextureAlphaMod(f.tex,255);
-                SDL_FRect dst{(float(x)-mapView_.offX()-f.ax)*zm,
-                    (projectedY-mapView_.offY()-f.ay)*zm,f.w*zm,f.h*zm};
-                SDL_RenderCopyF(ren_,f.tex,nullptr,&dst);
-            };
-            if(lightning)sprite(w.weaponArt,float(z-(y>>1)),false);
-            const std::string& projectileModel = w.shotModel;
-            if(lightning && p.lightningEffect && w.lightningEffect) {
-                const auto& effect=*p.lightningEffect;
-                const int tw=int(std::bit_ceil(unsigned(effect.width)));
-                const int th=int(std::bit_ceil(unsigned(effect.height)));
-                auto& texture=lightningTextures_[{tw,th}];
-                if(!texture) {
-                    texture=gpuvram::create(ren_,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,tw,th);
-                    if(texture){SDL_SetTextureBlendMode(texture,SDL_BLENDMODE_BLEND);SDL_SetTextureScaleMode(texture,worldScaleMode());}
-                }
-                if(texture) {
-                    std::vector<uint32_t> pixels(size_t(tw)*th,0);
-                    for(int row=0;row<effect.height;++row)for(int col=0;col<effect.width;++col) {
-                        const uint16_t c=w.lightningEffect->palette[effect.pixels[size_t(row)*effect.width+col]];
-                        pixels[size_t(row)*tw+col]=uint32_t((c>>12)&15)*17u<<24 |
-                            uint32_t((c>>8)&15)*17u<<16 | uint32_t((c>>4)&15)*17u<<8 | uint32_t(c&15)*17u;
-                    }
-                    SDL_UpdateTexture(texture,nullptr,pixels.data(),tw*int(sizeof(uint32_t)));
-                    const auto quad=ta::retailLightningQuad(
-                        {mx-int(mapView_.offX()),mz-(my>>1)+int(-mapView_.offY())},
-                        {x-int(mapView_.offX()),z-(y>>1)+int(-mapView_.offY())},
-                        int(winW/zm),int(winH/zm),effect.width,effect.height,tw,th);
-                    if(quad) {
-                        SDL_Vertex vertices[4];
-                        for(size_t i=0;i<4;++i)vertices[i]={{(*quad)[i].x*zm,(*quad)[i].y*zm},
-                            {255,255,255,255},{(*quad)[i].u,(*quad)[i].v}};
-                        const int indices[]={0,1,2,0,2,3};
-                        SDL_RenderGeometry(ren_,texture,vertices,4,indices,6);
-                    }
-                }
-            }
-            if(!lightning && shadowsOnFrame_ && !w.shadowArt.empty())
-                sprite("shadows:"+w.shadowArt,float(z)-terrainLift(float(x),float(z)),true);
-            if(!lightning && !projectileModel.empty())
-                drawShotModel(projectileModel,p.fromPlayer,float(x),float(z),0,
-                    3.14159265358979323846f-float(p.angles[1])*(6.283185307179586f/65536.f),&p);
-            if(!lightning)sprite(w.weaponArt,float(z-(y>>1)),false);
             return;
         }
         const bool native3d=p.ballistic3d || p.guided3d || p.taLineOfSight;

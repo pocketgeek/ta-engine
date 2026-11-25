@@ -24,8 +24,10 @@ inline bool retailProjectileHitsEnvironment(int32_t y,int32_t& verticalSpeed,
     return !(flags&0x2000) && height<sea && !waterPass;
 }
 
-// 52a519: optional interception proximity to another projectile. Each squared
-// fixed-point delta is truncated separately before the signed, wrapping sum.
+// TotalA.exe 0x49b106..0x49b1a4: an interceptor shot's proximity to the shot
+// it chases (+0x56) within the weapon's word +0xd6. Each squared fixed-point
+// delta keeps its high dword (0x4e4400 / 0x4e43d0 by 32) before the wrapping
+// sum, compared signed (0x49b1a4 jge).
 inline bool retailProjectileProximity(const std::array<int32_t,3>& point,
         const std::array<int32_t,3>& target,uint16_t radius) {
     uint32_t distance=0;

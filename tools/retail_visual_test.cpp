@@ -802,52 +802,6 @@ int main(int argc,char** argv) {
             std::printf("%d\n",int(ta::sim::retailProjectileProximity(point,target,uint16_t(radius))));
         return 0;
     }
-    if(argc==2 && std::strcmp(argv[1],"--air-occupancy")==0) {
-        // Persistent secondary occupancy over ticks: retirements (507050 mode 0),
-        // silent deaths, then the clear (507050 mode 1) and insert (506c40) passes.
-        int width,height,count,ticks;unsigned seed;
-        while(std::scanf("%d %d %d %d %u",&width,&height,&count,&ticks,&seed)==5) {
-            std::vector<ta::sim::RetailAirCollisionBody> bodies(static_cast<size_t>(count));
-            std::vector<ta::sim::RetailAirOccupant> states(static_cast<size_t>(count));
-            std::vector<int> live(static_cast<size_t>(count),1);
-            for(int i=0;i<count;++i)bodies[size_t(i)].id=i+1;
-            struct Host {
-                std::vector<ta::sim::RetailAirCollisionBody>& bodies;
-                std::vector<ta::sim::RetailAirOccupant>& states;
-                std::vector<int>& live;
-                ta::sim::RetailAirOccupant* state(int id) {
-                    return id>=1 && id<=int(bodies.size()) && live[size_t(id-1)] ? &states[size_t(id-1)] : nullptr;
-                }
-                bool footprint(int id,int& x,int& z,int& fx,int& fz) const {
-                    const auto& b=bodies[size_t(id-1)];x=b.x;z=b.z;fx=b.width;fz=b.height;return true;
-                }
-                bool airborne(int id) const { return bodies[size_t(id-1)].airborne; }
-                void forEachFlyer(const std::function<void(int)>& f) const { for(size_t i=0;i<bodies.size();++i)if(live[i])f(int(i)+1); }
-            } host{bodies,states,live};
-            ta::sim::RetailAirOccupancy grid;grid.reset(width,height);
-            unsigned calls=0;
-            auto random=[&](unsigned n){++calls;seed=seed*214013u+2531011u;return ((seed>>16)&32767u)*n/32768u;};
-            for(int tick=0;tick<ticks;++tick) {
-                std::vector<int> event(static_cast<size_t>(count));
-                for(int i=0;i<count;++i) {
-                    auto& b=bodies[size_t(i)];int airborne;
-                    if(std::scanf("%d %d %d %d %d %d",&b.x,&b.z,&b.width,&b.height,&airborne,&event[size_t(i)])!=6)return 2;
-                    b.airborne=airborne!=0;
-                }
-                for(int i=0;i<count;++i) {
-                    if(!live[size_t(i)])continue;
-                    if(event[size_t(i)]==1)grid.remove(i+1,host,random);
-                    if(event[size_t(i)])live[size_t(i)]=0;
-                }
-                for(int i=0;i<count;++i)grid.clear(i+1,host);
-                for(int i=0;i<count;++i)grid.insert(i+1,host,random);
-                std::printf("%u %u",seed,calls);
-                for(int cell:grid.cells())std::printf(" %d",cell);
-                std::puts("");
-            }
-        }
-        return 0;
-    }
     if(argc==2 && std::strcmp(argv[1],"--landing-site")==0) {
         int width,height,fx,fz,maxDepth,minDepth,maxSlope,canFly,floater,player,sea,self,pool,features,words;
         int32_t x,z;
@@ -882,25 +836,6 @@ int main(int argc,char** argv) {
             const ta::sim::RetailLandingLimits limits{int16_t(fx),int16_t(fz),int16_t(maxDepth),int16_t(minDepth),
                 uint8_t(maxSlope),canFly!=0,floater!=0,uint8_t(player)};
             std::printf("%d\n",int(ta::sim::retailLandingSiteFree(x,z,limits,host)));
-        }
-        return 0;
-    }
-    if(argc==2 && std::strcmp(argv[1],"--air-collision-grid")==0) {
-        int width,height,count;unsigned seed;
-        while(std::scanf("%d %d %d %u",&width,&height,&count,&seed)==4) {
-            std::vector<ta::sim::RetailAirCollisionBody> bodies(static_cast<size_t>(count));
-            for(auto& body:bodies) {
-                int airborne;
-                if(std::scanf("%d %d %d %d %d %d",&body.id,&body.x,&body.z,&body.width,&body.height,&airborne)!=6)return 2;
-                body.airborne=airborne!=0;
-            }
-            unsigned calls=0;
-            const auto cells=ta::sim::retailAirCollisionGrid(width,height,bodies,[&](unsigned n) {
-                ++calls;seed=seed*214013u+2531011u;return ((seed>>16)&32767u)*n/32768u;
-            });
-            std::printf("%u %u",seed,calls);
-            for(int cell:cells)std::printf(" %d",cell);
-            std::puts("");
         }
         return 0;
     }
@@ -1379,47 +1314,60 @@ int main(int argc,char** argv) {
         return 0;
     }
     {
-        using ta::sim::RetailAirCollisionBody;
-        std::vector<RetailAirCollisionBody> bodies;
-        for(int id=1;id<=8;++id)bodies.push_back({id,2,2,1,1,true});
-        unsigned draws=0;
-        const auto grid=ta::sim::retailAirCollisionGrid(8,8,bodies,[&](unsigned n){++draws;return n-1;});
-        if(grid[2*8+2]!=-1 || draws!=6)return 1;
-        bodies={{1,7,2,1,1,true},{2,2,2,1,1,false}};
-        const auto empty=ta::sim::retailAirCollisionGrid(8,8,bodies,[](unsigned){return 0;});
-        if(std::any_of(empty.begin(),empty.end(),[](int cell){return cell!=0;}))return 1;
-        // The persistent grid (clear every live flyer's recorded footprint,
-        // then insert all) must equal a fresh build while every body stays live.
-        ta::sim::RetailAirOccupancy persistent;
-        std::vector<ta::sim::RetailAirOccupant> states;
-        unsigned state=520640;
-        auto next=[&] {state=state*214013u+2531011u;return state;};
-        for(int frame=0;frame<200;++frame) {
-            const int width=frame%40<20 ? 8 : 12,height=frame%40<20 ? 12 : 8;
-            if(frame%20==0) {
-                persistent.reset(width,height);
-                const int count=frame%40==0 ? 0 : 1+int(next()%39);
-                bodies.clear();states.assign(size_t(count),{});
-                for(int i=0;i<count;++i)bodies.push_back({i*3+100,0,0,1+int(next()%4),1+int(next()%4),true});
+        // TotalA.exe's word +2 (0x47cc30 / 0x47d0e0 / 0x47c790): the first
+        // flyer keeps a shared cell, the holder is marked overlapped and the
+        // late one waiting; when the holder leaves, the waiting flyer takes
+        // the cells it left; off the map nothing is stamped.
+        struct Body { int x=0,z=0,fx=1,fz=1; bool live=true; ta::sim::RetailAirOccupant at; };
+        std::vector<Body> bodies(4);
+        struct Host {
+            std::vector<Body>& b;
+            ta::sim::RetailAirOccupant* state(int id) {
+                return id>=1 && id<=int(b.size()) && b[size_t(id-1)].live ? &b[size_t(id-1)].at : nullptr;
             }
-            for(auto& body:bodies) {
-                body.x=frame%2 ? 2 : int(next()%16)-2;
-                body.z=frame%2 ? 2 : int(next()%16)-2;
-                body.airborne=next()%3!=0;
+            bool footprint(int id,int& x,int& z,int& fx,int& fz) {
+                const auto& o=b[size_t(id-1)];x=o.at.recordedX;z=o.at.recordedZ;fx=o.fx;fz=o.fz;return true;
             }
-            unsigned a=state,b=state;
-            auto random=[](unsigned& seed,unsigned n) {
-                seed=seed*214013u+2531011u;return ((seed>>16)&32767u)*n/32768u;
-            };
-            const auto fresh=ta::sim::retailAirCollisionGrid(width,height,bodies,[&](unsigned n){return random(a,n);});
-            ta::sim::RetailAirCollisionHost host{bodies,states};
-            for(const auto& body:bodies)persistent.clear(body.id,host);
-            for(const auto& body:bodies)persistent.insert(body.id,host,[&](unsigned n){return random(b,n);});
-            if(!std::equal(fresh.begin(),fresh.end(),persistent.cells().begin(),persistent.cells().end()) || a!=b) {
-                std::fprintf(stderr,"persistent air occupancy differs after frame %d\n",frame);return 1;
+            template<class F> void forEachTouching(int x,int z,int fx,int fz,F f) {
+                for (size_t i=0;i<b.size();++i) {
+                    const auto& o=b[i];
+                    if (!o.live || o.at.recordedX<0) continue;
+                    if (x<o.at.recordedX+o.fx && o.at.recordedX<x+fx && z<o.at.recordedZ+o.fz && o.at.recordedZ<z+fz)
+                        f(int(i)+1);
+                }
             }
-        }
-        std::puts("PASS: airborne collision overflow, map-edge exclusion and grounded exclusion");
+        } host{bodies};
+        ta::sim::RetailAirOccupancy grid;grid.reset(8,8);
+        auto stamp=[&](int id,int x,int z) {
+            auto& o=bodies[size_t(id-1)];o.x=x;o.z=z;
+            const bool on=grid.taStamp(id,o.at,x,z,o.fx,o.fz,host);
+            o.at.recordedX=int16_t(on ? x : -9999);o.at.recordedZ=int16_t(on ? z : -9999);
+            return on;
+        };
+        auto leave=[&](int id) {
+            auto& o=bodies[size_t(id-1)];
+            const int x=o.at.recordedX,z=o.at.recordedZ;
+            o.at.recordedX=o.at.recordedZ=-9999;
+            grid.taUnstamp(id,o.at,x>=0,x,z,o.fx,o.fz,host);
+        };
+        bodies[0].fx=bodies[0].fz=2;bodies[1].fx=bodies[1].fz=2;
+        if (!stamp(1,2,2) || !stamp(2,3,3)) return 1;
+        if (grid.at(3,3)!=1 || grid.at(4,4)!=2 || grid.at(4,3)!=2 || !bodies[0].at.overlapped ||
+            !bodies[1].at.waiting || bodies[1].at.overlapped || bodies[0].at.waiting) return 1;
+        // The holder goes: 2 takes (3,3). Its restamp meets its own cells too
+        // and flags itself again (0x47ca04: any nonzero cell), as retail does.
+        leave(1);
+        if (grid.at(2,2)!=0 || grid.at(3,3)!=2 || !bodies[1].at.waiting || !bodies[1].at.overlapped ||
+            bodies[0].at.overlapped) return 1;
+        if (stamp(3,7,1) || stamp(3,-1,1) || grid.at(7,1)!=0) return 1;   // x + footx past the last cell
+        leave(2);
+        if (std::any_of(grid.cells().begin(),grid.cells().end(),[](int cell){return cell!=0;}) ||
+            bodies[1].at.waiting || bodies[1].at.overlapped) return 1;
+        // A dead holder's waiting neighbour is not restamped by a dead one.
+        if (!stamp(1,1,1) || !stamp(2,1,1) || !bodies[1].at.waiting) return 1;
+        bodies[1].live=false;leave(1);
+        if (grid.at(1,1)!=0 || !bodies[1].at.waiting) return 1;
+        std::puts("PASS: TA flyer cells: first keeps, the waiting flyer takes the cells left, map edge");
     }
     {
         auto parsed=ta::tdf::parseText(R"(

@@ -104,13 +104,14 @@ struct Fixture {
               << "}\n";
         };
         // A short-reach weapon (TA has no melee: Kingdoms' Blade was range 30) and a
-        // ranged one, plus its anti-air and dropped (bomb) variants.
+        // ranged one, plus its anti-air and dropped (bomb) variants. The turrets are
+        // lineofsight: a turret weapon no spawner takes never fires (0x49d783).
         std::ofstream(root / "weapons" / "fixture.tdf")
-            << "[BLADE]\n{\nID=1;\nname=Blade;\nrange=30;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\n"
+            << "[BLADE]\n{\nID=1;\nname=Blade;\nrange=30;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\nlineofsight=1;\n"
                "[DAMAGE]\n{\ndefault=100;\n}\n}\n"
-               "[BOW]\n{\nID=2;\nname=Bow;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\n"
+               "[BOW]\n{\nID=2;\nname=Bow;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\nlineofsight=1;\n"
                "[DAMAGE]\n{\ndefault=50;\n}\n}\n"
-               "[FLAKBOW]\n{\nID=3;\nname=Flak;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\n"
+               "[FLAKBOW]\n{\nID=3;\nname=Flak;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\nlineofsight=1;\n"
                "toairweapon=1;\n[DAMAGE]\n{\ndefault=50;\n}\n}\n"
                "[BOMB]\n{\nID=4;\nname=Bomb;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\ndropped=1;\n"
                "[DAMAGE]\n{\ndefault=50;\n}\n}\n";

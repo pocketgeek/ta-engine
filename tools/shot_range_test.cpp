@@ -95,19 +95,14 @@ std::string retailClass(const sim::Weapon& w) {
     if (w.kind == K::Dropped) return "DroppedBallistic";
     if (w.ballisticClass()) return "Ballistic";
     if (w.kind == K::Guided) return "Guided";
-    if (w.beam) {
-        if (w.flameKind >= 0) return "LineOfSightFire";
-        if (w.lightning) return "LineOfSightLightning";
-        return "LineOfSight";
-    }
+    if (w.beam) return "LineOfSight";
     return "WeaponType";
 }
 
 // 0.9.12's rule, kept here to name what this change moves: only a shot that
 // dies at its range went without the pad.
 bool oldNoPad(const sim::Weapon& w) {
-    return w.projVel > 0 && (w.straight || w.lightning || w.flameKind >= 0 ||
-                                         w.kind == sim::Weapon::Kind::Guided);
+    return w.projVel > 0 && ((w.hasTaFlag(0) && !w.beam) || w.kind == sim::Weapon::Kind::Guided);
 }
 
 // Every shipped weapon by retail class.

@@ -442,26 +442,38 @@ What these entries describe is ported; what is left of each is under "Open".
   major axis, through the guipal -> palette.pal map 0x4ac7d0) and rendertype
   7 as 0x49c48c's two jittered strands of 5 px steps (`client/tabeamdraw.h`,
   `GameView::drawTaLineShot`). Evidence: ta_beam, beam_fx (debug).
-- Flyer cell grid (2026-11-24; World::stampAirOccupant,
-  RetailAirOccupancy::taStamp / taUnstamp). TotalA.exe writes cell word +2
-  from the position setter 0x48a9f0, which the mover's commit calls inside
-  the unit's own update (0x43d6d0 -> 0x43d775, and 0x43da0e): when the
-  footprint origin ((x - footx << 19) + 0x80000) >> 20 or the layer
-  (+0x110 & 3, 2 = airborne) changes (0x48aa35..0x48aa56), 0x47d0e0 clears
-  the recorded cells still holding the unit's index (0x47d23b..0x47d284;
-  skipped after an off-map stamp, +0x82 = G+0x142b7) and 0x47cc30 stamps the
-  new ones (0x47cf98..0x47d042): off the map nothing, an empty cell takes the
-  unit, an occupied one keeps its flyer unless that flyer's owner is remote
-  (player +0x73 == 3, 0x47cfda..0x47cfe9; every owner is local to the
-  lockstep simulation, so the first flyer keeps it). Creation stamps
-  (0x48610f, 0x48630c) and death unstamps (0x48682d -> 0x47cbd0). World
-  stamps each flyer as its update in the units' pass ends, at its spawn and
-  at its death: the units after it, the landing test and the projectile pass
-  meet it where it now is. No overlap lists and no random owner (Kingdoms'
-  506c40 / 507050 rebuild and hand-over, with their gameRand draws, no longer
-  run in a TA game). retail_motion's overhead-flyer case spawns the flyer
-  overhead first, as 0x47cc30 lets the first stamp keep the shared cells.
-  Legion baselines retaken for the air-stack fixtures and air-guard-lost.
+- Flyer cell grid (2026-11-24, revised in the close-out pass;
+  World::stampAirOccupant, RetailAirOccupancy::taStamp / taUnstamp /
+  restamp). TotalA.exe writes cell word +2 from the position setter
+  0x48a9f0, which the mover's commit calls inside the unit's own update
+  (0x43d6d0 -> 0x43da0e; the attached branch 0x43d775): when the footprint
+  origin ((x - footx << 19) + 0x80000) >> 20 or the layer (+0x110 & 3, 2 =
+  airborne; a layer change waits in mover +0x2e for the commit, 0x43d210 /
+  0x48ab70) changes (0x48aa35..0x48aa56), 0x47d0e0 clears the recorded cells
+  still holding the unit's index (0x47d23b..0x47d284; skipped after an
+  off-map stamp, +0x82 = G+0x142b7) and 0x47cc30 stamps the new ones
+  (0x47cf98..0x47d042): off the map nothing, an empty cell takes the unit,
+  an occupied one keeps its holder, which is flagged overlapped (+0x110
+  0x4000000) while the newcomer is flagged waiting (0x8000000); a remote
+  holder (player +0x73 == 3, 0x47cfda..0x47cfe9) would give the cell up, but
+  every owner is local to the lockstep simulation. The flags are read by the
+  grid code itself: 0x47d0e0 drops the unit's waiting flag and, when it was
+  overlapped, walks the sector buckets for every unit touching its old
+  footprint (0x47e5c0, strict overlap 0x47e674..0x47e697) and restamps each
+  (0x47ed30 -> 0x47c790): a waiting one drops its flag and stamps its
+  footprint again, taking the cells left -- and, meeting its own cells too,
+  flags itself again (0x47ca04: any nonzero cell). World stamps at the
+  flight commit (tickFlightBody), a layer change (groundMove), a pad
+  rider's and a passenger's attached commit, creation (0x48610f, 0x48630c;
+  the grid is sized on first use) and death (0x48682d -> 0x47cbd0); debug
+  builds check after every unit update that no other writer left a stamp
+  stale (TA_VERIFY_AIR=1 aborts). The touching walk goes by sector column,
+  row, then unit id (retail's in-bucket order is the bucket's link order,
+  not kept). Kingdoms' overlap lists, insert / clear / remove passes and
+  random owner are gone (retail_visual_test's fixtures replaced by TA
+  ones). Evidence: retail_motion (overhead flyer), air_pad, air_traffic
+  (counts waiting flyers), the debug verifier over the air / transport /
+  pad tests. Legion baselines retaken for the air-stack fixtures.
 - Combat sight test (2026-11-24; World::combatLineOfSight,
   NavGrid::obstacleLosBetween). The engine's 2D line test for line-of-fire
   weapons (an engine deviation: TotalA.exe admits a shot on range alone)
@@ -490,8 +502,7 @@ approximated (marked "cosmetic" when it changes no simulation state); (c) a
 test or fixture note; (d) Kingdoms code still compiled but unreachable from TA
 data (cleanup, no gameplay).
 
-- (a) None left in the shot paths. The fire gate's out-of-range bit (unit+0xbb
-  0x10, set by 0x49aa80's refusal at 0x49e53a and by 0x49d664) is not kept.
+- (a) None left in the shot paths.
 - (b) GROUND_PICKUP's circle and GROUND_UNLOAD's wait also wake 60 ticks after
   the hull stops (flag 0x80000000, retailtransport.h). Retail's wait has no
   timer: the navigator's failure (0x40) after its empty 60-tick re-ask wakes
@@ -521,23 +532,7 @@ data (cleanup, no gameplay).
 - (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
   the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
   loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
-- (b) Flyer cell grid (see Ported): World stamps a flyer as its update
-  ends; TotalA.exe stamps it inside the mover's commit (0x43d775), so the
-  unit's own later steps in that update (its weapons, 0x48adda) run with
-  the stamp already moved. Nothing in a unit's own update reads its own
-  stamp. The stamp's overlap flags (+0x110 0x4000000 / 0x8000000,
-  0x47cfeb..0x47d02d) are not kept: no TA reader is traced.
-- (d) RetailAirOccupancy's Kingdoms passes (insert / clear / remove, the
-  overlap lists in Unit::airOccupant's count / links) are left for
-  retail_visual_test's Kingdoms fixtures; World no longer runs them.
-- (b) Shot pass leftovers: 0x49b090's interceptor test (+0x56 target shot
-  within weapon +0xd6, 0x49b106..0x49b1a9) bursts and goes on to the body tests; World's
-  optional targetShot returns at once (no TA shot passes one). The Kingdoms
-  kinds left in the pass (guided3d without taSelfProp, straight, flames,
-  the 2D fallback) keep their own launch delays and are tested by the same
-  0x49b090; of TA's weapons only a non-turret ballistic one reaches them
-  (the Core Contingency mines' ARMMINE* / CORMINE*, not traced through
-  0x49e1a0's dispatch). The lightning
+- (b) Shot pass details. The lightning
   strands draw with the client's own CRT-rand stream (0x4e4870 is the
   game's shared one; drawing only). The D-gun (rendertype 3) draws its model
   at the head through the generic model path; 0x49c1f2's own pose words
@@ -548,23 +543,23 @@ data (cleanup, no gameplay).
   for that part and runs the surfaced and arc tests in the fire path.
   A target below a ballistic weapon at short range is aimed with acos's
   unsigned angle (0x49a9ce): the shell goes up and long, as in retail.
-- (b) Transports: air cargo rides the carrier's own point, not the link
-  piece's (VTOL_PICKUP's engine attach passes piece -1); BeCarried's 10-tick
-  poll after the drop (the default mission comes at once here), the flag-4
-  missions BeCarried keeps, the air base exemption (flagsA bit 9),
+- (b) Transports: BeCarried (0x402fc0: no carrier -> 5; stage 0 every
+  slot automatic, 0x4898b0(3); stage 1 a 10-tick sleep, 0x439e80(10), 2)
+  is not a mission here, so after a drop the default mission (and any order
+  queued aboard) starts at once rather than at the passenger's next 10-tick
+  BeCarried wake. Untraced: the flag-4 missions BeCarried keeps
+  (0x4384a0), the air base exemption (flagsA bit 9),
   VTOL_PICKUP's event 2 / 0x10000 bits and the unit-follow controllers' exact
   altitude rule (0x44e190 / 0x44e250) are untraced. GET 20 ARMORED answers 0
   (SET 20, 0x48b090(2), is not stored). An unload given while
   TransportPickup still swings the boom races it for the same pieces, as in
   retail.
-- (b) Death accounting, network only: the remote-owner branch of 0x486f10
-  (0x49b000 + 0x4864b0(3) for +0x73 3) is folded into the record, and the
-  kind-3 loss's statistics guard (player +0x129[owner], 0x457540) is not
-  modelled -- a lockstep game has no remote owner.
-- (b) The pad list's rand(30) (0x40b301: 0 rebuilds the AI's type tables,
-  0x409730) is drawn from the AI's own stream (TaRetailBrain::random), not the
-  sim's: retail draws the whole AI on one host, so its interleaving with the
-  sim stream cannot be reproduced (docs/retail-ai.md "RNG in lockstep").
+- (b) Interceptors and stockpiles are not modelled: no shot is ever handed
+  a target shot (0x49b090's +0x56; interceptor / targetable flags bits 30 /
+  29), so anti-nuke weapons never intercept, and a stockpile weapon (bit 28)
+  fires and pays per shot instead of building stock (0x49e3e2..0x49e41e,
+  0x41c150; the gradual payment 0x4011c0, docs/retail-economy.md). The
+  collision side is ported (projectileCollision's `intercepted`).
 - (b) Repair pads (sim): the rider's own orientation words are not set while
   it is parked (0x43d78e -> 0x43e180 writes +0x64/+0x66/+0x68 every mover
   tick), so it leaves the pad on the heading it landed with rather than the
@@ -582,29 +577,29 @@ data (cleanup, no gameplay).
   script-less (test) carrier keeps the old transport stand-in (fifteen ticks
   of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
   astern can stand out of reach (the roster fixture moved hovers to open land).
-- (d) Kingdoms code compiled but unreachable from TA data: removed 2026-11-24
-  (step 3), with these leftovers kept on purpose:
-  - The line-of-sight status branch (Weapon::losStatus, never set by
-    taweapons.cpp; tickStraightProjectiles' status update, the launch and
-    burst-emitter tests on it, World::statusShotRefused now a constant
-    `false`): it sits in the line-of-sight shot path another change was
-    rewriting at the time; drop it with that path. Likewise the faction
-    nimbus (Weapon::nimbus / nimbusTicks, UnitType::hasNimbusArt, the client's
-    factionNimbus), which no TA weapon sets.
-  - The group checks' structure (World::retailGroupOf, always null; the
-    formation-level legs and retailgroup.h's check helpers that Legion's own
-    formations and retailMissionFlags still call): only the pacing (51b890 /
-    4d95f0) went.
-  - Player::mana / income / storage, UnitType::income / storage: the engine's
-    single-resource pool, mirrored from TA's stored metal (taeconomy.cpp),
-    hashed, read by the scenario resource conditions and the HUD, and the
-    economy the synthetic-type tests run on; not Kingdoms gameplay on TA data
-    (every TA type's income and storage are 0).
-  - Unit::weaponSlot stays (hashed, always 0).
-  - Kingdoms names in the client's old HUD (gameview_hud.cpp order column, the
-    Kingdoms side conjure/wave art names in gameview_render.cpp) and unbuilt
-    tools/ sources not in CMakeLists.txt (scenario_stats_test, owner_change_test
-    and others): display-only or dead files, not reached by a TA game.
+- (d) Kingdoms code still compiled, left in the close-out pass (see
+  Resolved for what went):
+  - Player::mana / income / storage, UnitType::income / storage and the
+    pool's economy pass (income accrual, allied overflow sharing,
+    RetailConstructionResources, the Mana diplomacy toggle, the scenario
+    "Resources" conditions, the HUD readouts): every TA type's income and
+    storage are 0 and the TA books (taeconomy) run TA's economy, but the
+    synthetic-type tests (about thirty built ones: unit_gift, shipyard_park,
+    retail_construction, landdoor_exit, ...) build and pay through the pool.
+    Removing it means porting each of them to TA types with metal / energy
+    costs; not done in this pass.
+  - The old HUD (gameview_hud.cpp: the Kingdoms .gui order-button names,
+    the MANA panel and conjure menu) and the generated-map shoreline waves'
+    Kingdoms feature names (gameview_render.cpp addShorelineWaves): display
+    code the TA HUD does not reach on TA data; left to the client pass.
+  - Formation legs (Order::formationLevel / attackFormation,
+    retailGroundFormation / retailFlightFormation): nothing builds one any
+    more (the group checks that pushed them are gone); a leg retires at
+    once. Legion's standby uses its own check (legionStandbyCheck).
+  - Unbuilt tools/ sources (not in CMakeLists.txt): production_test,
+    site_decay_test, helpbuild_test, owner_change_test, factory_death_test,
+    duration_test, retail_visual_test and others still reference the pool
+    or Kingdoms fixtures.
 
 ## Resolved (2026-11-24 audit)
 
@@ -630,3 +625,72 @@ data (cleanup, no gameplay).
   rasterises per pixel), the result plate's Kills / Losses (countTaDeath
   follows 0x486892), the under-attack speech line and options (ported, see
   "Closed in the final pass").
+
+## Resolved (close-out pass, 2026-11-24)
+
+- Flyer cell grid: stamped at the mover's commit, with TA's overlap flags
+  and hand-over (see Ported, "Flyer cell grid").
+- Fire gate's out-of-range bit (unit word +0xba 0x1000, World 0x100000):
+  World::noteSlotOutOfRange raises it for a loaded slot whose range gate
+  refuses (0x49e3ae, 0x49e3cf -> 0x49e53a) -- the fire path's surfaced / arc
+  tests, the callers' horizontal test (tickSlotWeapons,
+  tickAttackWalkWeapons, tickCombat for the slots the attack aimed) -- and
+  for a turret aim with no solution (0x49d65b..0x49d664); setSlotTarget /
+  setSlotPoint clear it (0x48a060 / 0x48a0a0, & 0x83ff). Its readers are
+  the mission dispatcher's wait masks (0x43b7fe: unit +0xba | mission
+  +0x4e): Suppress (0x1c00) and AirToGroundHover (0x110e8, 0x413996; World's
+  hover handler must add 0x100000 to its mask to wake on it).
+- 0x49b090's interceptor test: within reach of the shot it chases (+0x56,
+  weapon word +0xd6) the shot bursts (0x49b1a9 -> 0x499eb0) and the body
+  tests still run (0x49b1ae): ProjectileCollisionResult::intercepted beside
+  the body struck (ta_shot_test). No TA shot is handed a target yet (see
+  Open, interceptors).
+- Kingdoms projectile kinds: no TA weapon reaches them -- every weapon some
+  unit fires is claimed by a TA spawner (scan of every weapons/*.tdf in the
+  GOG install: lineofsight / selfprop -> 0x49c9c0, turret ballistic ->
+  0x49cde0, dropped -> 0x49dd60); the Core Contingency mines' ARMMINE* /
+  CORMINE* records (ballistic, no turret, no aim handler: 0x49e010 gives
+  them none) are only their units' explodeas / selfdestructas, no unit
+  fires them through 0x49e1a0. Removed: flame streams, the straight /
+  lightning / status shots and their launch delays (start + 1, nimbustime),
+  the non-selfprop guided launch and pass, Weapon::losStatus,
+  statusShotRefused, Weapon::nimbus / nimbusTicks, UnitType::hasNimbusArt,
+  the hweffect lightning, gaf/nimbus.h and the gameplay hash's nimbus and
+  storm-timing parts (mod_packs now uses feature burn timing). A TA weapon
+  no spawner takes (a turret neither lineofsight, selfprop nor ballistic,
+  0x49d74b..0x49d783) fires and pays nothing (0x49e441); the remaining
+  2D / instant paths are the synthetic test armies' (taAim None).
+- Transports: VTOL_PICKUP attaches at the QueryTransport piece (mission
+  +0x36, 0x4114a0..0x4114a6) and the passenger rides it (attached branch
+  0x43d6d0 -> 0x43e060, cargoAttachPoint).
+- Death accounting, network only: proved without effect in lockstep. The
+  remote-owner branch of 0x486f10 (0x486f7e: owner record +0x73 not 1 / 2 ->
+  0x49b000(unit, 1), +0x110 |= 0x4000, 0x4864b0(unit, 3)) is the proxy path
+  of retail's per-owner simulation: the owner's machine runs the 30000
+  kind-3 record (0x486f94) and its death packets drive the proxies. Every
+  lockstep peer runs every unit as its owner does, so the local branch on
+  all peers is the deterministic equivalent (commanderSweep). The kind-3
+  loss guard (0x4869f5..0x486a31: the local player's +0x1c8c[owner] byte)
+  is set only when a remote player's final statistics packet arrives
+  (0x457540 / 0x45768a, packet 0x29); a lockstep game exchanges no such
+  packet, so the byte stays 0 and every peer counts the loss; it only
+  touches the statistics word +0xfe, never a kill or veterancy.
+- The pad list's rand(30) (0x40b301 -> 0x4b6c30, the global stream
+  [0x51fc88] the sim also draws from): retail draws it on the host that runs
+  the AI, interleaved with that host's own simulation. Here the AI runs on
+  the server only (server/roomtick.cpp: Controller::tick with a const World,
+  its orders sent as commands); a draw from the sim's stream there would
+  advance it on the server alone and desync every client. So it stays on
+  the AI's own deterministic stream (TaRetailBrain::random,
+  docs/retail-ai.md "RNG in lockstep"): the retail interleaving cannot be
+  reproduced in lockstep.
+- Kingdoms code removed: the line-of-sight status branch and nimbus (above);
+  RetailAirOccupancy's Kingdoms passes and Unit::airOccupant's overlap lists
+  (retail_visual_test's fixtures replaced by TA ones); Unit::weaponSlot (a
+  pad, reads are slot 0); the group records and checks (World::retailGroupOf,
+  retailAttackOutOfSlot, the Move_Ground / VTOL_Move / guard / standby group
+  checks, AirAttackGroup's formation push, pushGuardFormation,
+  flightFormation, retailgroup.h's record helpers -- Legion keeps
+  legionFormationGroup, legionStandbyCheck and the formation numbering);
+  the client's Kingdoms build-sparkle art names; unbuilt nimbus_test and
+  effect_inventory.

@@ -3,7 +3,6 @@
 #include "util/virtualpath.h"
 #include "client/retailaim.h"
 #include "client/tabeamdraw.h"
-#include "gaf/nimbus.h"
 #include "client/gameview.h"
 #include "client/buildline.h"
 #include "client/reclaimpick.h"
@@ -830,7 +829,7 @@
         shakeTime_ = 0;
         anims_.clear();unitType_.clear();birthFx_.clear();
         beams_.clear();effects_.clear();explosionGlows_.clear();rings_.clear();particles_.clear();
-        detachedPieces_.clear();bloodStains_.clear();nimbusEffects_.clear();
+        detachedPieces_.clear();bloodStains_.clear();
         pointParticles_.clear();damageFlames_.clear();smokeSprites_.clear();featureSmokeSprites_.clear();
         smokeOwners_.clear();featureSmokeOwners_.clear();
         effectVisibility_.reset();
@@ -1186,7 +1185,6 @@
         s.deadFor = u.deadFor < 0 ? -1.0f : float(u.deadFor) / 30.0f;   // ticks -> seconds
         s.inTransport = u.inTransport; s.padPiece = u.padPiece; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
         s.standingOrder = u.standingOrder;
-        s.weaponSlot = u.weaponSlot;
         for(size_t w=0;w<s.weaponReloads.size();++w)
             s.weaponReloads[w]=u.reloads[w];
         s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
@@ -1438,7 +1436,6 @@
             r.emoteSequence = pl.emoteSequence;
             r.emoteDisco = pl.emoteDisco;
         }
-        fb.flames=world_.flames();
         fb.projectiles = world_.projectiles();   // sim push_back/erase each tick -> must copy
         fb.hits = world_.hits();                  // weapon impacts this tick (cleared next tick)
         // ...and queue them for the render as well, so impacts survive a skipped
@@ -1863,12 +1860,9 @@
             // A Line-of-Sight weapon with no weaponvelocity (none shipped) still
             // lands at once and spawns no projectile: draw a bolt struck from the
             // firer to the victim, in the weapon's own inner/middle/outer colours.
-            // Every shipped Line-of-Sight class flies a real shot instead (ordinary,
-            // lightning, flame, and the mind-control, stone and freeze balls), so
-            // the effect lands when that shot arrives. Fire breath draws its own
-            // emitter, not a bolt.
-            if (h.weapon && h.weapon->beam && h.weapon->projVel <= 0.0f && !h.weapon->straight &&
-                !h.weapon->lightning && h.weapon->flameKind<0 &&
+            // Every shipped TA Line-of-Sight weapon flies a real shot instead, so
+            // the effect lands when that shot arrives.
+            if (h.weapon && h.weapon->beam && h.weapon->projVel <= 0.0f &&
                 h.weapon->fx != ta::sim::WeaponFx::Fire &&
                 (noFog_ || cellVisibleR(h.x, h.z))) {
                 BeamFx b;
@@ -2128,24 +2122,6 @@
             for (const auto& shot:shots->second)
             for (int slot=0;slot<int(u.type->weapons.size()) && slot<32;++slot) {
                 if (!(shot.weapons & (uint32_t(1)<<slot))) continue;
-                const auto& w = u.type->weapons[size_t(slot)];
-                // These native initializers start one faction nimbus on the
-                // caster, restarting any prior instance (52c540 serves the
-                // ordinary and status Line-of-Sight classes, and lightning
-                // through 52cbf0).
-                if (w.nimbus && (w.straight || w.lightning ||
-                                 w.losStatus != ta::sim::Weapon::LosStatus::None) && w.projVel > 0) {
-                    if (!factionNimbusLoaded_) {
-                        factionNimbus_ = ta::gaf::factionNimbus(vfs_);
-                        factionNimbusLoaded_ = true;
-                    }
-                    std::string side = u.type->side;
-                    std::transform(side.begin(), side.end(), side.begin(), ::tolower);
-                    const auto name = factionNimbus_.find(side);
-                    if (name != factionNimbus_.end() && !name->second.empty())
-                        if (const auto* art = effectFor(name->second))
-                            nimbusEffects_[u.id] = {art, shot.tick};
-                }
                 // FireWeapon/Attack COB callbacks own firing audio, including
                 // deliberately silent branches. Native 530140 dispatches the
                 // callback; it does not infer sounds from the weapon's visual kind.
@@ -2664,49 +2640,11 @@
         float printed = 0;
         for (float t = 0; t < seconds; t += 1.0f / 30.0f) {
             update(1.0f / 30.0f);
-            if (ta::devFlag("TA_CONJURE_TEST") ||
-                ta::devFlag("TA_PROJECTILE_CAPTURE") || ta::devFlag("TA_NIMBUS_CAPTURE")) {
+            if (ta::devFlag("TA_CONJURE_TEST")) {
                 beginFrame();
                 cosmeticStep(1.0f / 30.0f);
                 animFrame(1.0f / 30.0f);
                 endFrame();
-            }
-            if (ta::devFlag("TA_NIMBUS_CAPTURE")) {
-                for (const auto& [id, effect] : nimbusEffects_)
-                    if (front().gameTick - effect.started >= uint32_t(std::max(1,
-                            std::atoi(ta::devEnv("TA_NIMBUS_CAPTURE"))))) {
-                        std::printf("nimbus capture: tick=%u caster=%d age=%u\n", front().gameTick,
-                            id, front().gameTick - effect.started);
-                        paused_ = true;
-                        return;
-                    }
-            }
-            if(ta::devFlag("TA_PROJECTILE_CAPTURE")) {
-                const uint32_t captureAge=uint32_t(std::max(1,std::atoi(ta::devEnv("TA_PROJECTILE_CAPTURE"))));
-                for (const auto& shot:world_.flames())
-                    if (int32_t(world_.tickCount()-shot.start)>=int32_t(captureAge) && !shot.particles.empty()) {
-                        std::printf("flame capture: tick=%u age=%u kind=%d particles=%zu\n",
-                            world_.tickCount(),world_.tickCount()-shot.start,
-                            shot.weapon ? int(shot.weapon->flameKind) : -1,shot.particles.size());
-                        paused_=true;return;
-                    }
-                for(const auto& shot:world_.projectiles())if(shot.lightningEffect &&
-                    shot.age>=std::max(1,std::atoi(ta::devEnv("TA_PROJECTILE_CAPTURE"))) &&
-                    !shot.lightningEffect->particles.empty()) {
-                    std::printf("projectile capture: tick=%u age=%d pixels=%zu nimbus=%zu\n",world_.tickCount(),shot.age,
-                        shot.lightningEffect->pixels.size(), nimbusEffects_.size());
-                    paused_=true; // Keep the selected tick while screenshot terrain uploads finish.
-                    return;
-                }
-                // A mind-control, stone or freeze ball in flight.
-                for(const auto& shot:world_.projectiles())
-                    if(shot.straight && shot.life>0 && shot.wsrc &&
-                       shot.wsrc->losStatus!=ta::sim::Weapon::LosStatus::None && shot.age>=int32_t(captureAge)) {
-                        std::printf("status shot capture: tick=%u age=%d at=%.1f,%.1f\n",world_.tickCount(),shot.age,
-                            ta::sim::Fixed::raw(shot.position[0]).toFloat(),ta::sim::Fixed::raw(shot.position[2]).toFloat());
-                        paused_=true;
-                        return;
-                    }
             }
             if (trace_ && t >= printed) {
                 printed += 0.5f;
