@@ -68325,14 +68325,14 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 7193631696aa1d25). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was d81a9426865700e0). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was e109e738ffbae8d5). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "95629b3ec86702c3"
+     "value": "ff6dd50fb05c9b2e"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 2d6d22c6034e93c6). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was ac905ca2761e0724). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was e188d64b44942ab8). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "3b8fa3ef2ea29cf7"
+     "value": "375aeae47e94a112"
     },
     "legion_groups": {
      "band": 1.1,
@@ -69249,14 +69249,14 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 09895f625e9854ff). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 3653b2e51514826e). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was cc22ef8cab039115). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "ec19452867dd0bff"
+     "value": "8a4ea241a02b9e56"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d1a0f9db0ba0c89f). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 473208e88390698d). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 9002ec72c3dd1e0f). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "87dc8934a204934f"
+     "value": "a6636a0b6be555d5"
     },
     "open_still900": {
      "band": 1.1,

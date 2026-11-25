@@ -71,6 +71,9 @@ inline std::vector<TaShotLine> taBeamLines(const std::array<int32_t,3>& head,con
 // by rand() * 11 / 32768 - 5 whole px on x, y and z in turn (0x49c619..
 // 0x49c6a8), each segment joining the last jittered point to the next.
 // `rand` is the CRT's (0x4e4870): drawing only, it never reaches the sim.
+// The game seeds that stream with the clock at start (srand(time(0)),
+// 0x49e8bb / 0x4971ae) and its other callers share it; the client keeps one
+// stream per process, seeded the same way (GameView::crtRand_).
 template<class Rand>
 std::vector<TaShotLine> taLightningLines(const std::array<int32_t,3>& head,const std::array<int32_t,3>& tail,
                                          uint8_t colour,Rand&& rand) {

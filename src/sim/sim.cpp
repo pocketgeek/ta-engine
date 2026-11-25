@@ -5128,7 +5128,7 @@ RetailGetUnit World::retailGetWords(const Unit& unit,const UnitScript* factory) 
     RetailGetUnit words;
     if (factory) {
         words.activated=factory->activated;words.ready=factory->ready;words.busy=factory->busy;
-        words.yardOpen=factory->yardOpen;words.buggerOff=factory->buggerOff;
+        words.yardOpen=factory->yardOpen;words.buggerOff=factory->buggerOff;words.armored=factory->armored;
     }
     words.moveState=uint32_t(unit.moveState);words.fireState=uint32_t(unit.fireState);
     words.hp=unit.hp.floorInt();words.maxHp=unit.maximumHp();
@@ -5439,8 +5439,14 @@ void World::attachCargo(Unit& carrier,Unit& passenger,int piece) {
     // MakeSelectable, Wait, WaitForAttack, AttackUType, SelfRepair -- the
     // VTOL rows have none), and BeCarried (0x402fc0) goes in front
     // (0x438537..0x438569); its stage 0 makes every slot automatic
-    // (0x4898b0(3)) and its stage 1 sleeps (beCarriedWake).
+    // (0x4898b0(3)) and its stage 1 sleeps (beCarriedWake). A passenger
+    // re-picked before its last BeCarried's wake keeps that one (it has
+    // flag 4) behind the new one at the head: the new one's schedule is the
+    // one that runs (its first dispatch aboard, then its 10-tick sleeps), and
+    // when it retires after the next drop the old one, run at once by the
+    // dispatcher (0x43b7c0), finds no carrier and retires too (0x402fce).
     if (!carrier.type->isAirBase) {
+        passenger.beCarriedWake=0;
         std::erase_if(passenger.orders,[&](const Order& o) {
             const ScriptedOrder* s=scriptedOrder(o);
             return !(o.wait>0 || o.waitAttack || (s && s->kind!=ScriptedOrder::Kind::SelfDestruct &&
@@ -6831,11 +6837,11 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         damageCrtUsed_ = true;
         const int answer = retailDamageWithSpread(scaledDamage, crtRand(0x52a3ba), uint8_t(damageMode_));
         (e.player == fromPlayer ? ownDamage : enemyDamage) += answer;   // 52a330's answer, before 51a140
-        // 51a16e: an activated unit takes the hit through its damagemodifier.
-        // TotalA.exe 0x489bb0 (0x489bc3..0x489c32): the damagemodifier, then
-        // the victim's veterancy, its kill count (retailTaVeteranDamage).
+        // TotalA.exe 0x489bb0 (0x489bc3..0x489c32): an ARMORED unit (+0x10e
+        // bit 1, SET 20) takes the hit through its damagemodifier, then the
+        // victim's veterancy, its kill count (retailTaVeteranDamage).
         const int dealt = retailTaVeteranDamage(
-            retailDamageModifier(answer, uint8_t(w.dmgType), retailActivated(e), e.type->damageModifier), e.kills);
+            retailDamageModifier(answer, uint8_t(w.dmgType), retailArmored(e), e.type->damageModifier), e.kills);
         // Retail 51a140/51a240: a unit whose HP has reached zero is flagged
         // dying (+0x130 |= 0x1000, 51a639) on the spot, and every later hit
         // that tick returns before touching it -- no HP, no kill credit, no
@@ -8636,10 +8642,10 @@ void World::taDamageRecord(Unit* attacker,Unit& victim,int32_t amount,uint8_t ki
     // its HP word already at 0).
     if (!victim.alive() || !victim.type || victim.hp<=Fixed())
         return;
-    // 0x489bc3..0x489c32: an activated unit takes a record under 30000
-    // through its damagemodifier, then every record shrinks with the
-    // victim's kills.
-    if (amount<30000 && retailActivated(victim))
+    // 0x489bc3..0x489c32: an ARMORED unit (+0x10e & 2, 0x489bcd) takes a
+    // record under 30000 through its damagemodifier, then every record
+    // shrinks with the victim's kills.
+    if (amount<30000 && retailArmored(victim))
         amount=retailDamageModifier(amount,0,true,victim.type->damageModifier);
     const int32_t dealt=retailTaVeteranDamage(amount,victim.kills);
     // 0x489d93..0x489da2: the hit response, deadly water excepted, before the
@@ -8911,6 +8917,25 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         return aim && aim->unreachable;
     };
 
+    // TotalA.exe's fire gate measures to the slot's target point (the
+    // SweetSpot, 0x49aa80 from 0x49e3c8) while Attack_Chase's own test is to
+    // the target's origin (0x49abb0, 0x4035d6 / 0x4037d7). Retail's chase
+    // does not stop on that test: it walks a path into the circle of the
+    // weapon's range round the target (0x438930, stage 2 substate 0) and its
+    // stage 3 re-tests only every 30 ticks without stopping the walk
+    // (0x4037fd), so it ends inside the range, not on its edge. World stops
+    // the walker the tick the origin test passes, where a SweetSpot past the
+    // origin (the bounds centre of a turned piece, 0x43e0b0) leaves the gate
+    // shut for good; so a TotalA.exe order slot keeps closing until its
+    // target point passes the gate's horizontal test as well.
+    const auto sweetShort = [&] {
+        if (!inReach || !approach || approach->taAim==Weapon::TaAim::None || arcSlot<0 ||
+            u.type->canFly || u.type->isStructure() || !u.type->canMove)
+            return false;
+        WeaponTarget wt{}; wt.unit=target;
+        return !taRangeGate(u,taTargetPoint(u,wt,*approach),*approach);
+    };
+
     // Ranged units whose shot flies the line need a clear line to shoot; a
     // wall between them means close in / reposition rather than firing through
     // it (melee & flyers are exempt). Ballistic shots use retail's pitched 3D
@@ -9011,7 +9036,7 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
     // weapons fire (below) when a slot has the target in range, and the
     // mission flies on regardless.
     if (!airRun && !airToAir && !hovering && !strike &&
-        (!inReach || (approachNeedsLine && !los && mayChase) || (mayChase && arcShort()))) {
+        (!inReach || (approachNeedsLine && !los && mayChase) || (mayChase && (arcShort() || sweetShort())))) {
         if (chaseMission) u.orders.front().attackChased = true;
         // Advance toward the target, steering around impassable terrain.
         if (u.repathLeft > 0) --u.repathLeft;
@@ -9636,7 +9661,7 @@ void World::scenarioAdjustHealth(int unitId,int32_t raw,bool heal) {
     auto* u=unit(unitId);
     if (!u || !u->type || !u->alive() || (u->hp<=Fixed() && !u->underConstruction)) return;
     const uint16_t amount=uint16_t(heal ? raw :
-        retailDamageModifier(raw,13,retailActivated(*u),u->type->damageModifier));
+        retailDamageModifier(raw,13,retailArmored(*u),u->type->damageModifier));
     const int64_t delta=int64_t(amount)*Fixed::kOne;
     if (heal) u->hp=Fixed::raw(int32_t(std::min<int64_t>(Fixed::fromInt(u->maximumHp()).v,int64_t(u->hp.v)+delta)));
     else {
@@ -16833,6 +16858,20 @@ struct World::ScriptHost {
         }
         case 19: factory.buggerOff=value!=0; break;
         case 6: factory.busy=(value&1)!=0; break;                    // 0x480b84
+        case 1: {
+            // ACTIVATION (0x480b49 -> 0x48b090(1, value)): any nonzero value
+            // sets the bit; a change starts Activate or Deactivate, not run at
+            // once (0x4b0940 with immediate 0, 0x48b101 / 0x48b126). The
+            // unit's own on/off word follows (its console button).
+            const bool on=value!=0;
+            if (on==factory.activated) break;
+            factory.activated=on;factory.activateHeld=false;
+            unit.active=on;
+            const auto& file=*unit.type->script();
+            factory.state().startArguments(file,file.scriptIndex(on ? "Activate" : "Deactivate"),{},0);
+            break;
+        }
+        case 20: factory.armored=value!=0; break;                    // 0x480be3 -> 0x48b090(2, value)
         default: break;
         }
         // 0x480b20: every SET posts event 4 (unit +0xba), whatever its id.
@@ -17854,7 +17893,7 @@ std::array<int32_t,3> World::taTargetPoint(Unit& u,const WeaponTarget& t,const W
 }
 
 std::optional<std::array<uint16_t,2>> World::taAimAngles(const Unit& u,const Weapon& w,
-        const std::array<int32_t,3>& from,const std::array<int32_t,3>& to) const {
+        const std::array<int32_t,3>& from,const std::array<int32_t,3>& to,bool losPitch) const {
     // d = P - T (0x49e570, [E]); the heading is atan2(d.x, d.z) in BAM
     // (0x4b715a) minus the body heading, so heading 0 is straight ahead and
     // a unit with heading h moves along (-sin h, -cos h).
@@ -17862,12 +17901,12 @@ std::optional<std::array<uint16_t,2>> World::taAimAngles(const Unit& u,const Wea
     for(size_t axis=0;axis<3;++axis)d[axis]=std::bit_cast<int32_t>(uint32_t(from[axis])-uint32_t(to[axis]));
     const uint16_t heading=uint16_t(retailDirection(Fixed::raw(d[0]),Fixed::raw(d[2])).v-portHeadingToRetail(u.heading));
     uint16_t pitch=0;
-    if(w.hasTaFlag(1)) {
+    if(w.hasTaFlag(1) && !losPitch) {
         // ballistic: 0x49a890(d, weaponvelocity, minbarrelangle)'s elevation,
         // 0x8000 = no solution (0x49e28e, 0x49d614).
         pitch=ta::taBallisticPitch(d[0],d[1],d[2],w.velocityFx,w.minBarrelAngle,ballisticGravityRaw_);
         if(pitch==0x8000)return std::nullopt;
-    } else if(w.hasTaFlag(0)) {
+    } else if(w.hasTaFlag(0) || losPitch) {
         // lineofsight: 0x49d910, atan2(-(d.y>>16), |d.xz|>>16); positive is
         // a target above. A world pitch, not relative to the body's.
         const uint64_t horizontal=isqrt64(uint64_t(int64_t(d[0])*d[0])+uint64_t(int64_t(d[2])*d[2]));
@@ -17915,9 +17954,12 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
     // the unit's origin to the target point (0x49e3c8; a refusal raises the
     // out-of-range event, 0x49e53a: noteSlotOutOfRange).
     if(u.reloads[size_t(slot)]>0)return true;
-    // The horizontal range is the caller's test (to the target's origin,
-    // docs/retail-weapon-scripts.md 7.8); the surfaced and arc tests are here.
-    if(!taRangeGate(u,target,w,false)) { noteSlotOutOfRange(u,slot);return true; }
+    // The whole gate: the horizontal range to the target point (the
+    // SweetSpot, 0x49aa80 at 0x49e3c8), the surfaced and the arc tests. The
+    // callers' approach measures to the target's origin (0x49abb0); an
+    // attack that may move keeps closing until this gate passes (tickCombat,
+    // sweetShort).
+    if(!taRangeGate(u,target,w)) { noteSlotOutOfRange(u,slot);return true; }
     const bool moving=it->movementRate!=0;
     switch(w.taAim) {
     case Aim::Turret: {
@@ -17937,12 +17979,17 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         if(!aim.requested() || !aim.ready())return true;
         break;
     case Aim::Direct: {
-        // 0x49d9c0: no Aim script; the body must face the target. Its world
-        // heading from the QueryX point is compared with the body's (the
-        // relative heading with 0). The body-pitch half of the test is not
-        // ported (docs/retail-weapon-scripts.md 4.2).
-        const auto now=taAimAngles(u,w,queryUnitScriptPoint(u.id,false,slot),target);
-        if(!now || !taWithinTolerance(w,moving,{(*now)[0],0},{0,0}))return true;
+        // 0x49d9c0: no Aim script; the body must face the target. From the
+        // QueryX point (0x49d9e0) the world heading (0x49da11, stored at slot
+        // +0x16) and the world pitch atan2(-(d.y>>16), |d.xz|>>16) (0x49da4d,
+        // +0x18) are tested by 0x49d880 against the body's heading +0x66 and
+        // pitch +0x68 (0x49da59..0x49da65): the relative heading with 0, the
+        // pitch with the body's (World's groundPitch, the pose pitch: the
+        // ground's tilt, or a flyer's attitude).
+        // The pitch is the line-of-sight one for a selfprop or ballistic
+        // weapon of this class too (0x49d9c0 has no other branch).
+        const auto now=taAimAngles(u,w,queryUnitScriptPoint(u.id,false,slot),target,true);
+        if(!now || !taWithinTolerance(w,moving,{(*now)[0],(*now)[1]},{0,u.groundPitch}))return true;
         aim.heading=(*now)[0];aim.pitch=(*now)[1];
         break;
     }
@@ -19929,11 +19976,11 @@ void World::tick(float dt) {
                 (u.type->canFly && !u.embarked() ? u.flightY : u.groundY).v, seaLevel_, u.type->canHover,
                 waterDamage_ != 0, waterDamage_)) {
             // As hurt: 64-bit, clamped so that -hp is representable; through
-            // the damagemodifier of an activated unit (51a16e), as any hit.
+            // the damagemodifier of an ARMORED unit (0x489bcd), as any hit.
             // TotalA.exe 0x48af32: a record of kind 11 with no attacker, through
             // 0x489bb0's damagemodifier and kill-count scaling (0x489bf3).
             const int32_t taken = retailTaVeteranDamage(
-                retailDamageModifier(water, 13, retailActivated(u), u.type->damageModifier), u.kills);
+                retailDamageModifier(water, 13, retailArmored(u), u.type->damageModifier), u.kills);
             u.lastHitKind = tadeath::kWater;
             u.hp = Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(u.hp.v) - int64_t(taken) * Fixed::kOne,
                                                           -int64_t(INT32_MAX), INT32_MAX)));
@@ -21050,6 +21097,7 @@ uint64_t World::stateHash() const {
             script(factory.activated); script(factory.ready); script(factory.yardOpen); script(factory.buggerOff);
             if (factory.activateHeld) script(0x484f4c44u);
             if (factory.busy) script(0x42555359u);
+            if (factory.armored) script(0x41524d52u);
             if (factory.dying) { script(0x44454144u);script(factory.deathStopValue); }
             if (factory.movementRate) { script(0x4d4f5645u);script(factory.movementRate); }
             if (factory.turnDirection) { script(0x5455524eu);script(uint32_t(int32_t(factory.turnDirection))); }

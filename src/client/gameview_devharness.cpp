@@ -2468,17 +2468,16 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 check(emptyCursor==ta::CursorId::Normal && none.empty(),"2.2 an empty box with only an attacker: Normal, nothing");
             }
             // 2.2 step L: a lone weaponless transport loads the own units in the box.
-            // Only where the sim admits them: its capacity rule (sim/retailtransport.h,
-            // retailTransportCapacity) is still Kingdoms' -- passenger footprint AREA
-            // against the carrier's transportsize -- so no TA kbot (2x2 = 4) fits an
-            // Atlas (transportsize=3) yet. Said, not hidden, until that rule is TA's.
+            // Only where the sim admits them (TotalA.exe 0x489a90,
+            // sim/retailtransport.h retailTransportCapacity: the passenger's footprint
+            // x within the carrier's transportsize, fewer aboard than its capacity).
             selection_={carrier};publish();
             const bool fits=frameUnitP(sword) && frameUnitP(mason) && frameUnitP(carrier) &&
                 canLoadPassenger(*frameUnitP(sword),*frameUnitP(carrier)) &&
                 canLoadPassenger(*frameUnitP(mason),*frameUnitP(carrier));
             if (!fits)
-                std::fprintf(stderr,"clicks: SKIP 2.2 step L and C4: %s admits neither passenger under the "
-                             "sim's (Kingdoms) transport capacity rule\n",transportType->id.c_str());
+                std::fprintf(stderr,"clicks: SKIP 2.2 step L and C4: %s admits neither passenger "
+                             "(0x489a90)\n",transportType->id.c_str());
             if (fits) {
                 const auto p1=at(sword),p2=at(mason);
                 const float x0=std::min(p1.x,p2.x)-40,y0=std::min(p1.y,p2.y)-40,x1=std::max(p1.x,p2.x)+40,y1=std::max(p1.y,p2.y)+40;
@@ -4924,7 +4923,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         if(mobile.empty())return;
         std::sort(mobile.begin(),mobile.end());
         const size_t kill=std::max<size_t>(1,mobile.size()/20);
-        const char* roster[]={"zonter","araarch","versword","tararch"};
+        const char* roster[]={"armpw","corak","armrock","corstorm"};
         for(size_t k=0;k<kill;++k) {
             const auto* old=world_.unit(mobile[k]);
             const float x=old->x.toFloat(),z=old->z.toFloat();

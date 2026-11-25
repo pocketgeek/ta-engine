@@ -38,9 +38,10 @@ int main() try {
     }
     {
         // Damage is 51a140(0, unit, amount, 13, 0) (4cb23b): no hitter, so the
-        // last hitter stays (51a350), and an activated unit takes a damage
+        // last hitter stays (51a350), and an ARMORED unit (TotalA.exe
+        // 0x489bcd: +0x10e & 2, SET 20; not the activation bit) takes a damage
         // below 30000 through its damagemodifier before the 16-bit packet
-        // (51a16e, 51a1d4). Heal (kind 12) is never scaled.
+        // (51a1d4). Heal (kind 12) is never scaled.
         auto shell=*soldier;shell.id="shell";shell.damageModifier=0x8000;
         sim::World w;setup(w);int a=w.spawn(&shell,40,56,0,0),enemy=w.spawn(soldier,72,88,0,1);
         w.unit(a)->lastHitBy=enemy;w.unit(a)->lastHitPlayer=1;
@@ -50,7 +51,22 @@ int main() try {
         w.unit(a)->active=true;
         check(w.retailActivated(*w.unit(a)),"fixture: the unit is not activated");
         run(w,reg,11,{"Any unit","20","source"});
-        check(w.unit(a)->hp.floorInt()==170,"an activated unit's damage ignored its damagemodifier");
+        check(w.unit(a)->hp.floorInt()==160,"an activated, unarmored unit's damage was scaled (0x489bcd tests ARMORED)");
+        w.unit(a)->hp=sim::Fixed::fromInt(180);
+        // ARMORED (SET 20): a script whose Create sets it.
+        {
+            auto f=std::make_shared<ta::cob::File>();
+            f->scripts={{"Create",0}};
+            f->code={0x10021001,20,0x10021001,1,0x10082000,0x10021001,0,0x10065000};
+            shell.productionScript=f;
+        }
+        w.destroy(a);w.tick(1.f/30);
+        a=w.spawn(&shell,40,56,0,0);w.tick(1.f/30);
+        check(w.retailArmored(*w.unit(a)),"fixture: the scripted shell is not ARMORED");
+        w.unit(a)->hp=sim::Fixed::fromInt(180);
+        w.unit(a)->lastHitBy=enemy;w.unit(a)->lastHitPlayer=1;
+        run(w,reg,11,{"Any unit","20","source"});
+        check(w.unit(a)->hp.floorInt()==170,"an ARMORED unit's damage ignored its damagemodifier");
         run(w,reg,11,{"Any unit","65556","source"});   // 30000 or more: unscaled, then its low word, 20
         check(w.unit(a)->hp.floorInt()==150,"the modifier was applied after the 16-bit truncation");
         run(w,reg,10,{"Any unit","20","source"});

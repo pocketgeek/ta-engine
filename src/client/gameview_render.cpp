@@ -6982,7 +6982,7 @@
 
     void GameView::collectWorldFx(int mvw, int winH, bool painter) {
         namespace hu = ta::hiddenunits;
-        fxItems_.clear();++beamDrawFrame_;
+        fxItems_.clear();
 #ifndef NDEBUG
         debugGlowDrawCount_=0;
         debugSmokeDrawCount_=0;debugDamageFlameDrawCount_=0;debugPointDrawCount_=0;
@@ -7466,11 +7466,7 @@
         const auto map=[&](uint8_t index){return taGuiColourMap_[index];};
         std::vector<ta::TaShotLine> lines;
         if(w.renderType==0) lines=ta::taBeamLines(p.position,p.taTail,map(w.color),w.color2,map(w.color2));
-        else {
-            ta::TaCrtRand rand;
-            rand.state=beamDrawFrame_*2654435761u ^ uint32_t(p.fromId)*40503u ^ p.taLaunch;
-            lines=ta::taLightningLines(p.position,p.taTail,map(w.color),rand);
-        }
+        else lines=ta::taLightningLines(p.position,p.taTail,map(w.color),crtRand_);
         if(lines.empty())return;
         const float zm=mapView_.zoom(),ox=mapView_.offX(),oy=mapView_.offY();
         std::vector<SDL_Vertex> vertices;vertices.reserve(lines.size()*6);

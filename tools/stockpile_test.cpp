@@ -152,6 +152,65 @@ int main(int argc,char** argv) {
         check(!t || !t->alive() || t->hp<Fixed::fromInt(t->type->maxHp),"the nuke reaches its target");
     }
 
+    // Cruise (weapon flag bit 25, 0x49b3e0): while the shot is more than
+    // 1024 px (3D, the high word of the distance) from its target point
+    // (+0x28) it steers for that point at a height of 700 px (the word
+    // +0x16 = 0x2bc, 0x49b44a..0x49b46a); nearer, for the ground or the sea
+    // there (0x49b4ae..0x49b501). armsilo's nuclear_missile has cruise=1.
+    {
+        World w;setup(w,registry);
+        check(nuke.hasTaFlag(25),"nuclear_missile is a cruise weapon");
+        const int s=w.spawn(silo,600,600,0.f,0);
+        const int target=w.spawn(registry.find("armsolar"),3400,3400,0.f,1);
+        w.tick(kTick);
+        w.unit(s)->stock[0]=1;
+        w.attack(s,target,false);
+        int farTop=-1,farTicks=0,nearTicks=0,nearRises=0,lastNearY=1<<30,farRises=0,farLow=1<<30,lastFarY=-1;
+        bool turned=false;
+        std::array<int32_t,3> aim{},last{};
+        bool seen=false;
+        for (int t=0;t<1500;++t) {
+            w.tick(kTick);
+            const Projectile* p=nukeShot(w,s);
+            if (!p) { if (seen) break; continue; }
+            seen=true;aim=p->taTargetPoint;last=p->position;
+            const double dx=double(p->position[0]-aim[0]),dy=double(p->position[1]-aim[1]),
+                         dz=double(p->position[2]-aim[2]);
+            const int dist=int(int64_t(std::sqrt(dx*dx+dy*dy+dz*dz))>>16);
+            const int y=p->position[1]>>16;
+            if (dist>1024) {
+                ++farTicks;farTop=std::max(farTop,y);
+                // The vertical launch climbs past the cruise height; once
+                // the shot has turned over it steers for the 700 px point.
+                if (!turned && p->velocity[1]<=0) turned=true;
+                if (turned) {
+                    if (lastFarY>=0 && y>lastFarY) ++farRises;
+                    farLow=std::min(farLow,y);lastFarY=y;
+                }
+            }
+            else {
+                if (nearTicks && y>lastNearY) ++nearRises;
+                ++nearTicks;lastNearY=y;
+            }
+        }
+        const int landX=last[0]>>16,landZ=last[2]>>16;
+        std::printf("  cruise: %d ticks far (top %d px, turned over, then low %d, %d rises), %d near (%d rises), "
+                    "last at (%d, %d, %d), aim (%d, %d)\n",farTicks,farTop,farLow,farRises,nearTicks,nearRises,
+                    landX,last[1]>>16,landZ,aim[0]>>16,aim[2]>>16);
+        check(seen && farTicks>0 && nearTicks>0,"the cruise shot flies both legs");
+        // Turned over above the cruise height, the far leg glides toward the
+        // 700 px point over the target (ground 60 px): it never climbs again
+        // and never drops below 700 px while still over 1024 px out. A
+        // non-cruise shot would dive for the target at once.
+        check(turned && farRises==0 && farLow>=700 && farLow<farTop,
+              "far from its target it steers for the target at 700 px");
+        check(nearRises==0,"inside 1024 px it only descends, onto the ground at the target point");
+        check(std::abs(landX-(aim[0]>>16))<=int(nuke.aoe) && std::abs(landZ-(aim[2]>>16))<=int(nuke.aoe),
+              "and bursts within its area of the target point");
+        const Unit* tu=w.unit(target);
+        check(!tu || !tu->alive() || tu->hp<Fixed::fromInt(tu->type->maxHp),"the cruise nuke hurts its target");
+    }
+
     // Interceptors.
     struct Case { const char* label; float amdX,amdZ; bool intercepts; };
     for (const Case& k:{Case{"an armamd whose coverage holds the target point",3000,3000,true},

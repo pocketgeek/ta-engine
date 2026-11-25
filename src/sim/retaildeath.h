@@ -20,13 +20,14 @@ inline uint16_t retailDeadlyWaterDamage(uint32_t tick, int32_t height, int seaLe
     return uint16_t(amount);
 }
 
-// 51a16e..51a19a: a hit (not a heal, kind 12) on a unit whose activation
-// byte has bit 1 (+0x114 & 2), below 30000, is scaled by the type's
-// damagemodifier (16.16): a 64-bit product shifted back 16 (5d3dc0, an
-// arithmetic shift). The damage packet, so the HP drop, the hit response and
-// HitByWeapon, carries the result. Deadly water (kind 13) is scaled too.
-inline int32_t retailDamageModifier(int32_t damage, uint8_t kind, bool activated, int32_t modifier) {
-    if (kind == 12 || !activated || damage >= 30000) return damage;
+// TotalA.exe 0x489bc3..0x489bf1: a hit below 30000 on an ARMORED unit
+// (+0x10e & 2, 0x489bcd: the bit SET 20 writes, not the activation bit) is
+// scaled by the type's damagemodifier (16.16): a 64-bit product shifted back
+// 16 (0x4e43d0). The record, so the HP drop, the hit response and
+// HitByWeapon, carries the result. Deadly water is scaled too. (Kind 12, a
+// heal, is the Kingdoms CRT's and is never scaled.)
+inline int32_t retailDamageModifier(int32_t damage, uint8_t kind, bool armored, int32_t modifier) {
+    if (kind == 12 || !armored || damage >= 30000) return damage;
     return int32_t((int64_t(damage) * int64_t(modifier)) >> 16);
 }
 

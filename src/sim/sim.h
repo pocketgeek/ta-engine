@@ -2174,6 +2174,12 @@ public:
         const auto* script=unitScript(u.id);
         return script ? script->activated : u.active;
     }
+    // ARMORED, TotalA.exe +0x10e bit 1 (SET 20): the script's; a unit with
+    // no script is never armored. 0x489bcd scales a hit by damagemodifier.
+    bool retailArmored(const Unit& u) const {
+        const auto* script=unitScript(u.id);
+        return script && script->armored;
+    }
     // Whether the unit's script has been activated (its +0x114 bit 1); tests.
     bool unitScriptActivated(int unitId) const {
         const auto* script=unitScript(unitId);
@@ -2481,6 +2487,12 @@ public:
     // Test reference: move counted footprints by retail's full removal and
     // re-add instead of retailSightMove (the counts and hashes must not differ).
     void setViewCountsByRebuildForTest(bool on) { viewCountsByRebuild_=on; }
+    // A carrier's attach of a passenger (0x48ab70), as ATTACH_UNIT's
+    // 0x48aac0 makes it, without the script; tests.
+    void attachCargoForTest(int carrierId,int passengerId) {
+        Unit* c=unit(carrierId);Unit* p=unit(passengerId);
+        if (c && p && canAttachCargo(*c,*p)) attachCargo(*c,*p);
+    }
     void updateExplorationPlane();
     // Per-player current-view count of one projected 32px cell (0 = unseen).
     int viewCount(int player,int cx,int cz) const {
@@ -3514,7 +3526,7 @@ private:
     // 0x49e264..0x49e2cc: AimX's heading (relative to the body) and pitch
     // from `from` to `to`; none when the weapon has no solution.
     std::optional<std::array<uint16_t,2>> taAimAngles(const Unit& u,const Weapon& w,
-        const std::array<int32_t,3>& from,const std::array<int32_t,3>& to) const;
+        const std::array<int32_t,3>& from,const std::array<int32_t,3>& to,bool losPitch=false) const;
     // Start a TA weapon call-in for a local weapon slot: AimX / FireX /
     // QueryX / AimFromX by the FBI slot the local one came from.
     enum class TaWeaponCall : uint8_t { Aim, Fire, Query, AimFrom };
@@ -4848,6 +4860,12 @@ private:
         // (0x480b84) and GROUND_PICKUP / GROUND_UNLOAD wait it out (0x438730).
         // Hashed while set.
         bool busy=false;
+        // ARMORED (TotalA.exe unit +0x10e bit 1): SET 20 writes it through
+        // 0x48b090(2, value) (0x480be3; no script call-in for that bit), GET
+        // 20 reads it (0x480aa9), and while it is set a hit under 30000
+        // goes through the type's damagemodifier (0x489bc3..0x489bf1).
+        // Hashed while set.
+        bool armored=false;
         // An Activate switchScript holds until Create returns (activated is
         // already set). Hashed while set.
         bool activateHeld=false;

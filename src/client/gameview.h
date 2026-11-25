@@ -7,6 +7,8 @@
 #include "client/emotetiming.h"
 #include "client/retailmodellighting.h"
 #include "client/primitivedraw.h"
+#include "client/tabeamdraw.h"
+#include <ctime>
 
 // GameView -- the in-world game client: rendering, input, the retail HUD, fog,
 // minimap, the COB animation VM host, benchmark, lobby, and the
@@ -2344,7 +2346,12 @@ private:
     // TotalA.exe's colour map (game +0xdcb, 0x4ac7d0; client/tabeamdraw.h):
     // guipal.pal index -> palette.pal index, for the beams' color / color2.
     std::array<uint8_t,256> taGuiColourMap_{};
-    uint32_t beamDrawFrame_ = 0;   // reseeds the lightning strands' CRT rand per frame
+    // The CRT's rand stream (0x4e4870) the lightning strands draw from: one
+    // per client, seeded with the clock as TotalA.exe seeds its own at start
+    // (srand(time(0)), 0x49e8b2..0x49e8bb and 0x4971a5..0x4971ae) and
+    // advanced by every draw, frame after frame. Drawing only: it never
+    // reaches the lockstep simulation (client/tabeamdraw.h).
+    ta::TaCrtRand crtRand_{uint32_t(std::time(nullptr))};
     void drawTaLineShot(const ta::sim::Projectile& p);
     void buildNanoframe(const UnitR& u, UnitGeom& g, const Visual& visual, const PieceMeta* meta,
                         const Anim* anim, SDL_Texture* atlas, float facing, float zm, float ax, float ay);

@@ -1149,6 +1149,45 @@ static void retailBeCarried(const char* root) {
               "after the drop BeCarried stays until its next 10-tick wake");
         check(moved && moved>=wake,"the queued move starts only at that wake");
     }
+    // A passenger re-picked before its BeCarried's wake: 0x4384a0 keeps the
+    // old BeCarried (descriptor flag 4) and puts a new one at the head
+    // (0x438537..0x438569), whose own schedule runs from its first dispatch
+    // aboard; the old wake is not the one that holds the passenger.
+    // The unload is issued 0..9 ticks after boarding, until a drop falls
+    // with the wake still ahead (one on the wake leaves no room to re-pick).
+    for(int delay=0;delay<10;++delay) {
+        World w;
+        w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,40);
+        w.buildNavClasses(registry);w.setPathService(true);
+        const int tid=w.spawn(atlas,900,700);
+        const int pid=w.spawn(foot,832,620);
+        w.loadInto(pid,tid);
+        for(int tick=0;tick<3000 && w.unit(pid)->inTransport!=tid;++tick)w.tick(1.f/30);
+        for(int tick=0;tick<delay;++tick)w.tick(1.f/30);
+        w.unloadAt(tid,880,780);
+        uint32_t dropped=0,oldWake=0;
+        bool onWake=false;
+        for(int tick=0;tick<3000 && !dropped && !onWake;++tick) {
+            w.tick(1.f/30);
+            const auto& u=*w.unit(pid);
+            if(u.inTransport==0 && u.beCarriedWake>w.tickCount()+1) { dropped=w.tickCount();oldWake=u.beCarriedWake; }
+            else if(u.inTransport==0) onWake=true;
+        }
+        if(!dropped && delay<9) continue;
+        check(dropped!=0,"the Atlas drops the infantry with its BeCarried wake still ahead");
+        if(dropped) {
+            const uint32_t attachAt=w.tickCount();
+            w.attachCargoForTest(tid,pid);
+            check(w.unit(pid)->inTransport==tid,"re-picked before that wake");
+            w.tick(1.f/30);
+            const uint32_t wake=w.unit(pid)->beCarriedWake;
+            std::printf("  dropped at %u (old wake %u), re-picked at %u, BeCarried wake %u\n",dropped,oldWake,
+                        attachAt,wake);
+            check(wake>=attachAt+10 && wake<=attachAt+11 && wake!=oldWake,
+                  "the new BeCarried's schedule runs from the re-pick (0x4384a0 pushes a second one)");
+        }
+        break;
+    }
     for(bool cloak:{false,true}) {
         World w;
         w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,40);
@@ -1235,9 +1274,8 @@ static void retailRoster(const char* root) {
             // transportcapacity, and transportsize, the largest passenger.
             check(type.transportCap>0 && type.maxTransportSize>0,"retail carrier has nonzero capacity limits");
             World w;setTestPathfinding(w);
-            // Ships need the coast. A hover carrier pinned against the
-            // coast's one-cell cliff stops short with its crane astern, out of
-            // the TransportDrop boom's reach (BoomCalc); it unloads on open land.
+            // Ships need the coast; a hover carrier unloads on open land (on the
+            // coast it stands, as in retail: hoverCliffUnload).
             w.setTerrain(type.canHover ? std::vector<uint8_t>(128*128,100) : coastHeights(128,128,50),128,128,40);
             w.buildNavClasses(registry);w.setPathService(true);
             // A known coast: unexplored cells read clear to the search (TotalA.exe,
@@ -1277,6 +1315,62 @@ static void retailRoster(const char* root) {
         // Atlas, Valkyrie, both transport ships and both Core Contingency hovers.
         check(carriers==6,"all retail carriers covered");
     }
+}
+
+// A hover carrier told to unload just past a one-cell cliff (TotalA.exe
+// GROUND_UNLOAD 0x406900): the first TransportDrop is out of the boom's reach,
+// so 0x406a23..0x406a5e installs the drop-point circle, ftol(1.5 x footprintz
+// x 16) = 96 px for armthovr's 4x4 hull. The hover drives into the circle and
+// comes to rest against the cliff (whose land it cannot climb) with its crane
+// astern: inside the circle, so the navigator arrives, and BoomCalc's boom
+// (87.5 px, armthovr's own script) does not reach the point. Two more calls
+// fail; the third returns 9 (0x406a13) and, with no next order, the
+// dispatcher calls again every 30 + rand(30) ticks with the count kept
+// (0x43b8e5..0x43b973) -- the circle is not installed again (0x406a13 comes
+// before 0x406a23), so nothing turns or moves the hull. Retail's hover stands
+// there with its passenger for as long as the order lasts; so does ours.
+static void hoverCliffUnload(const char* root) {
+    std::printf("hover unload against a cliff:\n");
+    auto vfs=ta::hpi::mountRetailRoot(root);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
+    const auto* hover=registry.find("armthovr");
+    const auto* foot=registry.find("armpw");
+    check(hover && foot && hover->canHover && hover->footZ==4,"armthovr is a 4x4 hover carrier");
+    if(!hover || !foot)return;
+    check(ta::sim::retailUnloadCircleRadius(true,int16_t(hover->footZ))==96,
+          "its drop-point circle is 1.5 x 4 x 16 = 96 px (0x406a23..0x406a5e)");
+    World w;setTestPathfinding(w);
+    w.setTerrain(coastHeights(128,128,50),128,128,40);
+    w.buildNavClasses(registry);w.setPathService(true);
+    auto& explored=w.editNavigationExploration();
+    std::fill(explored.begin(),explored.end(),uint16_t(0xffff));
+    const int tid=w.spawn(hover,720,700);
+    const int cid=w.spawn(foot,832,700);
+    w.loadInto(cid,tid);
+    for(int tick=0;tick<900 && !w.unit(cid)->embarked();++tick) w.tick(1.f/30);
+    check(w.unit(cid)->inTransport==tid,"the hover boards its passenger from the shore");
+    w.unloadAt(tid,864,1000);
+    float restX=0,restZ=0;uint32_t restAttempts=0;
+    bool moved=false;
+    for(int tick=0;tick<4000;++tick) {
+        w.tick(1.f/30);
+        const auto& t=*w.unit(tid);
+        if(tick==1500) {
+            restX=t.x.toFloat();restZ=t.z.toFloat();
+            restAttempts=t.orders.empty() ? 0 : t.orders.front().transportApproachAttempts;
+        }
+        if(tick>1500 && (t.x.toFloat()!=restX || t.z.toFloat()!=restZ)) moved=true;
+    }
+    const auto& t=*w.unit(tid);
+    const float dx=864-restX,dz=1000-restZ;
+    const uint32_t attempts=t.orders.empty() ? 0 : t.orders.front().transportApproachAttempts;
+    std::printf("  rests at (%.1f, %.1f), %.1f px from the point, calls %u -> %u\n",restX,restZ,
+                std::sqrt(dx*dx+dz*dz),restAttempts,attempts);
+    check(restX>=800 && std::sqrt(dx*dx+dz*dz)<=96.f,"it comes to rest against the cliff, inside the circle");
+    check(!moved,"and stands there: no new circle turns or moves it");
+    check(w.unit(cid)->inTransport==tid && !t.orders.empty(),
+          "the passenger stays aboard and the unload order stays");
+    check(attempts>restAttempts+10,"TransportDrop is called again every 30 + rand(30) ticks (count kept)");
 }
 
 // The surface carriers' own TransportPickup / TransportDrop scripts (TotalA.exe
@@ -2855,7 +2949,7 @@ int main(int argc,char** argv) {
     passengerMissionSchedule();
     passengerCancellationWait();
     groundPickupApproach();
-    if(argc==2) { retailRoster(argv[1]);scriptedTransfer(argv[1]);retailBeCarried(argv[1]); }
+    if(argc==2) { retailRoster(argv[1]);hoverCliffUnload(argv[1]);scriptedTransfer(argv[1]);retailBeCarried(argv[1]); }
     boardingLimits();
     transferLifecycle();
     ordinaryFlightMoves();

@@ -58,20 +58,31 @@ int main(int argc,char** argv) try {
         check(w.unit(v)->severity==27,"a death on a sample tick read the sample of two seconds before");
     }
     {
-        // 51a16e: a hit on an activated unit goes through its type's
-        // damagemodifier (16.16); an inactive one takes it whole.
+        // TotalA.exe 0x489bc3..0x489bf1: a hit on an ARMORED unit (+0x10e &
+        // 2, SET 20) goes through its type's damagemodifier (16.16); any
+        // other -- an activated one too -- takes it whole. The armored shell's
+        // Create runs SET ARMORED 1.
         UnitType shell=fighter("shell");shell.damageModifier=0x8000;
-        auto drop=[&](bool active) {
+        UnitType armoredShell=shell;
+        {
+            auto f=std::make_shared<ta::cob::File>();
+            f->scripts={{"Create",0}};
+            f->code={0x10021001,20,0x10021001,1,0x10082000,0x10021001,0,0x10065000};
+            armoredShell.productionScript=f;
+        }
+        auto drop=[&](bool armored,bool active) {
             World w;terrain(w);
-            const int s=w.spawn(&t,400,400,0,0),v=w.spawn(&shell,440,400,0,1);
+            const int s=w.spawn(&t,400,400,0,0),v=w.spawn(armored ? &armoredShell : &shell,440,400,0,1);
+            w.tick(1.f/30);   // Create
             w.unit(v)->active=active;
             const int before=w.unit(v)->hp.floorInt();
             RetailReplayProbe::hit(w,t.weapon,440,400,0,s,w.unit(v));
             return before-w.unit(v)->hp.floorInt();
         };
-        const int whole=drop(false),scaled=drop(true);
-        check(whole>=85 && whole<=115,"an inactive unit's hit was scaled");
-        check(scaled==whole/2,"an activated unit's hit ignored its damagemodifier");
+        const int whole=drop(false,false),activeWhole=drop(false,true),scaled=drop(true,false);
+        check(whole>=85 && whole<=115,"an unarmored unit's hit was scaled");
+        check(activeWhole==whole,"an activated, unarmored unit's hit was scaled (the bit is ARMORED's)");
+        check(scaled==whole/2,"an ARMORED unit's hit ignored its damagemodifier");
     }
     {
         // TotalA.exe 0x4868b3..0x4869ca: a kill adds the hitter player's kills and

@@ -397,15 +397,26 @@ Implemented (`World::tickScriptWeapon`, `taAimAngles`, `aimFromPoint`, `taWeapon
   word being 1.25 x (QueryX.z - AimFromX.z) in the creation pose (0x49e0ea..0x49e11b); it
   moves, drifts with the wind vector and falls once a tick (0x49bce3; `taBallisticStep`).
   The pitch is 0x49a890 with minbarrelangle (`ta::taBallisticPitch`, checked by
-  tools/re/ballistic_emu.py); the range gate 0x49aa80's surfaced and arc tests
-  run in the fire path (`World::taRangeGate`); its horizontal range stays the callers' test,
-  to the target's origin rather than the target point. Line-of-sight and selfprop shots match retail: 0x49c9c0 aims from
+  tools/re/ballistic_emu.py). Line-of-sight and selfprop shots match retail: 0x49c9c0 aims from
   the QueryX point straight at the target point and ignores the spread.
 - Burst clones copy the emitter (0x49b83b): its position (re-read from the stored QueryX
   piece when burstrate >= 5 or the count is odd), velocity and angles; sprayangle turns the
   emitter's horizontal velocity for the next clone (0x49b8f1); randomdecay jitters a clone's
   expiry. The emitter is the spawner's own record.
-- Non-turret LOS weapons compare only the heading with the body (no body-pitch test).
+- The fire gate is the whole range gate 0x49aa80 (0x49e3c8; `World::taRangeGate`): the
+  horizontal range to the slot's target point (the SweetSpot, 0x48a1e0), the surfaced and
+  the arc tests. Attack_Chase's own test is to the target's origin (0x49abb0 at 0x4035d6 /
+  0x4037d7), and retail's chase does not stop on it: stage 2 paths into the circle of the
+  slot's range round the target (0x438930) and stage 3 re-tests every 30 ticks without
+  stopping the walk (0x4037fd), so it ends inside the range. World stops a walker the tick
+  the origin test passes, so a TotalA.exe order slot keeps closing until its target point
+  passes the gate as well (`tickCombat`, `sweetShort`); without that a SweetSpot past the
+  origin left the attacker standing at the edge, never firing.
+- Non-turret LOS / selfprop weapons (0x49d9c0) take the world heading (0x49da11) and the
+  line-of-sight pitch atan2(-(d.y>>16), |d.xz|>>16) (0x49da4d) from the QueryX point to
+  the target point and test both against the body's heading +0x66 and pitch +0x68
+  (0x49d880 from 0x49da65; World's `groundPitch`, the pose pitch), with the tolerances of
+  §2.4 (tolerance 0: 150, or 2000 while moving).
 - Sign check (`ta_weapon_script_test`): with d = P - T the AimPrimary heading plus the body
   heading points from the turret at targets ahead, behind and to both sides, in the
   mover's own convention (a body with heading h steps along (-sin h, -cos h)).

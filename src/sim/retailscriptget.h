@@ -32,6 +32,7 @@ struct RetailGetUnit {
     bool busy = false;        // +0x10f bit 1 (BUSY, 0x4807ff)
     bool yardOpen = false;    // +0x10f bit 2 (YARD_OPEN, 0x480a83)
     bool buggerOff = false;   // +0x10f bit 3 (BUGGER_OFF, 0x480a96)
+    bool armored = false;     // +0x10e bit 1 (ARMORED, 0x480aa9; SET 20 0x480be3)
     uint32_t moveState = 0;   // +0x110 >> 18 & 3 (STANDINGMOVEORDERS, 0x4807a4)
     uint32_t fireState = 0;   // +0x110 >> 20 & 3 (STANDINGFIREORDERS, 0x4807b7)
     int32_t hp = 0;           // the signed HP word +0x108
@@ -99,8 +100,7 @@ uint32_t retailScriptGet(int id,const std::array<uint32_t,4>& args,const RetailG
     case 17: return retailConstructionPercent(u.remaining);   // BUILD_PERCENT_LEFT (0x480a44)
     case 18: return u.yardOpen;
     case 19: return u.buggerOff;
-    // 20 ARMORED (0x480aa9: +0x10e bit 1, which SET 20 writes through
-    // 0x48b090(2)): not stored, so 0.
+    case 20: return u.armored;   // ARMORED (0x480aa9: +0x10e bit 1, SET 20's 0x48b090(2))
     default: return 0;
     }
 }
