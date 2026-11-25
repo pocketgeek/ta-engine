@@ -42,7 +42,7 @@ void run(){
  for(int removed:{1,2,3,5})
   check(!load(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode(removed))),"unknown pathfinder accepted");
  check(!load(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode(255))),"invalid pathfinder byte accepted");
- Command area;area.kind=Cmd::BuildManaArea;area.unitId=1;area.x=100;area.z=200;area.x2=800;area.z2=900;
+ Command area;area.kind=Cmd::RetiredAreaBuild;area.unitId=1;area.x=100;area.z=200;area.x2=800;area.z2=900;
  std::snprintf(area.type,sizeof area.type,"aralode");
  check(load(recording(kNetVersion,area),&decoded) && decoded.cfg.patrolRepairs &&
        decoded.bundles.size()==1 && decoded.bundles.front().cmds.front().x2==800 &&

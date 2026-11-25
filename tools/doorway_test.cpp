@@ -35,7 +35,7 @@ bool groundOutput(const UnitType* t) {
 }
 enum class Mode {Guard,Assist};
 bool doorCase(const TypeRegistry& registry,const UnitType& factory,const UnitType* output,const UnitType& helper,Mode mode,bool legion,int side) {
-    auto producer=factory;producer.storage=1000000;
+    auto producer=factory;
     World world;
     if(legion)world.setPathfindingMode(PathfindingMode::Legion);
     world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
@@ -43,7 +43,7 @@ bool doorCase(const TypeRegistry& registry,const UnitType& factory,const UnitTyp
     world.buildNavClasses(registry);world.setPathService(true);
     const float cx=float(112*16+factory.footX%2*8),cz=float(112*16+factory.footZ%2*8);
     const int id=world.spawn(&producer,cx,cz,float(int16_t(factory.orientation))*6.28318530718f/65536.f,0);
-    world.player(0).mana=1000000;
+    
     world.train(id,output,4);
     // The first site shows where the pad (and so the door) is.
     int firstSite=0;
@@ -135,7 +135,7 @@ bool ringRest(const TypeRegistry& registry,const char* wardId,const char* guardI
 // must leave and the Battleship must not sit in the yard (on the Kingdoms data a
 // Flagship did, from the first output on).
 bool navalDoor(const TypeRegistry& registry,bool legion,int side) {
-    auto yardType=*registry.find("armsy");yardType.storage=1000000;
+    auto yardType=*registry.find("armsy");
     const UnitType* sub=registry.find("armsub");const UnitType* flag=registry.find("armbats");
     World world;
     if(legion)world.setPathfindingMode(PathfindingMode::Legion);
@@ -143,7 +143,7 @@ bool navalDoor(const TypeRegistry& registry,bool legion,int side) {
     world.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
     world.buildNavClasses(registry);world.setPathService(true);
     const int yard=world.spawn(&yardType,1800,1800,0.f,0);
-    world.player(0).mana=1000000;world.train(yard,sub,4);
+    world.train(yard,sub,4);
     int site=0;
     for(int t=0;t<600 && !site;++t) {world.tick(1.f/30);site=world.unit(yard)->productionSiteId;}
     if(!site) {std::printf("FAIL: armsy never placed its first armsub\n");return false;}

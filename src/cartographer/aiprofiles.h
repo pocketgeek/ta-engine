@@ -1,7 +1,7 @@
 #pragma once
 
-// The AI-profile editor's model: SDL-free, unit-tested by
-// tools/cartographer_aiprofile_test.cpp (the design's phase 2).
+// The AI-profile editor's model: SDL-free (the design's phase 2; exercised by
+// cartographer_ui_test's aiprofile cases).
 //
 // A map's AI files are raw bytes (Session::aiFiles); the bytes are the truth. The
 // editor parses them into drafts, and writes a draft back in one canonical form.
@@ -242,8 +242,7 @@ int aiGroupRuleLimit(const AiGroupRule&);
 // keeps it; the defensive levels ignore every limit except 0. A mobile builder never
 // passes its own number; Hard and Absurd lift economy buildings with income and may
 // raise army, factory and defence limits to their plan in long games. The scale and
-// the defensive rule mirror ai::paramsFor (tools/cartographer_aiprofile_test checks
-// them against it).
+// the defensive rule mirror ai::paramsFor.
 int aiLevelLimitScale(ta::ai::Difficulty);   // percent
 bool aiLevelIgnoresLimits(ta::ai::Difficulty);
 struct AiLevelLimit {

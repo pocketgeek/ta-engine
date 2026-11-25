@@ -173,7 +173,7 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     if (st->isStructure()) s.w.blockFoot(*st, sx, sz, true);
     else s.w.unit(shooter)->moveState = 0;
     (void)slot;   // TA has no weapon switching: every slot fires
-    s.w.player(0).mana = 30000;
+    
     const int target = building(s.w, tt, sx + dx, sz + dz);
     // A spotter of the shooter's beside the building: a shooter whose range
     // outreaches its sight (a Slasher: 230 sight, missiles 600) takes only
@@ -186,7 +186,7 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     }
     Static out;
     for (int i = 0; i < ticks; ++i) {
-        s.w.player(0).mana = 30000;
+        
         s.w.player(0).books.stored[sim::econ::E] = 30000;   // a laser tower's energypershot
         s.w.tick(1.f / 30);
         const sim::Unit* u = s.w.unit(shooter);
@@ -226,14 +226,14 @@ Approach attackBuilding(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const
     const float tx = 1600, tz = 1024;
     const int shooter = s.w.spawn(st, tx - 1100, tz, {}, 0);
     (void)slot;   // TA has no weapon switching: every slot fires
-    s.w.player(0).mana = 30000;
+    
     const int target = building(s.w, tt, tx, tz);
     for (int i = 0; i < 30; ++i) s.w.tick(1.f / 30);
     s.w.attack(shooter, target, false);
     Approach out;
     float lateX = 0, lateZ = 0;
     for (int i = 0; i < ticks; ++i) {
-        s.w.player(0).mana = 30000;
+        
         s.w.tick(1.f / 30);
         if (sim::Unit* t = s.w.unit(target)) {
             out.damage += 30000 - t->hp.floorInt();

@@ -59,13 +59,13 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
     w.setTerrain(heights,kCells,kCells,water?100:20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(kCells*kCells,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto factory=*registry.find(factoryName);factory.workerTime*=speed;factory.storage=1000000;
+    auto factory=*registry.find(factoryName);factory.workerTime*=speed;
     const auto* out=registry.find(outputName);
     float fx=1800,fz=1792;
     if(layout==Layout::Corner) {fx=float(kCells*16-160+(factory.footX%2)*8);fz=float(kCells*16-240);}
     const int id=w.spawn(&factory,fx,fz,0,0);
     if(rally)w.order(id,fx,fz+1600>kCells*16-64?fz-1600:fz+1600,false);
-    w.player(0).mana=1000000;w.train(id,out,count);
+    w.train(id,out,count);
     const Rect yard=footprint(*w.unit(id));
     const float cx=w.unit(id)->x.toFloat(),cz=w.unit(id)->z.toFloat();
     const float laneHalf=float(std::max(48,8*std::min(factory.footX,factory.footZ)));
@@ -79,7 +79,7 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
     };
     Result r;uint32_t lastRetry=0;int tick=0;
     for(;tick<30000;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         const auto* f=w.unit(id);
         if(f->productionRetryTick && f->productionRetryTick!=lastRetry)++r.refusals;
         lastRetry=f->productionRetryTick;

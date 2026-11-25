@@ -85,7 +85,7 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
     w.setTerrain(heights,kCells,kCells,100);
     w.setMapPlacementFeatures(std::vector<uint16_t>(kCells*kCells,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto yardType=*registry.find("armsy");yardType.workerTime*=4;yardType.storage=1000000;
+    auto yardType=*registry.find("armsy");yardType.workerTime*=4;
     const auto* ship=registry.find(shipName);
     const auto* iron=registry.find("armroy");
     const int id=w.spawn(&yardType,fx,fz,0,0);
@@ -114,11 +114,11 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
     std::vector<std::optional<std::pair<sim::Fixed,sim::Fixed>>> lastAside(idle.size());
     std::vector<std::vector<int>> asideFor(idle.size());
     int finished=0;bool refusedSince=false;
-    w.player(0).mana=1000000;w.train(id,ship,count);
+    w.train(id,ship,count);
     struct Out {int id,done,clear=-1,door=-1;Rect birth;bool rested=false;};
     std::vector<Out> outs;Result r;uint32_t lastRetry=0;int tick=0;
     for(;tick<20000;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         const auto* f=w.unit(id);
         if(f->productionRetryTick && f->productionRetryTick!=lastRetry)++r.refusals;
         lastRetry=f->productionRetryTick;

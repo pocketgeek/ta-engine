@@ -2,7 +2,7 @@
 
 // SDL-free match setup shared by the taclient client and the taserver referee
 // sim (docs/multiplayer-design.md, "Determinism contract"). Both must build a BIT-IDENTICAL initial
-// world -- same terrain, feature nav-blocking, mana deposits, players, teams,
+// world -- same terrain, feature nav-blocking, metal patches, players, teams,
 // and monarch spawns -- so their state hashes agree in lockstep.
 
 #include <stdexcept>
@@ -36,7 +36,7 @@ struct MatchSlot {
     bool used = false;
     int faction = 0;   // 0 ara, 1 tar, 2 ver, 3 zon, 4 cre
     int team = 0;
-    float manaMult = 1.0f;   // per-player income multiplier (Absurd AI = 2); Player::manaMult
+    float incomeMult = 1.0f; // per-player production multiplier (TA AI difficulty); PlayerBooks::mult
     bool automaticGates = false;
     bool defensiveAi = false; // Defensive AI uses a non-pursuing default stance from birth
 };
@@ -73,9 +73,6 @@ struct MatchConfig {
     bool roomMapRevealed = false, roomLosOff = false;
     ScenarioScript::TraceSink scenarioTrace; // local diagnostics only, installed before initial rules
     int scenarioViewPlayer = -1;     // cosmetic message filtering only; never hashed
-    // The pool every player holds before the units a game opens with credit
-    // their mogriumstorage (World::creditCreationStorage): 0, as retail.
-    float startMana = 0;
     // Total Annihilation start resources (skirmish/MP: the lobby's values; retail
     // skirmish defaults 1000 / 1000, docs/retail-gui.md section 5). Base storage is
     // max(start, 200) (docs/retail-economy.md).

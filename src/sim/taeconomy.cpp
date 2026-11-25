@@ -195,11 +195,67 @@ void World::taEconomyTick() {
             b.nextSettle += kSettlePeriod;
             if (b.nextSettle <= tickCounter_) b.nextSettle = tickCounter_ + kSettlePeriod;
         }
-        // Mirror into the legacy single pool the HUD and AI still read: metal.
-        players_[size_t(p)].mana = double(b.stored[M]);
-        players_[size_t(p)].storage = b.cap[M];
-        players_[size_t(p)].income = b.income[M];
     }
+}
+
+// TotalA.exe's auto-share (0x457d30, run from the tick at 0x49563a after the
+// wind; docs/retail-economy.md section 4), every tick where tick % 60 == 0.
+// Retail runs it for the local player only, in a multiplayer game
+// (game +0x2a44 & 1), and gives only to remote humans (owner kind 3); in
+// lockstep every peer runs it for every human player, in player order, so
+// the gifts land identically everywhere. Metal first (switch info +0x97 bit 2,
+// threshold +0xe4), then energy (bit 4, +0xe8): when stored is above the
+// threshold, the LAST allied human by index with less stored gets
+// min((stored - threshold) * k, their cap - their stored), k = 1/3 for metal
+// (0x4fd4b8) and 1/2 for energy (0x4fd4bc), through the manual give
+// (0x464c60 metal, 0x464b30 energy): the amount, capped at the giver's
+// stored, leaves at once (counted as requested) and joins the receiver's own
+// accumulator as production, so it lands at their next settle (capped there).
+void World::taShare() {
+    if (tickCounter_ % kSharePeriod != 0) return;
+    const int n = numPlayers();
+    auto human = [&](int i) {
+        const Player& pl = players_[size_t(i)];
+        return pl.books.hasBase && !pl.defeated && !pl.passiveNeutral && !computerOwned(i);
+    };
+    for (int giver = 0; giver < n; ++giver) {
+        if (!human(giver)) continue;
+        Player& from = players_[size_t(giver)];
+        for (const int r : {int(M), int(E)}) {
+            const uint8_t bit = r == M ? 1u : 2u;
+            auto& fb = from.books;
+            if (!(from.shareResources & bit) || !(fb.stored[r] > fb.shareThreshold[r])) continue;
+            int to = -1;
+            for (int i = 0; i < n; ++i)
+                if (i != giver && human(i) && allied(giver, i) &&
+                    players_[size_t(i)].books.stored[r] < fb.stored[r]) to = i;
+            if (to < 0) continue;
+            auto& tb = players_[size_t(to)].books;
+            const float k = r == M ? 1.0f / 3.0f : 0.5f;
+            float amount = float(double(fb.stored[r] - fb.shareThreshold[r]) * double(k));
+            const float room = tb.cap[r] - tb.stored[r];
+            if (!(amount < room)) amount = room;
+            // The manual give: capped at what the giver stores, paid at once.
+            amount = std::min(amount, fb.stored[r]);
+            if (!(amount > 0)) continue;
+            payNow(fb, fb.own[r], r, amount);
+            tb.own[r].prod += tb.mult * amount;
+        }
+    }
+}
+
+void World::setResourceSharing(int player, int resource, bool enabled) {
+    if (player < 0 || player >= numPlayers() || (resource != M && resource != E)) return;
+    const uint8_t bit = resource == M ? 1u : 2u;
+    auto& mask = players_[size_t(player)].shareResources;
+    mask = enabled ? uint8_t(mask | bit) : uint8_t(mask & ~bit);
+}
+
+void World::setShareThreshold(int player, int resource, float amount) {
+    if (player < 0 || player >= numPlayers() || (resource != M && resource != E)) return;
+    auto& b = players_[size_t(player)].books;
+    // 0x419340 / 0x419400: "OK.  Will share metal if above %d" stores min(N, cap).
+    b.shareThreshold[resource] = std::max(0.0f, std::min(amount, b.cap[resource]));
 }
 
 }  // namespace ta::sim

@@ -17,7 +17,7 @@ namespace ta::client {
 inline bool watchAllows(Act act) {
     switch (act) {
         case Act::NextUnit: case Act::TrackSelection:
-        case Act::SelectAll: case Act::SelectSameType: case Act::SelectOnScreen: case Act::SelectMonarch:
+        case Act::SelectAll: case Act::SelectSameType: case Act::SelectOnScreen: case Act::SelectCommander:
         case Act::SelectBuilders: case Act::SelectFactory:
         case Act::SelectBoats: case Act::SelectBallistic: case Act::SelectTroops: case Act::SelectArmed:
         case Act::SelectOnScreenType: case Act::SelectFlying:

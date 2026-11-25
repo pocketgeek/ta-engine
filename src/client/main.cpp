@@ -1894,7 +1894,7 @@ int main(int argc, char** argv) {
                 return 1;
             }
             // A multiplayer client builds the world from the server's GameStarting
-            // later, so it constructs "bare" (no single-player 2-monarch spawn).
+            // later, so it constructs "bare" (no single-player 2-commander spawn).
             // When looping back to the menu, keep this function's vfs alive for the
             // next session (+ its findMap); hand the game its own fresh mount.
             if (lobbyLoading) lobbyLoading->step("Preparing the game room",50);

@@ -172,7 +172,7 @@
                 if ((room.slots[i].type==1 || room.slots[i].type==2) && room.slots[i].team==room.slots[room.mySlot].team)
                     allies|=uint8_t(1u<<i);
         }
-        chatRecipients_=allies;voiceRecipients_=allies;requestedManaSharing_.reset();
+        chatRecipients_=allies;voiceRecipients_=allies;requestedSharing_.reset();
         // Spectators: off (the Diplomacy SPECTATORS row ticks them in). A spectator never
         // chats or talks in a running game at all.
         chatSpectators_=voiceSpectators_=false;
@@ -286,16 +286,14 @@
             // command stamping (the sender's seat) and this view name the same player.
             localPlayer_ = human;
             for (auto& u : world_.units())
-                if (u.player == localPlayer_ && u.type) { playerMonarchId_ = u.id; builderId_ = u.id; break; }
+                if (u.player == localPlayer_ && u.type) { playerCommanderId_ = u.id; builderId_ = u.id; break; }
             if (!missionAllowed_.empty())
                 std::fprintf(stderr, "mission %s: conjure menu restricted to %zu allowed unit types\n",
                              room.mission.c_str(), missionAllowed_.size());
             if (room.mySlot >= 0) side_ = ta::sides::lowerPrefix(room.slots[room.mySlot].faction);
             loadScreen_->step("LOADING INTERFACE", 90);
-            loadPanel(side_);
-            loadGui(side_);
             loadScreen_->step("WAITING FOR PLAYERS", 100);
-            startAtMonarch();
+            startAtCommander();
             beginGameRecording();
             return;
         }
@@ -303,7 +301,7 @@
         // this session's launch map. Point mapPath_ at it AND reload the render terrain
         // (mapView_), so the rendered map, the local sim, and the referee all agree.
         // Without this, picking a non-default map drew the launch map's terrain under a
-        // different map's sim -- phantom water, a monarch out in it, and misaligned fog.
+        // different map's sim -- phantom water, a commander out in it, and misaligned fog.
         mapPath_ = mp_ && mp_->mapPackage() && !ta::mapgen::isGeneratedMapId(room.mapId)
             ? mp_->mapPackage()->mapPath : ta::hpi::findMap(vfs_, room.mapId);
         if (mapPath_.empty()) throw std::runtime_error("selected map is missing: " + room.mapId);
@@ -337,7 +335,7 @@
         // while the reclaimable features in the sim (world_.features()) are this map's.
         // That mismatch made right-drag reclaim miss (the box covered the wrong stuff).
         // setupMatch is authoritative for the sim; loadFeatures only re-adds the same
-        // map's mana/nav idempotently (setTerrain already rebuilt the nav).
+        // map's metal/nav idempotently (setTerrain already rebuilt the nav).
         loadFeatures();
         warmCursors();   // cursor art + hardware reconstruction, off the frame path
         // client-only presentation
@@ -351,13 +349,11 @@
                                                              // captureFog does no work
         if (benchmarkMode_) benchmarkBaseline();             // t=0 baseline for the perf samples
         for (auto& u : world_.units())
-            if (u.player == localPlayer_ && u.type) { playerMonarchId_ = u.id; builderId_ = u.id; break; }
+            if (u.player == localPlayer_ && u.type) { playerCommanderId_ = u.id; builderId_ = u.id; break; }
         side_ = ta::sides::lowerPrefix(room.slots[localPlayer_].faction);
         loadScreen_->step("LOADING INTERFACE", 90);
-        loadPanel(side_);
-        loadGui(side_);
         loadScreen_->step("WAITING FOR PLAYERS", 100);
-        startAtMonarch();
+        startAtCommander();
         beginGameRecording();
     }
 
@@ -1061,7 +1057,7 @@ void GameView::speedProbe() {
     }
 }
 
-// TA_BUILDLINE_NET: the local player's monarch lays three build lines of its smallest
+// TA_BUILDLINE_NET: the local player's commander lays three build lines of its smallest
 // building through placeBuildLine (the code a shift-drag release runs) -- horizontal and
 // diagonal at the tight default, vertical at gap 2 -- so the Build/Move orders travel the
 // real path through the server and come back in tick bundles. Every site must then stand
@@ -1070,7 +1066,7 @@ void GameView::buildlineNetProbe() {
     if (!ta::devFlag("TA_BUILDLINE_NET") || netLinesDone_ || spectating_ || localPlayer_ < 0) return;
     if (netLines_.empty()) {
         if (netTick_ < 90) return;
-        int monarch = -1;
+        int commander = -1;
         const ta::sim::UnitType* small = nullptr;
         std::vector<std::vector<std::pair<float, float>>> plans;
         float mx = 0, mz = 0;
@@ -1078,10 +1074,10 @@ void GameView::buildlineNetProbe() {
             const auto live = liveWorld();
             for (const auto& u : live->units())
                 if (u.alive() && int(u.player) == localPlayer_ && u.type && u.type->commander && u.type->isBuilder) {
-                    monarch = u.id; mx = u.x.toFloat(); mz = u.z.toFloat(); break;
+                    commander = u.id; mx = u.x.toFloat(); mz = u.z.toFloat(); break;
                 }
-            if (monarch < 0) { netLinesDone_ = true; std::fprintf(stderr, "BUILDLINE_NET no monarch\n"); return; }
-            for (const auto& id : registry_.buildable(live->unit(monarch)->type->id)) {
+            if (commander < 0) { netLinesDone_ = true; std::fprintf(stderr, "BUILDLINE_NET no commander\n"); return; }
+            for (const auto& id : registry_.buildable(live->unit(commander)->type->id)) {
                 const auto* t = registry_.find(id);
                 if (t && t->isStructure() && t->yardMap.find_first_of("wWCY") == std::string::npos &&
                     (!small || t->footX * t->footZ < small->footX * small->footZ)) small = t;
@@ -1109,7 +1105,7 @@ void GameView::buildlineNetProbe() {
         const float gaps[3] = {0, 0, 2};
         for (size_t k = 0; k < plans.size(); ++k) {
             ClickScope click(*this);
-            selection_ = {monarch}; placing_ = small; buildLineGap_ = int(gaps[k]);
+            selection_ = {commander}; placing_ = small; buildLineGap_ = int(gaps[k]);
             const auto [x0, z0] = plans[k][0];
             const auto [x1, z1] = plans[k][1];
             netLines_.push_back({small, buildLinePositions(x0, z0, x1, z1)});
@@ -1169,11 +1165,11 @@ void GameView::autoplayStep() {
             for (const auto& u : live->units()) {
                 if (!u.alive() || !u.type) continue;
                 if (int(u.player) == localPlayer_) {
-                    // The monarch stays home: sending it into the enemy base ends the game, and with it the run.
+                    // The commander stays home: sending it into the enemy base ends the game, and with it the run.
                     if (u.type->maxVel > ta::sim::Fixed() && !u.type->commander && !u.embarked() && !u.underConstruction)
                         mine.push_back(u.id);
                 } else if (!live->allied(localPlayer_, int(u.player)) && (tx < 0 || (u.type->commander && !u.type->canFly))) {
-                    tx = u.x.toFloat(); tz = u.z.toFloat();   // the first enemy seen, or better, an enemy monarch
+                    tx = u.x.toFloat(); tz = u.z.toFloat();   // the first enemy seen, or better, an enemy commander
                 }
             }
         }
@@ -1347,7 +1343,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         if (builders.empty()) return;
         const Mine& b = builders[rnd() % builders.size()];
         const auto types = menu(b, false);
-        if (types.empty() || b.type->commander) return;   // the monarch keeps building
+        if (types.empty() || b.type->commander) return;   // the commander keeps building
         c.kind = ta::net::Cmd::RepeatTrain; c.unitId = b.id;
         std::snprintf(c.type, sizeof c.type, "%s", types[rnd() % types.size()]->id.c_str());
         break;
@@ -1616,10 +1612,9 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // don't seat self -- an all-AI game the host just watches.
             if (r.mySlot < 0 && (benchmarkMode_ || (autoMode == 1 && ta::devEnv("TA_MP_WATCH")))) {
                 const char* ai = ta::devEnv("TA_MP_AIS");
-                // Benchmark: always a full 8-faction FFA (each AI its own team -> they fight,
-                // which is the point of the load test). FIXED factions by slot (k%5):
-                // AI1 Aramon, AI2 Taros, AI3 Veruna, AI4 Zhon, AI5 Creon, AI6 Aramon,
-                // AI7 Taros, AI8 Veruna -- never random.
+                // Benchmark: always a full 8-player FFA (each AI its own team -> they fight,
+                // which is the point of the load test). FIXED sides by slot (k % sides,
+                // ARM / CORE alternating) -- never random.
                 int nAi = benchmarkMode_ ? int(ta::net::kMaxSlots)
                                          : std::clamp(ai ? std::atoi(ai) : 2, 2, int(ta::net::kMaxSlots));
                 for (int k = 0; k < nAi; ++k)
@@ -1792,7 +1787,7 @@ namespace {
 struct RoomScriptRule { const char* name; ta::RoomField field; };
 constexpr RoomScriptRule kRoomScriptRules[] = {
     {"doubleSight", ta::RoomField::DoubleSight},
-    {"unitCap", ta::RoomField::UnitCap}, {"monarchExpendable", ta::RoomField::Monarch},
+    {"unitCap", ta::RoomField::UnitCap}, {"monarchExpendable", ta::RoomField::Commander},
     {"speedUnlock", ta::RoomField::SpeedUnlock}, {"fog", ta::RoomField::Fog},
     {"randomStarts", ta::RoomField::StartLocations}, {"pathfinding", ta::RoomField::Pathfinding},
     {"powerCodes", ta::RoomField::PowerCodes}, {"allowSpectators", ta::RoomField::AllowSpectators}};
@@ -1800,7 +1795,7 @@ int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
     switch (field) {
     case ta::RoomField::DoubleSight: return o.doubleSight;
     case ta::RoomField::UnitCap: return o.unitCap;
-    case ta::RoomField::Monarch: return o.monarchExpendable;
+    case ta::RoomField::Commander: return o.monarchExpendable;
     case ta::RoomField::SpeedUnlock: return o.speedUnlock;
     case ta::RoomField::Fog: return o.fogExplored;
     case ta::RoomField::StartLocations: return o.randomStarts;
@@ -2188,21 +2183,6 @@ int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
         const SDL_Rect vp{int(lobbyOffX_), int(lobbyOffY_), int(kLobbyW), int(kLobbyH)};
         SDL_RenderSetScale(ren_, lobbyScale_, lobbyScale_);
         SDL_RenderSetViewport(ren_, &vp);
-    }
-
-    const std::vector<uint8_t>* GameView::kingdomPalette(const std::string& kingdom) {
-        if (kingdom.empty()) return nullptr;
-        auto it = kingdomPals_.find(kingdom);
-        if (it == kingdomPals_.end()) {
-            std::vector<uint8_t> rgba;
-            try {
-                auto pal = ta::gaf::Palette::fromBytes(vfs_.read("palettes/" + kingdom + ".pcx"),
-                                                        kingdom + ".pcx");
-                rgba.assign(&pal.rgba[0][0], &pal.rgba[0][0] + 256 * 4);
-            } catch (...) { rgba.clear(); }
-            it = kingdomPals_.emplace(kingdom, std::move(rgba)).first;
-        }
-        return it->second.empty() ? nullptr : &it->second;
     }
 
     void GameView::clampMapScroll() {

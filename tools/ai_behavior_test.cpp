@@ -89,10 +89,10 @@ static void levelWiring() {
         check(rd.ok && back.aiLevel==5,"the room's slot record carries the level");
     }
     auto expect=[](const sim::MatchConfig& cfg) {
-        return cfg.slots.size()==4 && cfg.slots[0].manaMult==1 && !cfg.slots[0].defensiveAi &&
-            cfg.slots[1].manaMult==2 && cfg.slots[1].defensiveAi &&
-            cfg.slots[2].manaMult==1 && cfg.slots[2].defensiveAi &&
-            cfg.slots[3].manaMult==0.5f && !cfg.slots[3].defensiveAi;
+        return cfg.slots.size()==4 && cfg.slots[0].incomeMult==1 && !cfg.slots[0].defensiveAi &&
+            cfg.slots[1].incomeMult==2 && cfg.slots[1].defensiveAi &&
+            cfg.slots[2].incomeMult==1 && cfg.slots[2].defensiveAi &&
+            cfg.slots[3].incomeMult==0.5f && !cfg.slots[3].defensiveAi;
     };
     net::GameOptions opts;
     check(expect(net::matchConfigFor(opts,slots,7)),"the match config gives each seat its level's multiplier and stance");
@@ -119,7 +119,7 @@ static Opening playOpening(const hpi::Vfs& vfs,const sim::TypeRegistry& reg,ai::
     cfg.slots.resize(2);
     cfg.slots[0].used=true;cfg.slots[0].faction=0;cfg.slots[0].team=0;
     cfg.slots[1].used=true;cfg.slots[1].faction=1;cfg.slots[1].team=1;
-    cfg.slots[1].manaMult=ai::incomeMultFor(level);cfg.slots[1].defensiveAi=ai::defensiveLevel(level);
+    cfg.slots[1].incomeMult=ai::incomeMultFor(level);cfg.slots[1].defensiveAi=ai::defensiveLevel(level);
     const auto starts=sim::setupMatch(w,reg,cfg);
     ai::Profile profile;
     ai::Controller controller(1,reg,profile,0x1234,level,{starts.empty() ? std::pair{0.f,0.f} : starts.front()});

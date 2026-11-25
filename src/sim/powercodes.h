@@ -1,15 +1,16 @@
 #pragma once
 
-// Power Codes: retail's cheat console commands (KINGDOMS.icd command table
-// 0x605bc8, group 2), typed in the chat box as +CODE and honoured only when
+// Power Codes: retail's cheat console commands (TotalA.exe command table
+// 0x501f48.., group 2), typed in the chat box as +CODE and honoured only when
 // the match was created with POWER CODES on (GameOptions::powerCodes; retail's
 // "Power Codes" battle-room box, GameOptions+0x18, never in a campaign --
 // gate 0x499610). Retail looks names up with _stricmp, so they are
 // case-insensitive, and the LOS argument is compared the same way.
 //
-// Only the nine codes below exist here. Seven change hashed sim state and
+// Only the eight codes below exist here. Six change hashed sim state and
 // travel as Cmd::PowerCode (World::applyPowerCode); Radar and MakePoster are
-// local display only and never leave the client.
+// local display only and never leave the client. The handler addresses after
+// ATM are still the KINGDOMS.icd ones the codes were first ported from.
 
 #include <cctype>
 #include <cstdint>
@@ -20,8 +21,8 @@ namespace ta::sim {
 
 enum class PowerCode : uint8_t {
     None = 0,
-    Atm = 1,         // 425d30: fill the issuer's mana pool to its storage
-    ManaMe = 2,      // 426390: fill each selected unit's personal mana
+    Atm = 1,         // TotalA.exe 0x4170c0: the issuer's stored energy and metal += 1000
+    RetiredManaMe = 2, // was Kingdoms' MANAME (TotalA.exe has no such code): never parsed or applied
     DoubleShot = 3,  // 425cd0: toggle doubled damage (clears HalfShot)
     HalfShot = 4,    // 425d00: toggle halved damage (clears DoubleShot)
     Los = 5,         // 4258e0: toggle line of sight; "On"/"Off" set it
@@ -32,8 +33,10 @@ enum class PowerCode : uint8_t {
 };
 
 // The codes the sim applies (Cmd::PowerCode's targetId); the rest are client-side.
-constexpr bool simPowerCode(PowerCode c) { return c >= PowerCode::Atm && c <= PowerCode::NowISee; }
-constexpr bool simPowerCode(int32_t c) { return c >= int32_t(PowerCode::Atm) && c <= int32_t(PowerCode::NowISee); }
+constexpr bool simPowerCode(int32_t c) {
+    return c >= int32_t(PowerCode::Atm) && c <= int32_t(PowerCode::NowISee) && c != int32_t(PowerCode::RetiredManaMe);
+}
+constexpr bool simPowerCode(PowerCode c) { return simPowerCode(int32_t(c)); }
 
 // Cmd::PowerCode's queue byte. Only LOS takes one; retail ignores any other word
 // after LOS, so a parse that found one reports Invalid and nothing is applied.
@@ -50,7 +53,6 @@ struct PowerCodeInput {
 inline const char* powerCodeName(PowerCode c) {
     switch (c) {
         case PowerCode::Atm: return "ATM";
-        case PowerCode::ManaMe: return "MANAME";
         case PowerCode::DoubleShot: return "DOUBLESHOT";
         case PowerCode::HalfShot: return "HALFSHOT";
         case PowerCode::Los: return "LOS";
@@ -73,7 +75,7 @@ inline bool powerEqual(std::string_view a, std::string_view b) {
 }
 }  // namespace detail
 
-// A chat line that names one of the nine codes: "+CODE [argument]", leading and
+// A chat line that names one of the eight codes: "+CODE [argument]", leading and
 // trailing whitespace (and whitespace after the '+') ignored, case-insensitive.
 // nullopt for anything else -- ordinary chat, another +word, or an empty "+".
 // Words after the code are ignored except LOS's On/Off (retail's argument test).
@@ -93,7 +95,7 @@ inline std::optional<PowerCodeInput> parsePowerCode(std::string_view line) {
     const std::string_view word = line.substr(end, argEnd - end);
     PowerCodeInput in;
     for (int c = int(PowerCode::Atm); c <= int(PowerCode::MakePoster); ++c)
-        if (detail::powerEqual(name, powerCodeName(PowerCode(c)))) in.code = PowerCode(c);
+        if (*powerCodeName(PowerCode(c)) && detail::powerEqual(name, powerCodeName(PowerCode(c)))) in.code = PowerCode(c);
     if (in.code == PowerCode::None) return std::nullopt;
     if (in.code == PowerCode::Los && !word.empty())
         in.arg = detail::powerEqual(word, "on") ? PowerArg::On

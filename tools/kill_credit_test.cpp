@@ -81,13 +81,14 @@ int main(int argc,char** argv) try {
         World w;terrain(w);
         const int k=w.spawn(&t,400,400,0,0),v=w.spawn(&prize,1200,1200,0,1);
         w.tick(1.f/30);
-        const double before=w.player(0).mana;
+        const auto before=w.books(0);
         w.unit(v)->lastHitBy=k;w.unit(v)->lastHitPlayer=0;
         w.unit(v)->hp=Fixed();w.unit(v)->deathType=1;
         w.tick(1.f/30);
         check(!w.unit(v)->alive() && !w.unit(v)->deathPending,"the prize did not retire");
         check(w.player(0).kills==1 && w.unit(k)->kills==1 && w.player(1).losses==1,"the kill was not counted");
-        check(w.player(0).mana-before<0.1 && w.player(0).score==0,
+        check(w.books(0).own[0].prod==before.own[0].prod && w.books(0).own[1].prod==before.own[1].prod &&
+              w.books(0).stored[1]==before.stored[1] && w.player(0).score==0,
               "a TA kill paid a bounty or a score");
     }
     {

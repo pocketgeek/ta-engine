@@ -46,7 +46,7 @@ struct Types {
         sol.id = sol.name = "sol";
         sol.maxVel = Fixed::fromInt(2); sol.turnRate = sol.turnInPlaceRate = 10000;
         sol.canMove = sol.canPatrol = sol.canGuard = true; sol.maxHp = 300; sol.footX = sol.footZ = 2;
-        sol.sight = 400; sol.buildTime = 60; sol.buildCost = 60;
+        sol.sight = 400; sol.buildTime = 60; sol.buildCostMetal= 60;
 
         gun = sol; gun.id = gun.name = "gun";
         Weapon w; w.name = "bolt"; w.range = 200; w.reload = 0.5f; w.damage = 1; w.projVel = 900;
@@ -54,17 +54,17 @@ struct Types {
 
         builder = sol; builder.id = builder.name = "builder";
         builder.isBuilder = builder.canReclaim = true; builder.workerTime = 100; builder.buildDist = 80;
-        builder.storage = 100000; builder.upright = true;
+        builder.upright = true;
 
         factory.id = factory.name = "factory";
         factory.maxVel = Fixed(); factory.maxHp = 5000; factory.footX = factory.footZ = 6;
-        factory.isBuilder = true; factory.workerTime = 10; factory.storage = 1000000; factory.buildMenu = {"sol"};
+        factory.isBuilder = true; factory.workerTime = 10; factory.buildMenu = {"sol"};
 
         conjurer = builder; conjurer.id = conjurer.name = "conjurer";   // Zhon-style mobile producer
         conjurer.buildMenu = {"sol"};
 
         hut.id = hut.name = "hut"; hut.maxHp = 2000; hut.maxVel = {}; hut.footX = hut.footZ = 2;
-        hut.buildTime = 3000; hut.buildCost = 10;
+        hut.buildTime = 3000; hut.buildCostMetal= 10; hut.buildCostEnergy = 3000;
 
         foe = sol; foe.id = foe.name = "foe"; foe.maxVel = {}; foe.canMove = false; foe.maxHp = 100000;
 
@@ -85,7 +85,7 @@ struct Rig {
         w.setTerrain(std::vector<uint8_t>(size_t(128) * 128, 100), 128, 128, 20);
         w.setPathService(true);
         w.setPlayerCount(2);
-        w.player(0).mana = 1e7;
+        
     }
     void ticks(int n) { for (int i = 0; i < n; ++i) w.tick(1.f / 30); }
     void send(net::Cmd kind, int unit, float x, float z, uint8_t queue, int target = 0) {
@@ -372,7 +372,8 @@ std::vector<int> hutsAt(const World& w, const UnitType* hut, float x, float z) {
 // A builder at work on a site, interrupted by Ctrl: the work stops and the
 // build waits behind the new order, holding its site. The detour is long
 // enough for the site to decay away (an unattended site's GetBuilt decays it
-// 30 ticks after its last work, at 0.5 / buildtime of its build a tick), so
+// 30 ticks after its last work, 11 / buildcostenergy of its build every 11
+// ticks, TotalA.exe 0x402da0 / 0x41bcd0), so
 // the resumed build places it again and the hut still gets built.
 void frontInterruptsBuild() {
     Types t; Rig r;
@@ -389,7 +390,7 @@ void frontInterruptsBuild() {
     {
         const Unit& b = *r.w.unit(id);
         const auto& o = b.orders;
-        check(b.buildSiteId == 0 && !b.retailBuild, "Ctrl move stops the work on the site");
+        check(b.buildSiteId == 0, "Ctrl move stops the work on the site");
         check(goals(o).size() == 3 && o.front().groundMission && World::queuedKind(o.front()) == World::QueuedKind::Move &&
                   o[World::currentLeg(o) + 1].buildType == &t.hut && o[World::currentLeg(o) + 1].resumeSite == site &&
                   o.back().clickX == Fixed::fromInt(1400),

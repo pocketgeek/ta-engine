@@ -234,10 +234,7 @@
             if (sx < -200 || sy < -200 || sx > winW + 200 || sy > winH + 200) continue;
             // Retail draws every feature whose TDF height is below 10 before any
             // unit (client/hiddenunits.h): the low layer. Taller ones sort with the
-            // ground units by depth. (Mana deposit decals, height 0, used to need a
-            // -24 sort bias to stay under the lodestone built on them; the low layer
-            // keeps them under every unit, so the bias is gone -- the tall henge
-            // stones of a mana site now sort by plain depth like any tall feature.)
+            // ground units by depth.
             namespace hu = ta::hiddenunits;
             items.push_back({f.z, nullptr, &f, f.low ? hu::kLayerLowFeature : hu::kLayerGround});
         }
@@ -789,7 +786,7 @@
             }
             if (work.empty()) return fail("no visible unit shadows");
             // Page size. Small scenes should not clear a 16 MiB target for one
-            // monarch: pages grow (at once) to hold the largest tile and until the
+            // commander: pages grow (at once) to hold the largest tile and until the
             // frame's tiles take <= 3/4 of one page -- the former rule. Since F they
             // also shrink, after sustained demand that pages of half the size hold
             // with the same headroom. A size change recreates every page.
@@ -2146,8 +2143,8 @@
             if (op.f) {
                 const auto& f = *op.f;
                 ta::render::countLogicalDraw();   // the feature body (its shadow/flames/smoke not counted)
-                // Lift the decal onto the terrain relief just like a unit, so a mana
-                // deposit sits at the height its heightmap claims (and lodestones/units
+                // Lift the decal onto the terrain relief just like a unit, so a metal
+                // patch sits at the height its heightmap claims (and units
                 // built on it line up) instead of the decal being flat.
                 float lfx = terrainLiftX(f.x, f.z) * zm0, lfy = terrainLift(f.x, f.z) * zm0;
                 // RECLAIMED, fading out: retail draws only a white silhouette of the
@@ -2830,56 +2827,6 @@
                 return true;
             });
 
-        // Player mana bar top left (legacy; only without the bottom bar). A spectator
-        // isn't a player -- no personal mana readout.
-        if (!panelTex_ && hudShown() && !posterFrame_) {
-            const PlayerR& tm = framePlayer(hudPlayer());
-            float cap = std::max(tm.storage, 1.0f);
-            // Its lines reach y = 90 with a builder selected (MANA, the unit, its menu,
-            // TRAINING); the block moves down as one under the stream banner.
-            const auto* sel = selection_.empty() ? nullptr : frameUnitP(selection_.front());
-            const float legacyH = !hudFont_.ok() ? 12.0f : !sel || !sel->alive() || !sel->type ? 28.0f
-                                  : sel->type->isBuilder ? 82.0f : 46.0f;
-            const float dy = topLeft_.place(10, legacyH) - 10;
-            SDL_FRect bg{10, 10 + dy, 180, 12};
-            SDL_SetRenderDrawColor(ren_, 20, 20, 30, 230);
-            SDL_RenderFillRectF(ren_, &bg);
-            SDL_FRect fg{12, 12 + dy, 176 * std::clamp(tm.mana / cap, 0.0f, 1.0f), 8};
-            SDL_SetRenderDrawColor(ren_, 80, 200, 255, 255);
-            SDL_RenderFillRectF(ren_, &fg);
-            if (hudFont_.ok() && !panelTex_) {
-                char buf[96];
-                std::snprintf(buf, sizeof buf, "MANA %d/%d  +%d", int(tm.mana), int(cap),
-                              int(tm.income));
-                hudFont_.draw(ren_, buf, 198, 21 + dy, 1.5f, {170, 225, 255, 255});
-                if (!selection_.empty()) {
-                    const auto* u = frameUnitP(selection_.front());
-                    if (u && u->alive() && u->type) {
-                        std::snprintf(buf, sizeof buf, "%s  %d/%d", u->displayName().c_str(),
-                                      int(u->hp), int(u->type->maxHp));
-                        hudFont_.draw(ren_, buf, 12, 40 + dy, 1.5f, {220, 220, 190, 255});
-                        if (u->type->isBuilder) {
-                            const auto menu = conjureMenu(u->type->id);   // mission-filtered
-                            std::string m;
-                            for (size_t i = 0; i < menu.size() && i < 6; ++i) {
-                                const auto* bt = registry_.find(menu[i]);
-                                m += std::to_string(i + 1) + ":" +
-                                     (bt ? bt->name : menu[i]) + "  ";
-                            }
-                            if (!m.empty())
-                                hudFont_.draw(ren_, m, 12, 58 + dy, 1.5f, {180, 200, 170, 255});
-                            if (!u->buildQueue.empty()) {
-                                std::snprintf(buf, sizeof buf, "TRAINING %s (%zu queued)",
-                                              u->buildQueue.front()->name.c_str(),
-                                              u->buildQueue.size());
-                                hudFont_.draw(ren_, buf, 12, 76 + dy, 1.5f, {150, 200, 255, 255});
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Restore the un-shaken camera so the HUD/panel stays rock-steady.
         if (shaking) mapView_.setOffset(shakeBaseX, shakeBaseY);
         // A MakePoster tile (posterStep) is the world alone.
@@ -2889,9 +2836,9 @@
         // its minimap + order column on a solid strip (never over the map).
         SDL_RenderSetClipRect(ren_, nullptr);
         // Neutral panel strip behind the minimap (kept for spectators too -- it's plain
-        // chrome, not the faction art). The command panel + mana bulb + conjure menu
-        // (renderGui) and the bottom InfoPanel chrome (drawPanel) are PLAYER-only: a
-        // spectator isn't a player and gets neither, just the minimap and the F4 board.
+        // chrome, not the faction art). The bottom bar (drawPanel) and TA's sidebar
+        // page and top bar (renderTaHud) are PLAYER-only: a spectator isn't a player
+        // and gets neither, just the minimap and the F4 board.
         SDL_SetRenderDrawColor(ren_, 16, 14, 12, 255);
         // The strip normally stops short to leave room for the player's bottom
         // InfoPanel bar; a spectator has no bottom bar, so it must reach the
@@ -2906,11 +2853,10 @@
                           (double(SDL_GetPerformanceFrequency()) / 1000.0);
         }
         if (hudShown()) {
-            renderGui(winW, winH);
             drawPanel(winW, winH);
             renderTaHud(winW, winH);   // TA sidebar page + top bar (client/gameview_tahud.cpp)
         } else {   // nothing on screen to click
-            guiBtnRects_.clear();iconRects_.clear();selPortraitRects_.clear();
+            iconRects_.clear();selPortraitRects_.clear();
             buildMenuRect_={};buildRowTop_=0;
         }
         // After the command panel: the readout fills the strip BETWEEN the two, and it
@@ -2935,7 +2881,7 @@
 
         if (mp_ && hudFont_.ok()) {
             // Dev net-status readout (TA_NETDEBUG): off by default -- it sat over the
-            // bottom-right mana panel. The BEHIND-BY lag warning below always shows.
+            // bottom-right panel. The BEHIND-BY lag warning below always shows.
             static const bool kNetDebug = ta::devEnv("TA_NETDEBUG") != nullptr;
             if (kNetDebug) {
                 char nb[64];
@@ -4517,13 +4463,6 @@
         shadowCoverageTextures_.clear();
         shadowMaskPages_.clear();
         shadowMasks_.clear();
-        for (auto& row : guiTex_)
-            for (SDL_Texture* t : row) if (t) gpuvram::destroy(t);
-        guiTex_.clear();
-        clearSideArt();
-        for (auto& b : orderBtns_)
-            for (SDL_Texture*& t : b.frames) kill(t);
-        orderBtns_.clear();
         for (auto& [n, t] : icons_) if (t) gpuvram::destroy(t);
         icons_.clear();
         for (auto& [n, t] : modelIcons_) if (t) gpuvram::destroy(t);
@@ -4549,8 +4488,6 @@
         fogSubmit_.clear();fogUpload_.clear();miniFogUpload_.clear();
         kill(fogTex_);
         kill(miniFogTex_);
-        kill(panelTex_);
-        kill(botTex_);
         kill(mapPreviewTex_);
         distantModelCache_.clear();
         distantModelItems_.clear();
@@ -5347,7 +5284,7 @@
         // Differential validation of the shadow fast path (positions, masks, order,
         // corpse culling) against the full collector, after placement.
         static const bool verifyShadow=ta::devEnv("TA_SHADOW_VERIFY")!=nullptr;
-        // Lodestones are skipped: they cast their visible geometry including pieces
+        // Mines and other buried units are skipped: they cast their visible geometry including pieces
         // their scripts mark DONT_CACHE / RENDER_OFF (a deliberate retail deviation in
         // buildUnitShadow), which the reference collector does not model.
         if (verifyShadow && (stages & kStageLocal) && shadowsOnFrame_ &&
@@ -5861,9 +5798,6 @@
             SDL_RenderGeometry(ren_, nullptr, fan.data(), int(fan.size()), nullptr, 0);
             SDL_SetRenderDrawBlendMode(ren_, pbm);
         }
-        // (Kingdoms drew its conjure sparkles here from per-side art --
-        // aramonbuild, tarosbuild, verunabuild, zhonbuild, creonbuild -- that TA
-        // does not ship; TA's nanolathe is drawn by the nano spray.)
         // Submit the pre-built, depth-sorted vertex runs -- one SDL_RenderGeometry
         // per texture (usually 1 per unit). The veterancy/conjure colour tint was
         // already baked into the vertices on the worker pool.
@@ -5988,7 +5922,7 @@
         if (art.empty()) return nullptr;
         if (!shadowsLoaded_) {
             shadowsLoaded_ = true;
-            const auto* pal = featurePalette("aramon");
+            const auto* pal = featurePalette("");   // TA: the game palette (palettes/palette.pal)
             if (pal) try {
                 for (auto& sq : ta::gaf::load(vread("anims/shadows.gaf"), *pal, -1,
                                                "anims/shadows.gaf")) {
@@ -6201,7 +6135,7 @@
         std::string seq = def.valueOr(seqKey, "");
         std::string seqShad = def.valueOr(shadKey, "");
         if (seq.empty()) return nullptr;   // e.g. a def without seqnameburn
-        const std::string world = def.valueOr("world", "aramon");
+        const std::string world = def.valueOr("world", "");
         const bool burn = std::string_view(seqKey) == "seqnameburn";
         // seqnamedie and seqnamedieshad load nonlooping (493eff, 493f4f).
         const bool die = std::string_view(seqKey) == "seqnamedie";
@@ -6509,107 +6443,7 @@
                     ++placed;
             }
         std::printf("features: %d placed\n", placed);
-        addShorelineWaves();
         featuresAtLoad_ = features_.size();
-    }
-
-    void GameView::addShorelineWaves() {
-        // Shipped maps hand-place their wave features as sparse OFFSHORE breakers
-        // (Athri Cay: 34 sprites on a 480x480 map, 4-15 cells off the coast in
-        // strings 10-18 cells apart along SOME stretches -- never a continuous
-        // surf rim; some maps have zero). Generated maps have no author, so
-        // scatter them retail-style here. Display only: addFeature is a render
-        // instance with no nav/mana/sim effect (nav blocking lives in the sim).
-        if (!ta::mapgen::isGeneratedMapId(mapPath_)) return;   // authored maps ship their own
-        if (ta::mapgen::lavaWorld(ta::mapgen::decodeMapId(mapPath_).mapType)) return;   // lava has no surf
-        const auto& map = mapView_.map();
-        const int W = map.width, H = map.height, sea = map.seaLevel;
-        if (W <= 0 || H <= 0 || map.heights.size() < size_t(W) * H) return;
-        // World prefix (AraWave/TarWave/VerWave/ZonWave/CreWave) from the map's
-        // feature names (case-insensitive: Creon TDFs mix "CreTree"/"CRERock").
-        std::string wp = "Ara";
-        for (const auto& n : map.featureNames) {
-            std::string p = n.substr(0, 3);
-            std::transform(p.begin(), p.end(), p.begin(), ::tolower);
-            if (p == "tar") { wp = "Tar"; break; }
-            if (p == "ver") { wp = "Ver"; break; }
-            if (p == "zon") { wp = "Zon"; break; }
-            if (p == "ara") { wp = "Ara"; break; }
-            if (p == "cre") { wp = "Cre"; break; }
-        }
-        auto land = [&](int x, int z) {
-            return x >= 0 && z >= 0 && x < W && z < H && map.heights[size_t(z) * W + x] >= sea;
-        };
-        // Multi-source BFS: distance (in cells) from every water cell to land.
-        std::vector<uint8_t> dist(size_t(W) * H, 255);
-        std::vector<int> q; q.reserve(size_t(W) * H / 4);
-        for (int z = 0; z < H; ++z)
-            for (int x = 0; x < W; ++x)
-                if (land(x, z)) { dist[size_t(z) * W + x] = 0; q.push_back(z * W + x); }
-        for (size_t head = 0; head < q.size(); ++head) {
-            int c = q[head], cx = c % W, cz = c / W;
-            int d = dist[size_t(c)];
-            if (d >= 15) continue;
-            static const int dx4[] = {1, -1, 0, 0}, dz4[] = {0, 0, 1, -1};
-            for (int k = 0; k < 4; ++k) {
-                int nx = cx + dx4[k], nz = cz + dz4[k];
-                if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue;
-                size_t ni = size_t(nz) * W + nx;
-                if (dist[ni] != 255) continue;
-                dist[ni] = uint8_t(d + 1);
-                q.push_back(int(ni));
-            }
-        }
-        // One candidate per 12x12 bucket, hash-gated to ~45% so the breakers form
-        // intermittent strings (not every stretch of coast gets any) -- matching
-        // the shipped density/spacing. Stable per map (hash on bucket + map dims).
-        auto hash = [&](uint64_t v) {
-            v ^= uint64_t(W) << 32 ^ uint64_t(H) ^ (uint64_t(sea) << 20);
-            v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
-            v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
-            return v ^ (v >> 31);
-        };
-        int placed = 0;
-        for (int bz = 0; bz < H; bz += 12)
-            for (int bx = 0; bx < W; bx += 12) {
-                if (hash(uint64_t(bz) * 100003 + bx) % 100 >= 45) continue;
-                // Best cell in the bucket: offshore band 5..14, nearest to 9 out.
-                int cx = -1, cz = -1, best = 99;
-                for (int z = bz; z < std::min(bz + 12, H); ++z)
-                    for (int x = bx; x < std::min(bx + 12, W); ++x) {
-                        int d = dist[size_t(z) * W + x];
-                        if (land(x, z) || d < 5 || d > 14) continue;
-                        if (std::abs(d - 9) < best) { best = std::abs(d - 9); cx = x; cz = z; }
-                    }
-                if (cx < 0) continue;
-                // Face the crest toward the nearest shore: steepest-descent walk
-                // down the distance field to land, then classify the direction.
-                int wx = cx, wz = cz;
-                for (int step = 0; step < 20 && !land(wx, wz); ++step) {
-                    int bd = dist[size_t(wz) * W + wx], nx = wx, nz = wz;
-                    static const int dx4[] = {1, -1, 0, 0}, dz4[] = {0, 0, 1, -1};
-                    for (int k = 0; k < 4; ++k) {
-                        int tx = wx + dx4[k], tz = wz + dz4[k];
-                        if (tx < 0 || tz < 0 || tx >= W || tz >= H) continue;
-                        if (dist[size_t(tz) * W + tx] < bd) { bd = dist[size_t(tz) * W + tx]; nx = tx; nz = tz; }
-                    }
-                    if (nx == wx && nz == wz) break;
-                    wx = nx; wz = nz;
-                }
-                int ddx = wx - cx, ddz = wz - cz;
-                // Variant by land direction (foam draws toward the land; anchors
-                // calibrated from the GAF): cardinals N->13 S->01 E->07 W->03,
-                // diagonals NW->04 NE->06 SE->16 SW->10.
-                int v;
-                bool diag = std::abs(ddx) * 2 > std::abs(ddz) && std::abs(ddz) * 2 > std::abs(ddx);
-                if (diag) v = ddx < 0 ? (ddz < 0 ? 4 : 10) : (ddz < 0 ? 6 : 16);
-                else if (std::abs(ddx) >= std::abs(ddz)) v = ddx >= 0 ? 7 : 3;
-                else v = ddz >= 0 ? 1 : 13;
-                char nm[24];
-                std::snprintf(nm, sizeof nm, "%sWave%02d", wp.c_str(), v);
-                if (addFeature(nm, cx, cz)) ++placed;
-            }
-        std::printf("offshore waves: %d placed (%sWave)\n", placed, wp.c_str());
     }
 
     bool GameView::buildIconClick(float mx, float my, bool lmb, bool rmb) {
@@ -7530,7 +7364,7 @@
 
     // Hitscan flashes. A Line-of-Sight weapon applies its damage instantly and
     // spawns no projectile, so this bolt IS the shot: without it the King's
-    // Thunder, the Creon tasers and the Zhon lightning all fire invisibly.
+    // lightning weapons all fire invisibly.
     // Lightning zig-zags; other beams draw straight. Called on the ADD draw mode.
     void GameView::drawFxBeam(const BeamFx& b) {
         const float zm = mapView_.zoom();
@@ -8610,7 +8444,7 @@
                 float w[3];
                 if (!prepared) xf.apply(o.vertices[vi], o.vertices[vi + 1], o.vertices[vi + 2], w);
                 else { w[0]=0; w[1]=prepared->rotated[vi/3][1]; w[2]=0; }
-                const float wx = mirror ? -w[0] : w[0];   // un-mirror Zhon models on X
+                const float wx = mirror ? -w[0] : w[0];   // un-mirror mirrored models on X
                 const float rx = prepared ? prepared->rotated[vi/3][0] : wx * cy + w[2] * sy;
                 const float rz = prepared ? prepared->rotated[vi/3][2] : -wx * sy + w[2] * cy;
                 // TA billboards lean back (+y and +z together); moving away (+z)

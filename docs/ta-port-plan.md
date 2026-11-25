@@ -24,7 +24,7 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 | --- | --- |
 | 1. Units and weapons (`retail-data.md`) | done: 278 units, weapons by section, build menus from guis/download |
 | 2. Metal / energy economy (`retail-economy.md`) | done: 1 s settle, debt stalls, extractors on ore, wind/tidal, reclaim (`reclaim_test`) |
-| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, a kept engine feature, or dead code listed under Open (d)); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. The ballistic shell, the last Kingdoms rule, is TotalA.exe's since the second pass (2026-11-24): AimX's pitch solve 0x49a890 (equal to the binary on 63 emulated cases, tools/re/ballistic_emu.py), the range gate 0x49aa80 in the fire path, the launch 0x49cde0 on the slot's AimX angles plus the spread with the barrel word (0x49e11b, 0x49ce6a), and the motion 0x49bce3 (move, the wind vector G+0x37ecc = 0x490cf7's, then gravity; once a tick); burst clones copy the emitter (0x49b83b). Kingdoms code left unreachable: the Classic brain and the engine's old Controller levels are deleted; the third pass (2026-11-24) removed the rest that TA data cannot reach: the stone / freeze / mind-control statuses (Unit freeze and stone timers and statue corpses, the charm and its capture gates, cantbestoned / cantbefrozen / cantbecaptured, the client's statue meshes and PETRIFIED / FROZEN labels), the Remote Effect and Wandering weapon kinds and their fields, cananimate / animatetype (Resurrect raises only the body's own unit), weaponswitching (World::setWeapon, the AI weapon switch, switchreloadtime, the HUD weapon buttons and Cycle Weapon / Select Melee / Select Magic keys; Cmd::SetWeapon is refused, its number kept) and melee weapons (footprint contact, Attack_Melee's approach and retarget, the cursor's melee range), the lodestones (onMana, the in-place upgrade, the sacred-site yards and income, mogriumbounty, the lodestone box and the order trail's deposit sites; the ore-patch list is World::depositSpots), the group records' pacing (51b890 / 4d95f0), Kingdoms' experience routines (experiencepoints, getLevel / setLevel, noveteran: TA's veterancy is the kill count) and the Kingdoms side filters in Cartographer. The authored veteran rank became TA's kill count (2026-11-24, owner decision): a placement, a type's scenario stats, Cartographer's unit field (now VETERAN KILLS) and a mission's engine-only `v F` set Unit::kills, rank N = N x 5 kills (.crt 2.0 holds kills; a 1.0 file's rank converts on load and writes back unchanged; `v F` names rank round((F-1) x 10)), so TA's own rules read it -- damage taken 0x489bf3, the lead past 5 kills 0x48a324, the reload 0x49e468; vetMul / vetOverride / the rank levels, the veteran shot and unit models, the HUD rank mark and the script-less reload's veteran divisor are gone (stateHash folds a constant where they went). A mission's [units] `Kills` key is no longer read (TotalA.exe's parse 0x436c30 has none; 1100-odd shipped records say 1..66). Removed fields that sat in the Unit layout are pads; stateHash folds a constant where a folded field went. What is left is justified under Open (d). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands, ta_ballistic, ta_weapon_script; legion baselines retaken for the slot order and the shell motion (tools/scenarios/baseline.json); authored_kills (rank 2 = 10 kills, 8% less damage, the lead; .crt 1.0 conversion; Cartographer round trip) |
+| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, or a kept engine feature); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. The ballistic shell, the last Kingdoms rule, is TotalA.exe's since the second pass (2026-11-24): AimX's pitch solve 0x49a890 (equal to the binary on 63 emulated cases, tools/re/ballistic_emu.py), the range gate 0x49aa80 in the fire path, the launch 0x49cde0 on the slot's AimX angles plus the spread with the barrel word (0x49e11b, 0x49ce6a), and the motion 0x49bce3 (move, the wind vector G+0x37ecc = 0x490cf7's, then gravity; once a tick); burst clones copy the emitter (0x49b83b). Kingdoms code left unreachable: the Classic brain and the engine's old Controller levels are deleted; the third pass (2026-11-24) removed the rest that TA data cannot reach: the stone / freeze / mind-control statuses (Unit freeze and stone timers and statue corpses, the charm and its capture gates, cantbestoned / cantbefrozen / cantbecaptured, the client's statue meshes and PETRIFIED / FROZEN labels), the Remote Effect and Wandering weapon kinds and their fields, cananimate / animatetype (Resurrect raises only the body's own unit), weaponswitching (World::setWeapon, the AI weapon switch, switchreloadtime, the HUD weapon buttons and Cycle Weapon / Select Melee / Select Magic keys; Cmd::SetWeapon is refused, its number kept) and melee weapons (footprint contact, Attack_Melee's approach and retarget, the cursor's melee range), the lodestones (onMana, the in-place upgrade, the sacred-site yards and income, mogriumbounty, the lodestone box and the order trail's deposit sites; the ore-patch list is World::depositSpots), the group records' pacing (51b890 / 4d95f0), Kingdoms' experience routines (experiencepoints, getLevel / setLevel, noveteran: TA's veterancy is the kill count) and the Kingdoms side filters in Cartographer. The authored veteran rank became TA's kill count (2026-11-24, owner decision): a placement, a type's scenario stats, Cartographer's unit field (now VETERAN KILLS) and a mission's engine-only `v F` set Unit::kills, rank N = N x 5 kills (.crt 2.0 holds kills; a 1.0 file's rank converts on load and writes back unchanged; `v F` names rank round((F-1) x 10)), so TA's own rules read it -- damage taken 0x489bf3, the lead past 5 kills 0x48a324, the reload 0x49e468; vetMul / vetOverride / the rank levels, the veteran shot and unit models, the HUD rank mark and the script-less reload's veteran divisor are gone (stateHash folds a constant where they went). A mission's [units] `Kills` key is no longer read (TotalA.exe's parse 0x436c30 has none; 1100-odd shipped records say 1..66). Removed fields that sat in the Unit layout are pads; stateHash folds a constant where a folded field went. The single-resource pool and the restored Kingdoms construction / Classic AI World hooks went in the 2026-11-25 pass (see Resolved), with site decay ported to TotalA.exe's GetBuilt (0x402da0 / 0x41bcd0). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands, ta_ballistic, ta_weapon_script; legion baselines retaken for the slot order and the shell motion (tools/scenarios/baseline.json); authored_kills (rank 2 = 10 kills, 8% less damage, the lead; .crt 1.0 conversion; Cartographer round trip) |
 | 4. GUI runtime, front end, sidebar (`retail-gui.md`) | done: MAINMENU, SINGLE, SKIRMISH, SELMAP, SELPROV/TCP, NEWGAME, MSNBRIEF, ENDMSN, in-game sidebar and top bar |
 | 5. AI (`retail-ai.md`) | done: every level runs the retail brain (RETAIL EASY/HARD plus the engine's levels) |
 | 6. Pathfinding (`retail-pathfinding.md`) | Retail A* verified 613/613 against TotalA.exe; goals per 0x44cf60/0x44d3b0/0x44dc60; Legion kept |
@@ -81,8 +81,22 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   click_rules, the client's TA_AREA_DRAG_TEST). Retail TA has no RECLAIMAREA:
   neither mission table (0x4fc6e8 / 0x4fca18) has the row. The stages follow
   Kingdoms' RECLAIMAREA (KINGDOMS.icd 406670 and its cell walk 509cc0); each
-  child is TA's own feature reclaim. Not dead code; Cmd::BuildManaArea stays
+  child is TA's own feature reclaim. Not dead code; Cmd::RetiredAreaBuild stays
   refused.
+
+- Alt+number formations (owner's choice, kept 2026-11-25): Unit::squad < 0
+  formations, Cmd::SetSquad, the pacing at the slowest member and the
+  stragglers' rejoin, Order::formationLevel / attackFormation and the formation
+  legs (retailGroundFormation / retailFlightFormation), Legion's formation
+  slots, and the per-unit destination spots and their markers. TotalA.exe has
+  no formations; nothing in a retail game builds a formation leg.
+- Decay of an unfinished site's last refund: the refund a decay step puts on
+  the site's own metal accumulator lands at its owner's next settle; one the
+  site still holds when it dies goes with it (taSettle sums live units; how
+  retail's settle treats a dying unit's accumulator is not traced).
+- Auto-share switches start off: TotalA.exe's thresholds start at 0
+  (0x4647b3); the initial value of the player info +0x97 bits the console's
+  ShareMetal / ShareEnergy toggle is not traced.
 
 ## Out of scope (by decision)
 
@@ -124,7 +138,7 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   the map's killmul / timemul; the outcome0.pcx plate fills Name, Kills, Losses,
   Energy / Metal Produced, Excess Energy / Metal and Score as 0x41e420 lays them out
   (count-up bars, docs/retail-campaign.md 4.3). The under-attack alert is TA's
-  (client/monarchalert.h): any own unit hit while off screen (0x4071d8 ->
+  (client/commanderalert.h): any own unit hit while off screen (0x4071d8 ->
   0x47f850), its own sound class's underattack slot, once per 600 game ticks
   from the last one heard (event table 0x5086dc: 20 s, 0x47feee). room_flow
   passes all 16 cases: a TA_MENU_PICK (debug) and a LAN game's return go to the
@@ -407,7 +421,7 @@ What these entries describe is ported; what is left of each is under "Open".
 - No area orders (2026-11-24 audit): neither mission table (0x4fc6e8,
   0x4fca18) has a RECLAIMAREA (or any area build), so Kingdoms' RECLAIMAREA
   (406670: World::reclaimArea / tickReclaimArea, the right-drag box's step C
-  and the armed CLEAR box) is removed; Cmd::ReclaimArea and Cmd::BuildManaArea
+  and the armed CLEAR box) is removed; Cmd::ReclaimArea and Cmd::RetiredAreaBuild
   keep their numbers but the server refuses them and the sim no longer applies
   them.
 - Transports read TA's keys (0x489a90: passenger footprint x <= transportsize,
@@ -600,40 +614,12 @@ data (cleanup, no gameplay).
   it for the same pieces, as in retail. A dropped passenger re-picked before
   its BeCarried wake keeps that wake's schedule (retail would push a second
   BeCarried, 0x4384a0).
-- (b, cosmetic) Unit speech: RECLAIMUNIT's "Reclaiming" status line, its
-  speech lines (0x47f780; they would join the speech queue, client/
-  speechqueue.h) and work sound (0x47f780(unit, 0xb)); the cursor over a
-  raisable feature shows reclaim. The display VM's own GET 1..19 read its
-  snapshot (ACTIVATION from the build queue, BUSY from motion) rather than the
-  sim's state.
 - (c) The client watch/spectator
   harness checks (gameview_devharness.cpp) still spawn Kingdoms units. A
   script-less (test) carrier keeps the old transport stand-in (fifteen ticks
   of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
   astern can stand out of reach (the roster fixture moved hovers to open land).
-- (d) Kingdoms code still compiled, left in the close-out pass (see
-  Resolved for what went):
-  - Player::mana / income / storage, UnitType::income / storage and the
-    pool's economy pass (income accrual, allied overflow sharing,
-    RetailConstructionResources, the Mana diplomacy toggle, the scenario
-    "Resources" conditions, the HUD readouts): every TA type's income and
-    storage are 0 and the TA books (taeconomy) run TA's economy, but the
-    synthetic-type tests (about thirty built ones: unit_gift, shipyard_park,
-    retail_construction, landdoor_exit, ...) build and pay through the pool.
-    Removing it means porting each of them to TA types with metal / energy
-    costs; not done in this pass.
-  - The old HUD (gameview_hud.cpp: the Kingdoms .gui order-button names,
-    the MANA panel and conjure menu) and the generated-map shoreline waves'
-    Kingdoms feature names (gameview_render.cpp addShorelineWaves): display
-    code the TA HUD does not reach on TA data; left to the client pass.
-  - Formation legs (Order::formationLevel / attackFormation,
-    retailGroundFormation / retailFlightFormation): nothing builds one any
-    more (the group checks that pushed them are gone); a leg retires at
-    once. Legion's standby uses its own check (legionStandbyCheck).
-  - Unbuilt tools/ sources (not in CMakeLists.txt): production_test,
-    site_decay_test, helpbuild_test, owner_change_test, factory_death_test,
-    duration_test, retail_visual_test and others still reference the pool
-    or Kingdoms fixtures.
+- (d) None left: see "Resolved (mana pool and client pass, 2026-11-25)".
 
 ## Resolved (2026-11-24 audit)
 
@@ -728,3 +714,107 @@ data (cleanup, no gameplay).
   legionFormationGroup, legionStandbyCheck and the formation numbering);
   the client's Kingdoms build-sparkle art names; unbuilt nimbus_test and
   effect_inventory.
+
+## Resolved (mana pool and client pass, 2026-11-25)
+
+- The engine's single-resource pool is gone: Player::mana / income / storage /
+  manaCapacity / manaMult / constructionShare / displayResources /
+  manaShareMask, UnitType::income / storage / buildCost, the accrual and the
+  allied overflow sharing, creditCreationStorage, RetailConstructionResources
+  and with it Kingdoms' replayed construction (Unit::retailSite / retailBuild,
+  now pads; tickRetailConstruction, tickRetailGetBuilt, initializeRetailSite,
+  completeRetailConstruction), the replayed Classic AI's World side
+  (Player::retailAi / buildCache, tickRetailAiBase / Strike; the build-cache
+  priority refresh; the bookkeeping clock keeps its rand(30) draw), the
+  allocation-paced corpse revive (unreachable: reviveKind is 1 or 0), the
+  unused workProduction, and the client's mana readouts (the legacy top-left
+  bar, the MANA panel, the mana bulb). TA's metal / energy books
+  (sim/taeconomy) are the only economy. stateHash folds, where the pool's
+  double went, the value it held at a tick's end (a TA player's stored metal,
+  which the pool mirrored, else 100), so the hashes of TA games are unchanged.
+  MatchSlot::manaMult is incomeMult (PlayerBooks::mult).
+- Auto-share (TotalA.exe 0x457d30, after the wind 0x49563a, every 60 ticks;
+  World::taShare): a human player with ShareMetal / ShareEnergy on (info +0x97
+  bits 2 / 4, toggled at 0x418d04 / 0x418dc4) above its threshold (+0xe4 /
+  +0xe8; SetShareMetal / SetShareEnergy store min(N, cap), 0x419340 /
+  0x419400) gives the last allied human by index storing less
+  min((stored - threshold) x 1/3 (metal, 0x4fd4b8) or 1/2 (energy,
+  0x4fd4bc), their room) through the manual give (0x464c60 / 0x464b30): paid
+  at once, credited to the receiver's own accumulator. Cmd::ShareMana is
+  Cmd::ShareResources (same number: targetId econ::M / E, queue bit 0 on,
+  bit 1 also the threshold); the diplomacy menu's SHARE MANA column is your
+  row's SHARE M / E switches. Evidence: unit_gift (the switch's wire round
+  trip and hash, the last poorer allied human, the room cap, a third / a half
+  above the threshold, enemies and computers skipped), map_transfer (server
+  stamped, referee and spectator lockstep).
+- ATM is TotalA.exe's (0x4170c0): stored energy and metal += 1000 (-(-1000.0f),
+  0x4fcc7c), capped at the next settle. MANAME, Kingdoms', is retired
+  (PowerCode::RetiredManaMe, never parsed, refused by the server and the sim).
+  Evidence: power_codes.
+- Map scenario resource conditions 24 / 25 read TA's books: the one scenario
+  "resources" figure is metal and energy alike (as actions 16..20 write it), so
+  "less than v" holds when either store is under v and "greater than v" when
+  both are over it. TA's own campaigns have no resource condition
+  (docs/retail-campaign.md). Evidence: scenario_resources.
+- Site decay is TotalA.exe's GetBuilt (0x402da0): sleeps 300 / 30, then on a
+  timer wake with no work 0x41bcd0(site, 11) and a sleep of 11 (was Kingdoms'
+  sleep of 1); the step 0x41ba60 with amount -(buildtime x 11) /
+  buildcostenergy takes 11 / buildcostenergy of the build, the HP word the
+  matching points, and refunds buildcostmetal x the step as the SITE's metal
+  production (x0.5 / x0.7 easy / medium computer, 0x4fcc98 / 0x4fcc90), no
+  energy; the site dies (kind 9) once nothing is left, after its last refund.
+  Kingdoms' 429d70 (0.5 / buildtime a tick, refund into the pool, none on the
+  last step) is gone. Evidence: site_decay (new), queue_modifiers,
+  structure_combat_site.
+- COB GET is one routine for both hosts (sim/retailscriptget.h, TotalA.exe
+  0x480770, table 0x480ac4): the display VM answers from the sim's words in the
+  snapshot (World::scriptGetWords: ACTIVATION / INBUILDSTANCE / BUSY / YARD /
+  BUGGER_OFF from the script, the standing orders, HEALTH, BUILD_PERCENT_LEFT
+  from the remaining work 0x480a44), UNIT_XZ / Y / HEIGHT from the argument's
+  unit, PIECE_XZ / Y from its own VM's pieces posed as 0x43e060 does,
+  GROUND_HEIGHT from the map. The sim's GET 17 reads TA's remaining work
+  (was 1 for any unfinished TA site). Evidence: ta_get_range.
+- Unit speech: the sim posts TotalA.exe's 0x47f780 requests
+  (World::unitSpeech); the client keeps its local player's, through the speech
+  queue and the event table 0x5086dc (client/unitspeech.h: priority, cooldown,
+  slot, line). RECLAIMUNIT: "Reclamation failed" / "That unit cannot be
+  reclaimed" (event 7, 0x404791..0x4047e6, 0x414d61 / 0x414d89) and the work
+  event 11 "working" (0x4048be, 0x414d20). The status line is TotalA.exe's
+  mission status text (table 0x4fc490..: "Reclaiming", "Nanolathing", "Under
+  construction", "Being transported", "Resurrecting", ...; client/unitstatus.h),
+  not Kingdoms' unitmissions.tdf labels. The armed CLEAR cursor over a
+  raisable feature is Reclaim, as retail's. Evidence: unit_status,
+  click_rules.
+- Client Kingdoms names and art: the old HUD's Kingdoms .gui command panel,
+  info bar and order column (guis/<side>ingame.gui, anims/<side>ingame.gaf,
+  actionbuttons / igcommonbuttons -- none in TA's data), the per-side art
+  swap, the generated maps' Kingdoms shoreline waves (TA ships no wave
+  feature), the lobby preview's Kingdoms TNT branches and kingdom palettes,
+  the "aramon" feature-world defaults; Monarch names are Commander
+  (CommanderAlert, SelectCommander, startAtCommander; the saved hotkey keeps
+  "select.monarch"), and the user-facing Kingdoms text (data folder help,
+  sound help). Retained: KINGDOMS.icd citations in comments and the
+  monarchExpendable wire / settings name.
+- tdf orderedChildren lists a duplicate section where it stood (it listed
+  the first definition's slot with the later one's body).
+- Unbuilt tools/ sources: ported and registered -- site_decay (rewritten for
+  TA's decay), hp_overflow, scenario_actions, scenario_info,
+  scenario_outcome, scenario_selectors, scenario_placement (TA copyright line
+  in their FBIs), tdf_limits (TA's first-definition and value rules);
+  deleted (Kingdoms fixtures or Kingdoms rules: mana pool, unit mana / xp,
+  canbuild/ build trees, buildtime / workertime timing, multiplier damage,
+  the lightning quad, the retail replay probe) -- production_test,
+  ai_economy_test, owner_change_test, campaign_conditions_test,
+  scenario_test, retail_replay_probe, retail_visual_test,
+  crusades_damage_test, stuckrepro, cartographer_validation_test,
+  duration_test, helpbuild_test, factory_death_test, command_validation_test,
+  scenario_restrictions_test, cartographer_aiprofile_test, match_codec_test
+  (its pinned bytes predate the current codec); retail_construction_test
+  (built; Kingdoms' construction object) deleted with
+  RetailConstructionResources; retail_ai_test keeps its oracle modes, its
+  World checks went with Player::retailAi. Left unbuilt, as they reference
+  nothing removed: acme_test_driver (docs/public-server.md),
+  featburn_bench / legion_staticsync_bench (their scripts), footprobe,
+  retail_cost_test (an oracle driver), cartographer_document_test,
+  cartographer_playtest_test, replay_writer_test, music_decode_test.
+

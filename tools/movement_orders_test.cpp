@@ -83,7 +83,7 @@ uint64_t production(bool mobile,bool rally,bool serial) {
     World w;setup(w,selectedMode,serial);auto type=soldier(),producer=soldier();
     producer.id=producer.name="producer-test";producer.isBuilder=true;producer.workerTime=1000;
     producer.footX=6;producer.footZ=8;if(!mobile)producer.maxVel=Fixed();
-    const int id=w.spawn(&producer,600,600,0,0);w.player(0).mana=1e9;
+    const int id=w.spawn(&producer,600,600,0,0);
     w.setRepeat(id,&type);if(rally)w.order(id,1600,640,false);
     bool stopped=false,controllerSeen=false;
     std::map<int,std::pair<Fixed,Fixed>> births;std::set<int> parked;
@@ -142,7 +142,7 @@ void mobileFightRally() {
 void exitRally(PathfindingMode mode,bool queued) {
     World w;setup(w,mode);
     auto type=soldier(),producer=soldier();producer.isBuilder=true;producer.workerTime=1000;
-    const int id=w.spawn(&producer,600,600,0,0);w.player(0).mana=1e9;
+    const int id=w.spawn(&producer,600,600,0,0);
     w.setRepeat(id,&type);
     int child=0;
     for(int tick=0;tick<600&&!child;++tick) {
@@ -245,16 +245,16 @@ void guardFollow(PathfindingMode mode) {
 void workApproach(PathfindingMode mode) {
     World w;setup(w,mode);auto worker=soldier(),ally=soldier();
     worker.isBuilder=true;worker.workerTime=1000;worker.buildDist=48;
-    ally.buildTime=1;ally.buildCost=0;ally.maxVel=Fixed();ally.canMove=false;
+    ally.buildTime=1;ally.buildCostMetal=0;ally.maxVel=Fixed();ally.canMove=false;
     UnitType site{};site.id=site.name="work-site";site.maxVel=Fixed();site.footX=site.footZ=4;
-    site.maxHp=100;site.buildTime=1;site.buildCost=0;
+    site.maxHp=100;site.buildTime=1;site.buildCostMetal=0;
     // A water wall on the placement plane (on the legacy nav-grid plane
     // Legion holds a body, a plain Move as well, at a blocked wall's end:
     // docs/legion-pathfinding.md "Scope").
     std::vector<uint8_t> heights(size_t(128)*128,100);
     for(int z=0;z<49;++z)for(int x=38;x<41;++x)heights[size_t(z)*128+x]=0;
     w.setTerrain(heights,128,128,40);w.setMapPlacementFeatures(std::vector<uint16_t>(size_t(128)*128,0xffff),{});
-    w.player(0).mana=1e9;
+    
     const int builder=w.spawn(&worker,240,560,0,0),hurt=w.spawn(&ally,1100,400,0,0);
     w.unit(hurt)->hp=Fixed::fromInt(10);
     w.repair(builder,hurt,false);w.queueBuild(builder,&site,1100,700,true);
@@ -404,7 +404,7 @@ void queuedMoves(PathfindingMode mode) {
     {   // Move, Shift-repair, Shift-move: walk out, mend the ally, walk on.
         World w;setup(w,mode);auto worker=soldier(),ally=soldier();
         worker.isBuilder=true;worker.workerTime=1000;worker.buildDist=48;
-        ally.maxVel=Fixed();ally.canMove=false;w.player(0).mana=1e9;
+        ally.maxVel=Fixed();ally.canMove=false;
         const int id=w.spawn(&worker,320,320,0,0),hurt=w.spawn(&ally,1200,640,0,0);
         w.unit(hurt)->hp=Fixed::fromInt(10);
         send(w,Cmd::Move,id,1200,320,false);send(w,Cmd::Repair,id,0,0,true,hurt);send(w,Cmd::Move,id,320,1200,true);
@@ -548,7 +548,7 @@ void mazeProduction(const char* data) {
         auto hunter=*registry.find("armpw");hunter.weapons.clear();hunter.weapon.damage=0;
         // Keep the authored Peewee's movement/footprint/scripts; accelerate production
         // so this fixture measures exit/rally behavior rather than the economy.
-        hunter.buildTime=1;hunter.buildCost=0;
+        hunter.buildTime=1;hunter.buildCostMetal=0;
         UnitType producer{};producer.id="maze-producer";producer.footX=6;producer.footZ=8;
         producer.maxHp=10000;producer.isBuilder=true;producer.workerTime=1000;
         // A UnitType's default maxVel is mobile: a building must clear it.
@@ -585,10 +585,10 @@ uint64_t trollRally(const TypeRegistry& registry,bool serial,const ta::hpi::Vfs*
     auto producer=*registry.find("armck"),troll=*registry.find("armpw");
     // Preserve authored movement, footprint and scripts. Speed up only the
     // economy to expose continued arrivals beyond the earlier 16-unit tests.
-    producer.workerTime=1000;producer.storage=10000000;
-    troll.buildTime=1;troll.buildCost=0;troll.weapons.clear();troll.weapon.damage=0;
+    producer.workerTime=1000;
+    troll.buildTime=1;troll.buildCostMetal=0;troll.weapons.clear();troll.weapon.damage=0;
     const int id=w.spawn(&producer,maze?8448:600,maze?24320:600,0,0);
-    w.player(0).mana=10000000;w.setRepeat(id,&troll);
+    w.setRepeat(id,&troll);
     w.order(id,maze?4864:1600,maze?16640:640,false);
     w.updateNavigationExploration();auto& known=w.editNavigationExploration();
     std::fill(known.begin(),known.end(),0xffff);

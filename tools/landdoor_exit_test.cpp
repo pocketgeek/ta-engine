@@ -102,7 +102,7 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,const cha
     w.setTerrain(std::vector<uint8_t>(kCells*kCells,100),kCells,kCells,20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(kCells*kCells,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto factory=*registry.find(factoryName);factory.workerTime*=4;factory.storage=1000000;
+    auto factory=*registry.find(factoryName);factory.workerTime*=4;
     const auto* output=registry.find(outputName);
     const auto* crowdType=registry.find(crowdTypeName);
     // On its cell grid as a placed building stands, at the middle of its
@@ -146,10 +146,10 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,const cha
     for(int t=0;t<(crowd==Crowd::Ward || crowd==Crowd::Twin ? 300 : 30);++t) {w.tick(1.f/30);keepAlive();}
     // The twin's six first, until each is off its yard (or 20000 ticks).
     if(twin) {
-        w.player(0).mana=1000000;w.train(twin,output,kOutputs);
+        w.train(twin,output,kOutputs);
         const Rect twinYard=footprint(*w.unit(twin));
         for(int t=0;t<20000;++t) {
-            w.player(0).mana=1000000;w.tick(1.f/30);
+            w.tick(1.f/30);
             int out=0;
             for(const auto& u:w.units())
                 out+=u.alive() && u.type==output && !u.underConstruction && u.builtBy==twin && !intersects(footprint(u),twinYard);
@@ -159,7 +159,7 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,const cha
     }
     std::vector<std::pair<float,float>> crowdAt;
     for(int k:idle)crowdAt.emplace_back(w.unit(k)->x.toFloat(),w.unit(k)->z.toFloat());
-    w.player(0).mana=1000000;w.train(id,output,kOutputs);
+    w.train(id,output,kOutputs);
     struct Out {int id,done,clear=-1,door=-1;bool rested=false;};
     std::vector<Out> outs;Result r;int tick=0;
     bool exitOrder=false;
@@ -170,7 +170,7 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,const cha
     std::vector<std::vector<int>> asideFor(idle.size());
     int finished=0;bool refusedSince=false;
     for(;tick<20000;++tick) {
-        w.player(0).mana=1000000;w.tick(1.f/30);keepAlive();
+        w.tick(1.f/30);keepAlive();
         // The first output leaving the door: the oldest of the factory's
         // outputs with orders in the door area.
         int leaving=0;
@@ -273,15 +273,15 @@ bool guardOutputMovesNobody(const sim::TypeRegistry& registry,sim::PathfindingMo
     w.setTerrain(std::vector<uint8_t>(kCells*kCells,100),kCells,kCells,20);
     w.setMapPlacementFeatures(std::vector<uint16_t>(kCells*kCells,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto factory=*registry.find(factoryName);factory.workerTime*=4;factory.storage=1000000;
+    auto factory=*registry.find(factoryName);factory.workerTime*=4;
     const auto* output=registry.find(outputName);
     const float fx=float(112*16+factory.footX%2*8),fz=float(112*16+factory.footZ%2*8);
     const int id=w.spawn(&factory,fx,fz,float(int16_t(factory.orientation))*6.28318530718f/65536.f,0);
     const Rect yard=footprint(*w.unit(id));
-    w.player(0).mana=1000000;w.train(id,output,1);
+    w.train(id,output,1);
     int out=0;
     for(int t=0;t<3000 && !out;++t) {
-        w.player(0).mana=1000000;w.tick(1.f/30);
+        w.tick(1.f/30);
         for(const auto& u:w.units())
             if(u.alive() && u.type==output && !u.underConstruction && u.orders.empty() && !intersects(footprint(u),yard))
                 out=u.id;

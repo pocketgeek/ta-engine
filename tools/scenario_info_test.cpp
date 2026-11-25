@@ -81,15 +81,15 @@ int main() {
     std::printf("scenario_info_test\n");
     auto base = std::make_shared<Files>();
     for (const char* name : {"soldier", "builder", "araking", "tarnecro"}) {
-        const auto text = std::string("[UNITINFO]{\nunitname=") + name + ";\nobjectname=" + name +
+        const auto text = std::string("[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=") + name + ";\nobjectname=" + name +
             ";\nname=Display " + name + ";\nmaxdamage=100;\nfootprintx=1;\nfootprintz=1;\ncanmove=1;\nmaxvelocity=1;\n}";
         (*base)[std::string("units/") + name + ".fbi"] = bytes(text);
     }
     // What a seat cannot command: wildlife (side LIF, mobile) and an unarmed kingdom
     // building that builds nothing (a lodestone).
-    (*base)["units/cow.fbi"] = bytes("[UNITINFO]{\nunitname=cow;\nobjectname=cow;\nside=LIF;\nmaxdamage=50;\n"
+    (*base)["units/cow.fbi"] = bytes("[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=cow;\nobjectname=cow;\nside=LIF;\nmaxdamage=50;\n"
                                      "footprintx=1;\nfootprintz=1;\ncanmove=1;\nmaxvelocity=1;\n}");
-    (*base)["units/lodestone.fbi"] = bytes("[UNITINFO]{\nunitname=lodestone;\nobjectname=lodestone;\nside=ARA;\n"
+    (*base)["units/lodestone.fbi"] = bytes("[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=lodestone;\nobjectname=lodestone;\nside=ARA;\n"
                                            "maxdamage=500;\nfootprintx=2;\nfootprintz=2;\nmaxvelocity=0;\n}");
     tnt::Map map; map.width = map.height = 64; map.blocksX = map.blocksY = 32;
     map.heights.assign(4096, 40); map.features.assign(4096, 0xffff);

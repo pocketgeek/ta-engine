@@ -1016,6 +1016,17 @@ int aiLevelLimitScale(Difficulty d) {
         default: return 100;
     }
 }
+// A TA economy building: one that makes metal or energy (FBI energymake /
+// metalmake / extractsmetal / makesmetal / wind / tidal, or a negative
+// energyuse) or stores them.
+static bool taProducer(const ta::sim::UnitType& t) {
+    return t.energyMake > 0 || t.metalMake > 0 || t.extractsMetal > 0 || t.makesMetal > 0 ||
+           t.windGenerator > 0 || t.tidalGenerator > 0 || t.energyUse < 0;
+}
+static bool taEconomyType(const ta::sim::UnitType& t) {
+    return taProducer(t) || t.energyStorage > 0 || t.metalStorage > 0;
+}
+
 bool aiLevelIgnoresLimits(Difficulty d) { return d == Difficulty::Defensive || d == Difficulty::AbsurdlyDefensive; }
 
 AiLevelLimit aiEffectiveLimit(Difficulty d, std::optional<int> limit, const ta::sim::UnitType* type,
@@ -1037,7 +1048,7 @@ AiLevelLimit aiEffectiveLimit(Difficulty d, std::optional<int> limit, const ta::
     if (type && registry) {
         if (type->isStructure()) {
             cat = !registry->buildable(type->id).empty() ? Cat::Factory
-                  : type->income > 0 || type->storage > 0 ? Cat::Economy : Cat::Defense;
+                  : taEconomyType(*type) ? Cat::Economy : Cat::Defense;
         } else if (type->isBuilder) {
             cat = Cat::Builder;
             if (!type->commander) {
@@ -1051,7 +1062,7 @@ AiLevelLimit aiEffectiveLimit(Difficulty d, std::optional<int> limit, const ta::
             }
         }
     } else if (type && type->isStructure()) {
-        cat = type->income > 0 || type->storage > 0 ? Cat::Economy : Cat::Defense;
+        cat = taEconomyType(*type) ? Cat::Economy : Cat::Defense;
     } else if (mobileBuilder) {
         cat = Cat::Builder;
     }
@@ -1066,7 +1077,7 @@ AiLevelLimit aiEffectiveLimit(Difficulty d, std::optional<int> limit, const ta::
         }
     } else {
         out.mayRise = aggressive && (cat == Cat::Army || cat == Cat::Factory || cat == Cat::Defense);
-        if (aggressive && cat == Cat::Economy && type && type->income > 0) {
+        if (aggressive && cat == Cat::Economy && type && taProducer(*type)) {
             out.changed = true;
             out.text = "no cap in play (" + std::string(aiLevelName(d)) + " lifts limits on income buildings)";
             return out;

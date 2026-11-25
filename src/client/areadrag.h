@@ -1,5 +1,5 @@
 // areadrag -- the shared rules for a mouse drag that draws a box on the map: the
-// right-drag area clear, the lodestone box and the unit-selection marquee.
+// right-drag area clear and the unit-selection marquee.
 //
 // Anchor. A drag's start is kept on the MAP, not on the screen: the press point's
 // position on the flat tile mosaic (offX + sx/zoom). Tiles are drawn flat, so this is
@@ -26,7 +26,7 @@
 namespace ta::client::areadrag {
 
 // Smallest side, in UI pixels at 100% UI scale, of a dragged box that becomes an area
-// command (area clear, lodestone box). Retail's distance, required of both sides.
+// command (area clear). Retail's distance, required of both sides.
 inline constexpr float kAreaCommandMinPx = 32.0f;
 // The selection marquee keeps its own small click/box split: a thin box is still a
 // real selection, and a click must stay a click under a few pixels of jitter.

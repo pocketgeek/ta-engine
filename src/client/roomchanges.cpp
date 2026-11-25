@@ -13,7 +13,7 @@ const char* roomFieldCaption(RoomField field) {
     case RoomField::Scenario: return "MAP SCENARIO";
     case RoomField::DoubleSight: return "DOUBLE SIGHT/RADAR";
     case RoomField::UnitCap: return "UNIT CAP";
-    case RoomField::Monarch: return "COMMANDER DEATH";
+    case RoomField::Commander: return "COMMANDER DEATH";
     case RoomField::SpeedUnlock: return "ALLOW SPEED CHANGE";
     case RoomField::Fog: return "FOG OF WAR";
     case RoomField::StartLocations: return "START LOCATIONS";
@@ -41,7 +41,7 @@ RoomChanges roomChanges(const net::RoomView& before, const net::RoomView& after)
     changed(RoomField::Scenario, a.mapScenario != b.mapScenario);
     changed(RoomField::DoubleSight, a.doubleSight != b.doubleSight);
     changed(RoomField::UnitCap, a.unitCap != b.unitCap);
-    changed(RoomField::Monarch, a.monarchExpendable != b.monarchExpendable);
+    changed(RoomField::Commander, a.monarchExpendable != b.monarchExpendable);
     changed(RoomField::SpeedUnlock, a.speedUnlock != b.speedUnlock);
     changed(RoomField::Fog, a.fogExplored != b.fogExplored);
     changed(RoomField::StartLocations, a.randomStarts != b.randomStarts);

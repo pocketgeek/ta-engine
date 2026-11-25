@@ -9,7 +9,7 @@
 //
 // Icons are (barH - 10) x BUILD MENU SCALE tall, in the retail portraits' 4:3
 // landscape shape, 6 x scale apart, and sit 5 px above the bar. They may use the
-// play area's width only (left of the command panel and its mana bulb). When a long
+// play area's width only (left of the command panel). When a long
 // menu does not fit one row it wraps into as many rows as it needs, stacked upward,
 // in reading order (the first icons on the top row) and balanced (13 icons over two
 // rows are 7 + 6, not 11 + 2). Each row is aligned by BUILD MENU: left rows start at

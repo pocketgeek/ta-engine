@@ -2,7 +2,7 @@
 // EVEN OUT SOUND LEVELS (Options; ours, not retail). Retail plays every on-screen
 // positional sound at one volume (positional routine 50a7d0: 127 in view, 64 out of
 // it), so a file's own mastering decides how loud it is. The expansion's 22 kHz
-// Creon cries were mastered 4-12 dB under the sounds they play among (the
+// quietest effects were mastered 4-12 dB under the sounds they play among (the
 // Automaton's loudest 200 ms -20 dBFS, a sword swish -17, a swoosh -12, a cannon
 // -8) and were lost in a fight. With the option on, each effect is measured once
 // as it loads and a quiet one is raised toward kEvenTarget: by at most kEvenMaxBoost,

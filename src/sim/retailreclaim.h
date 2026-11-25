@@ -6,7 +6,7 @@
 
 namespace ta::sim {
 // Retail RECLAIM (406250), checked by emulation (2026-10-24, see
-// docs/retail-engine.md "Reclaim"). It pays no mana, and nothing about the
+// docs/retail-engine.md "Reclaim"). It pays nothing itself, and nothing about the
 // builder (workertime, builddistance) changes how long it takes.
 
 // 4d4e80, installed at stage 0: the rectangle controller of footprint-origin

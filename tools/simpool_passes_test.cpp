@@ -94,7 +94,7 @@ int main() {
     mobile(flyer, "flyer", 1);
     flyer.canFly = true;
     lode.name = lode.id = "lode"; lode.maxHp = 400; lode.maxVel = Fixed(); lode.footX = lode.footZ = 2;
-    lode.income = 1.5f; lode.storage = 200;
+    lode.metalMake = 1.5f; lode.metalStorage = 200;
     const UnitType* types[] = {&soldier, &soldier, &soldier, &big, &shaman, &reclaimer, &flyer, &lode};
     std::vector<uint8_t> terrain(160 * 160);
     for (int z = 0; z < 160; ++z) for (int x = 0; x < 160; ++x) terrain[size_t(z) * 160 + x] = uint8_t((x * 5 + z * 3) % 40);

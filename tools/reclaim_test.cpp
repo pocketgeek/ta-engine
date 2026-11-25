@@ -49,7 +49,7 @@ static const sim::Order* reclaimLeg(const sim::World& w,int id) {
 }
 static int origin(sim::Fixed v,int foot) {return sim::footprintOrigin(v,foot);}
 
-struct Timing { int start=-1,end=-1,removed=-1; double mana=0; };
+struct Timing { int start=-1,end=-1,removed=-1; double paid=0; };
 // One 1x1 feature at cell (20,20); builders start on its edge cells, so the
 // arrival is immediate. Ticks are counted from the arrival (stage 1 handled).
 static Timing timeReclaim(float energy,int builders,float workerTime,int stagger=0) {
@@ -59,7 +59,6 @@ static Timing timeReclaim(float energy,int builders,float workerTime,int stagger
     const int cells[4][2]={{19,20},{21,20},{20,19},{20,21}};
     std::vector<int> ids;
     for (int i=0;i<builders;++i) ids.push_back(w.spawn(&type,at(cells[i][0],1),at(cells[i][1],1),0.0f,0));
-    w.player(0).mana=0;w.player(0).income=0;
     Timing t;
     for (int i=0;i<builders;++i) if (!stagger || i==0) w.reclaim(ids[size_t(i)],1,false);
     for (int tick=0;tick<3000;++tick) {
@@ -70,7 +69,8 @@ static Timing timeReclaim(float energy,int builders,float workerTime,int stagger
         if (t.start>=0 && t.end<0 && !leg) t.end=tick;
         if (t.removed<0 && !w.feature(1)->alive) { t.removed=tick;break; }
     }
-    t.mana=w.player(0).mana;
+    const auto& books=w.books(0);   // a typeless feature yields neither metal nor energy
+    t.paid=double(books.own[0].prod)+double(books.own[1].prod)+double(books.stored[0])+double(books.stored[1]);
     return t;
 }
 
@@ -110,7 +110,7 @@ int main(int argc,char**) {
               "energy "+std::to_string(int(energy))+": order ends "+std::to_string(end)+
               " ticks after arrival, removed 34 later (got "+std::to_string(t.end-t.start)+
               ", "+std::to_string(t.removed-t.end)+")");
-        check(t.mana==0,"energy "+std::to_string(int(energy))+": reclaim pays no mana");
+        check(t.paid==0,"energy "+std::to_string(int(energy))+": a typeless feature's reclaim pays nothing");
     }
     {
         const auto slow=timeReclaim(250,1,1),fast=timeReclaim(250,1,5000);
@@ -241,12 +241,12 @@ int main(int argc,char**) {
         w.addFeature(1,at(20,1),at(20,1),250,1,1,false);
         auto type=builderType();
         const int id=w.spawn(&type,at(19,1),at(20,1),0.0f,0);
-        w.player(0).mana=0;
+        
         w.reclaim(id,1,false);
         for (int i=0;i<60;++i) w.tick(1.f/30);
         w.stop(id);
         for (int i=0;i<400;++i) w.tick(1.f/30);
-        check(w.feature(1)->alive && !w.feature(1)->fadeLeft && w.player(0).mana==0 && !w.unit(id)->workScriptWorking,
+        check(w.feature(1)->alive && !w.feature(1)->fadeLeft && w.books(0).own[0].prod==0 && w.books(0).own[1].prod==0 && !w.unit(id)->workScriptWorking,
               "stop cancels the reclaim with nothing removed or paid");
     }
     {

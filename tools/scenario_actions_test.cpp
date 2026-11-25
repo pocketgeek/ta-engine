@@ -15,7 +15,7 @@ static void run(sim::World& w,const sim::TypeRegistry& reg,int opcode,std::initi
 int main() try {
     auto files=std::make_shared<hpi::Vfs::Files>();
     for(const char* name:{"soldier","other"}) {
-        const std::string text=std::string("[UNITINFO]{\nunitname=")+name+";\nobjectname="+name+
+        const std::string text=std::string("[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=")+name+";\nobjectname="+name+
             ";\nmaxdamage=200;\nfootprintx=1;\nfootprintz=1;\ncanmove=1;\nmaxvelocity=1;\n}";
         (*files)[std::string("units/")+name+".fbi"]={text.begin(),text.end()};
     }
@@ -112,25 +112,21 @@ int main() try {
         check(w.unit(own)->alive()&&w.player(0).unitCount==1,"refused script actions damaged existing owner state");
     }
     {
-        // Authoritative unfinished sites keep HP in their construction record.
-        // Heal does not advance work; damage backs work up to the new HP ratio.
+        // Unfinished sites: heal and damage move HP only (TA's remaining work is
+        // its own word, +0x104); lethal damage retires the site.
         sim::World w;setup(w);int site=w.spawn(soldier,40,56,0,0);
         auto* u=w.unit(site);u->underConstruction=true;u->hp=sim::Fixed::fromInt(80);
-        u->retailSite.emplace();u->retailSite->type.maxHp=200;
-        u->retailSite->progress.hp=80;u->retailSite->progress.remaining=.75f;
+        u->buildStarted=true;u->buildRemaining=.75f;
         run(w,reg,10,{"soldier","23","source"});
-        check(u->hp.floorInt()==103&&u->retailSite->progress.hp==103&&u->retailSite->progress.remaining==.75f,
-              "heal changed construction progress or failed to update authoritative HP");
+        check(u->hp.floorInt()==103&&u->buildRemaining==.75f,"heal changed construction progress or failed to heal");
         run(w,reg,11,{"soldier","23","source"});
-        check(u->hp.floorInt()==80&&u->retailSite->progress.hp==80&&u->retailSite->progress.remaining==.6f,
-              "damage did not synchronize unfinished HP/work");
+        check(u->hp.floorInt()==80&&u->buildRemaining==.75f,"damage changed the remaining work or failed to hurt");
         run(w,reg,11,{"soldier","200","source"});
-        check(!u->alive()&&!u->retailSite&&w.player(0).unitCount==0,"lethal damage left immortal unfinished site");
-        int second=w.spawn(soldier,40,56,0,0);w.unit(second)->underConstruction=true;w.unit(second)->retailSite.emplace();
+        check(!u->alive()&&w.player(0).unitCount==0,"lethal damage left immortal unfinished site");
+        int second=w.spawn(soldier,40,56,0,0);w.unit(second)->underConstruction=true;
         int builder=w.spawn(other,80,80,0,0);w.unit(builder)->buildSiteId=second;
-        w.unit(builder)->retailBuild.emplace();w.unit(builder)->retailBuild->target=second;
         run(w,reg,8,{"soldier","source"});
-        check(!w.unit(second)->alive()&&!w.unit(second)->retailSite&&!w.unit(builder)->retailBuild&&w.unit(builder)->buildSiteId==0,
+        check(!w.unit(second)->alive()&&w.unit(builder)->buildSiteId==0,
               "destroy left an unfinished site or its worker alive");
         w.setUnitCap(2);check(w.scenarioCreate(soldier,0,2,3,4,5)!=0,"destroy failed to free player cap immediately");
     }

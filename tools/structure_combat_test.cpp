@@ -116,6 +116,9 @@ int siteCase(const char* data) {
     const int site=w.spawn(punisher,4096,4096,0,0);
     const int shooter=w.spawn(guardian,4096+distance,4096,0,1);
     w.unit(site)->underConstruction=true;
+    // No GetBuilt on it (as a site that changed sides): an unworked frame's first
+    // decay step (TotalA.exe 0x41bcd0) would unbuild it at tick 330.
+    w.unit(site)->siteGetBuilt=false;
     // A spotter per side, passive and without shootme (a human-owned sweep
     // skips it): neither structure's sight reaches 1000 px, and a structure
     // fires only through the sweep (Guard_NoMove picks nothing, 401a90) at

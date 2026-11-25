@@ -8,7 +8,7 @@ static void check(bool ok,const char* text){if(!ok)throw std::runtime_error(text
 int main()try {
     auto files=std::make_shared<hpi::Vfs::Files>();
     for(const char* id:{"small","large"}){
-        std::string text=std::string("[UNITINFO]{\nunitname=")+id+";\nobjectname="+id+";\nmaxdamage=100;\nfootprintx="+(std::string(id)=="large"?"3":"1")+";\nfootprintz=1;\n}";
+        std::string text=std::string("[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=")+id+";\nobjectname="+id+";\nmaxdamage=100;\nfootprintx="+(std::string(id)=="large"?"3":"1")+";\nfootprintz=1;\n}";
         (*files)[std::string("units/")+id+".fbi"]={text.begin(),text.end()};
     }
     hpi::Vfs vfs;vfs.setMapFiles(files);sim::TypeRegistry reg;reg.loadDir(vfs,"units");

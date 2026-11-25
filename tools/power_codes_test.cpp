@@ -29,8 +29,6 @@ static void parser() {
         {"+atm", PowerCode::Atm, PowerArg::None},
         {"  +Atm  ", PowerCode::Atm, PowerArg::None},
         {"\t+ atm", PowerCode::Atm, PowerArg::None},
-        {"+maname", PowerCode::ManaMe, PowerArg::None},
-        {"+MANAME", PowerCode::ManaMe, PowerArg::None},
         {"+DoubleShot", PowerCode::DoubleShot, PowerArg::None},
         {"+halfshot", PowerCode::HalfShot, PowerArg::None},
         {"+LOS", PowerCode::Los, PowerArg::None},
@@ -92,12 +90,16 @@ static void simCodes() {
         advance(w);
         check(!w.playerSees(0, *w.unit(far)), "an enemy out of sight is not seen");
 
-        // ATM: the issuer's pool fills to its storage; the other player's does not.
-        w.player(0).mana = 40; w.player(1).mana = 40;
+        // ATM (TotalA.exe 0x4170c0): the issuer's stored energy and metal each
+        // gain 1000, past the cap until the next settle; the other player's do not.
+        w.setStartResources(0, 40, 40); w.setStartResources(1, 40, 40);
         applyCommand(w, reg, code(PowerCode::Atm, 0));
-        const double full = w.player(0).manaCapacity();
-        check(on ? w.player(0).mana == full : w.player(0).mana == 40, on ? "ATM fills the pool" : "ATM refused while off");
-        check(w.player(1).mana == 40, "ATM is the issuer's alone");
+        check(on ? w.books(0).stored[0] == 1040 && w.books(0).stored[1] == 1040
+                 : w.books(0).stored[0] == 40 && w.books(0).stored[1] == 40,
+              on ? "ATM adds 1000 energy and metal" : "ATM refused while off");
+        check(w.books(1).stored[0] == 40 && w.books(1).stored[1] == 40, "ATM is the issuer's alone");
+        // MANAME was Kingdoms': not a TA code, never parsed, refused by the sim.
+        check(!parsePowerCode("+maname"), "MANAME is not a power code");
 
         // DoubleShot / HalfShot: one game-wide mode, each clearing the other.
         applyCommand(w, reg, code(PowerCode::DoubleShot, 1));
@@ -194,18 +196,19 @@ static void wire() {
         ta::net::Writer w; w.u32(1); w.cmd(c); return w.b;
     };
     for (int c = 1; c <= 7; ++c)
-        check(ta::srv::validPlayerCommands(payload(code(PowerCode(c)))), "server accepts a sim code");
+        check(ta::srv::validPlayerCommands(payload(code(PowerCode(c)))) == (c != int(PowerCode::RetiredManaMe)),
+              "server accepts a sim code, refuses the retired MANAME");
     check(!ta::srv::validPlayerCommands(payload(code(PowerCode::Radar))), "Radar never travels");
     check(!ta::srv::validPlayerCommands(payload(code(PowerCode::None))), "code 0 is forged");
     Command bad = code(PowerCode::Los); bad.queue = 9;
     check(!ta::srv::validPlayerCommands(payload(bad)), "an unknown argument is forged");
     // Round trip through a strict (replay) bundle read.
     ta::net::Writer w;
-    ta::net::putBundle(w, 7, {code(PowerCode::ManaMe, 3, PowerArg::None, 42)}, {});
+    ta::net::putBundle(w, 7, {code(PowerCode::Los, 3, PowerArg::None, 42)}, {});
     ta::net::Reader r(w.b.data(), w.b.size());
     uint32_t tick = 0; ta::net::Bundle out;
     check(ta::net::getBundle(r, tick, out, true) && out.cmds.size() == 1 && out.cmds[0].kind == Cmd::PowerCode &&
-          out.cmds[0].unitId == 42 && out.cmds[0].player == 3 && out.cmds[0].targetId == int32_t(PowerCode::ManaMe),
+          out.cmds[0].unitId == 42 && out.cmds[0].player == 3 && out.cmds[0].targetId == int32_t(PowerCode::Los),
           "a power code survives a strict bundle read");
     // The option travels in GameOptions and the replay header.
     ta::net::GameOptions o; o.powerCodes = 1;

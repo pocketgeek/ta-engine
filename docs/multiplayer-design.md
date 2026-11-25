@@ -1136,11 +1136,11 @@ game `SetGameOptions` adopts only speed.
 
 ## 14. Commands
 
-`BuildManaArea` carries a builder, lodestone type, queue flag and two rectangle
-corners in 43 bytes, like area reclaim; every other command keeps the 35-byte
-layout. Every peer executes one persistent area mission, exploring deposits
-before trying normal clearing, placement, construction and upgrades; its cursor
-and exploration stage are hashed. An order verb's `queue` byte carries
+`ReclaimArea` and the retired `RetiredAreaBuild` (Kingdoms' lodestone area
+build, refused; its number is kept) carry two rectangle corners in 43 bytes;
+every other command keeps the 35-byte layout. `ShareResources` sets TA's
+auto-share switch for one resource (`targetId` = 1 metal, 0 energy; `queue`
+bit 0 on, bit 1 also sets the threshold to `x`). An order verb's `queue` byte carries
 `kQueueFront` (Ctrl: the order goes in at the head without clearing the queue)
 and the `kQueueToggle` bit (a player's own Shift or Ctrl click takes back a
 queued order of the same kind on its target or within 16 px of its point); a

@@ -42,7 +42,7 @@ PathfindingMode mode = PathfindingMode::Retail;
 UnitType soldier(const char* id) {
     UnitType t{}; t.id = t.name = id; t.maxVel = Fixed::fromFloat(70.f / 30);
     t.turnRate = t.turnInPlaceRate = 10000; t.maxHp = 300; t.canMove = t.canGuard = t.canPatrol = true;
-    t.footX = t.footZ = 2; t.sight = 4096; t.buildTime = 60; t.buildCost = 60; t.upright = true;
+    t.footX = t.footZ = 2; t.sight = 4096; t.buildTime = 60; t.buildCostMetal= 60; t.upright = true;
     return t;
 }
 Weapon weapon(bool shortReach) {
@@ -62,12 +62,12 @@ struct Types {
         // An armed builder: it attacks first, then repairs or helps build.
         smith = archer; smith.id = smith.name = "smith";
         smith.isBuilder = smith.canReclaim = true; smith.workerTime = 100; smith.buildDist = 60;
-        smith.storage = 100000;
+        
         // Mobile, but
         // given no orders: they stand where they are spawned.
         weak.maxHp = 400; post.maxHp = 100000;
         friendly.maxVel = {}; friendly.canMove = false; friendly.maxHp = 10000;
-        hut.maxHp = 2000; hut.maxVel = {}; hut.canMove = false; hut.buildTime = 30000; hut.buildCost = 10;
+        hut.maxHp = 2000; hut.maxVel = {}; hut.canMove = false; hut.buildTime = 30000; hut.buildCostMetal= 10;
         flyer = archer; flyer.id = flyer.name = "flyer"; flyer.canFly = true; flyer.upright = false;
         flyer.maxVel = Fixed::fromFloat(120.f / 30); flyer.cruiseAlt = 80;
     }
@@ -81,7 +81,7 @@ struct Rig {
         w.setTerrain(std::vector<uint8_t>(size_t(256) * 256, 100), 256, 256, 20);
         w.setPathService(true);
         w.setPlayerCount(2);
-        w.player(0).mana = 1e7;
+        
     }
     void send(net::Cmd kind, int unit, uint8_t queue, int target, float x = 0, float z = 0) {
         static const TypeRegistry none;

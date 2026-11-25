@@ -9,18 +9,18 @@ int main() {
         if (!ok) {std::fprintf(stderr,"FAIL: %s\n",name);++failures;}
     };
     auto batch=[](Command c) {Writer w;w.u32(1);w.cmd(c);return w.b;};
-    for (unsigned kind=0;kind<=unsigned(Cmd::BuildManaArea);++kind) {
+    for (unsigned kind=0;kind<=unsigned(Cmd::RetiredAreaBuild);++kind) {
         Command c;c.kind=Cmd(kind);c.x=16384;c.z=-100;c.x2=200;c.z2=300;
         // Kingdoms' lodestone area build and weapon switch are retired; the
         // area reclaim is kept.
-        const bool retired=c.kind==Cmd::BuildManaArea || c.kind==Cmd::SetWeapon;
+        const bool retired=c.kind==Cmd::RetiredAreaBuild || c.kind==Cmd::SetWeapon;
         check(ta::srv::validPlayerCommands(batch(c))!=retired,"valid command kind");
     }
     for (float v:{std::numeric_limits<float>::quiet_NaN(),
                   std::numeric_limits<float>::infinity(),-std::numeric_limits<float>::infinity(),
                   32768.0f,-32769.0f,1e30f}) {
         for (int axis=0;axis<4;++axis) {
-            for(Cmd kind:{Cmd::ReclaimArea,Cmd::BuildManaArea}) {
+            for(Cmd kind:{Cmd::ReclaimArea,Cmd::RetiredAreaBuild}) {
                 Command c;c.kind=kind;
                 (axis==0?c.x:axis==1?c.z:axis==2?c.x2:c.z2)=v;
                 check(!ta::srv::validPlayerCommands(batch(c)),"unsafe coordinate");

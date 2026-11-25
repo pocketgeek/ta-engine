@@ -97,8 +97,7 @@ inline Layout layout(int n, float fullW, float fullH, float gap, float room, flo
 }
 
 // The room a strip may fill: the span from `lo` to `hi` between the primary's near
-// edge and the bar's REAL limit -- the screen's left edge on the retail bar, the mana
-// panel on the stone one -- less `margin`. Nothing nearer caps it (the retail bar's
+// edge and the bar's REAL limit -- the bar's right-hand reserve -- less `margin`. Nothing nearer caps it (the retail bar's
 // EndCap scroll art is drawn over), so the portraits stay full size until a
 // full-size strip would pass that limit. A primary already past it: no room.
 inline float room(float lo, float hi, float margin) {
@@ -118,29 +117,16 @@ inline Rect slot(const Layout& L, int i, Rect primary, float gap) {
     return {primary.x + (primary.w - w) - float(col) * (gap + w), y, w, h};
 }
 
-// The bar's HP / mana for a multi-selection: totals over the selection, not the
-// front unit's. HP is sum(hp) / sum(maxHp) over the live selected units; mana is the
-// same over only the units that HAVE a pool (maxMana > 0), so a squad of knights with
-// two priests shows the priests' mana rather than a sliver of it. No pool anywhere:
-// hasMana is false and the bar is hidden, as it is for a single unit without one.
-struct Vitals { float hp = 0, maxHp = 0, mana = 0, maxMana = 0; };
+// The bar's HP for a multi-selection: totals over the selection, not the front
+// unit's: sum(hp) / sum(maxHp) over the live selected units.
+struct Vitals { float hp = 0, maxHp = 0; };
 struct Totals {
-    float hp = 0, maxHp = 0, mana = 0, maxMana = 0;
-    bool hasMana = false;
+    float hp = 0, maxHp = 0;
     float hpFrac() const { return hp / std::max(1.0f, maxHp); }   // the single unit's guard
-    float manaFrac() const { return hasMana ? mana / maxMana : 0.0f; }
 };
 inline Totals total(const std::vector<Vitals>& units) {
     Totals t;
-    for (const Vitals& v : units) {
-        t.hp += v.hp;
-        t.maxHp += v.maxHp;
-        if (v.maxMana > 0) {
-            t.mana += v.mana;
-            t.maxMana += v.maxMana;
-            t.hasMana = true;
-        }
-    }
+    for (const Vitals& v : units) { t.hp += v.hp; t.maxHp += v.maxHp; }
     return t;
 }
 

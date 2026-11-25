@@ -421,7 +421,7 @@ static void rules() {
                           Act::ToggleGate, Act::SelfDestruct, Act::GiveUnits, Act::Disco, Act::Headbang,
                           Act::MakePoster})
         check(!watchAllows(act), "an order or an order's input is blocked: " + std::to_string(int(act)));
-    for (const Act act : {Act::NextUnit, Act::TrackSelection, Act::SelectAll, Act::SelectMonarch, Act::SelectFlying,
+    for (const Act act : {Act::NextUnit, Act::TrackSelection, Act::SelectAll, Act::SelectCommander, Act::SelectFlying,
                           Act::ToggleCounts, Act::UnitInfo, Act::FullScreenRadar, Act::RetailZoom, Act::Count})
         check(watchAllows(act), "a look is allowed: " + std::to_string(int(act)));
     const auto owner = [](std::vector<int> v) { return ta::client::boxOwner(v); };

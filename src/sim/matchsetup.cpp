@@ -119,7 +119,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
     // Move/patrol/attack/fight-move describe its output rally, without
     // redirecting construction.
     // Gate before redirect(): rejected orders must not cancel its construction.
-    // Test repeatType rather than queue size so item transitions, mana shortages
+    // Test repeatType rather than queue size so item transitions, resource stalls
     // and blocked output positions do not briefly unlock the producer.
     // The classic AI's squads: no unit order, so no producer gate below.
     if (c.kind == Cmd::AiGroup) { world.setAiGroup(int(c.player), c.unitId, c.targetId, c.queue != 0); return; }
@@ -131,7 +131,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
     // repeating conjurer told to help an unfinished unit helps (its own output
     // waits meanwhile; see tickProduction).
     // Stance sets the stance its output starts with (World::setStance's outputStance).
-    if (repeatingMobile && c.kind!=Cmd::Stop && c.kind!=Cmd::Assist && c.kind!=Cmd::Move && c.kind!=Cmd::Patrol && c.kind!=Cmd::Attack && c.kind!=Cmd::AttackMove && c.kind!=Cmd::GiveUnit && c.kind!=Cmd::ShareMana && c.kind!=Cmd::Disco && c.kind!=Cmd::Headbang && c.kind!=Cmd::PowerCode && c.kind!=Cmd::Stance) return;
+    if (repeatingMobile && c.kind!=Cmd::Stop && c.kind!=Cmd::Assist && c.kind!=Cmd::Move && c.kind!=Cmd::Patrol && c.kind!=Cmd::Attack && c.kind!=Cmd::AttackMove && c.kind!=Cmd::GiveUnit && c.kind!=Cmd::ShareResources && c.kind!=Cmd::Disco && c.kind!=Cmd::Headbang && c.kind!=Cmd::PowerCode && c.kind!=Cmd::Stance) return;
     auto owns = [&](int id) {
         const auto* u = world.unit(id);
         return u && u->player == int(c.player);
@@ -238,8 +238,9 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
     }
     auto redirect = [&] { if (!c.queue && !repeatingMobile) world.cancelBuilds(c.unitId); };
     switch (c.kind) {
-        case Cmd::ShareMana:
-            world.setManaSharing(int(c.player), c.targetId, c.queue != 0);
+        case Cmd::ShareResources:
+            world.setResourceSharing(int(c.player), c.targetId, (c.queue & 1) != 0);
+            if (c.queue & 2) world.setShareThreshold(int(c.player), c.targetId, c.x);
             break;
         case Cmd::GiveUnit:
             world.giveUnit(c.unitId, int(c.player), c.targetId);
@@ -322,7 +323,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
                 if (type && (producer->repeatType == type || admits())) world.setRepeat(c.unitId, type);
             }
             break;
-        case Cmd::SetWeapon: case Cmd::BuildManaArea:   // retired Kingdoms verbs: never applied
+        case Cmd::SetWeapon: case Cmd::RetiredAreaBuild:   // retired Kingdoms verbs: never applied
             break;
         case Cmd::Destroy:
             if (owns(c.unitId)) world.destroy(c.unitId);
@@ -903,7 +904,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     world.setPathBudget(kPathBudgetDefault);
     world.clearFeatures();   // authoritative rebuild (the client ctor pre-registers)
 
-    // Features: block nav footprints, and gather mana-deposit positions. Iterate
+    // Features: block nav footprints, and gather deposit positions. Iterate
     // in the same (row-major) order the client does so clustering is identical.
     auto defs = loadFeatureDefs(vfs);
     // Intern feature names into the world's FeatType table, resolving the
@@ -934,12 +935,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     for (int i = 0; i < int(cfg.slots.size()); ++i) {
         world.setTeam(i, cfg.slots[i].team);
         world.player(i).cacheClock.enabled=true;
-        world.player(i).manaMult = cfg.slots[i].manaMult;   // Absurd AI = 2x income
-        world.player(i).books.mult = cfg.slots[i].manaMult;  // TA: AI income x0.5/0.7/1.0 (retail)
-        // Every player's pool starts empty (the resource object 401240 zeroes,
-        // allocated for all ten records at 4f6910); the units a game opens with
-        // fill it from their mogriumstorage (World::creditCreationStorage).
-        world.player(i).mana = cfg.startMana;
+        world.player(i).books.mult = cfg.slots[i].incomeMult;  // TA: AI income x0.5/0.7/1.0 (retail)
         world.player(i).automaticGates = cfg.slots[i].automaticGates;
         world.player(i).defensiveAi = cfg.slots[i].defensiveAi;
     }
@@ -1008,7 +1004,6 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 const auto* type = reg.find(name);
                 const float x = float(placed.x) * 16 + type->footX * 8, z = float(placed.z) * 16 + type->footZ * 8;
                 const int id = world.spawn(type, x, z, float(placed.angle) * 3.14159265f / 180.0f, placed.player);
-                world.creditCreationStorage(id);   // 4cd307: the CRT start's 512060 passes 1
                 if (auto* unit = world.unit(id)) {
                     // Native 51f4c0 keeps at most 31 bytes; this is a display label.
                     unit->scenarioName = placed.uniqueName.substr(0,31);
@@ -1784,7 +1779,6 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                 int player = mapPlayer(int(u.numberOr("player", 1)));
                 const uint16_t angle = MissionScript::placedHeading(integer("angle"));
                 int id = world.spawn(t, at.x.toFloat(), at.z.toFloat(), std::nullopt, player);
-                world.creditCreationStorage(id);   // 514c83: the placement's 512060 passes 1
                 if (id >= 0) {
                     ++spawned;
                     placements.back().unitId = id;

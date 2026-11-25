@@ -60,14 +60,14 @@ Result run(const sim::TypeRegistry& registry,const sim::UnitType& factory,const 
     const bool water=!w.canPlace(&factory,float(kShore*16)-halfX-96,z,0);
     const float x=water ? float(kShore*16)+halfX+16 : float(kShore*16)-halfX-96;
     const int b=w.spawn(&fast,water ? float(kShore*16)-24 : x+halfX+40,z,0,0);
-    w.player(0).mana=1e7;
+    
     Result r;
     bool blocked=false;
     const int site=w.startBuild(b,&factory,x,z,sim::World::Approach::None,&blocked);
     if(!site) {std::printf("  %s: no site at %.0f,%.0f (mobile blocked %d, placeable %d)\n",factory.id.c_str(),x,z,
                            int(blocked),int(w.canPlace(&factory,x,z,0)));return r;}
     for(int t=0;t<9000;++t) {
-        w.player(0).mana=1e7;w.tick(1.f/30);
+        w.tick(1.f/30);
         const auto* f=w.unit(site);
         if(!f || !f->alive()) {std::printf("  %s: the site is gone on tick %d\n",factory.id.c_str(),t);return r;}
         if(r.finishTick<0 && !f->underConstruction) {r.finishTick=t;w.train(site,&output,1);}

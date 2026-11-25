@@ -23,13 +23,13 @@ enum class Cmd : uint8_t {
                    // existing construction site targetId (revives a decaying one)
     Disco,         // cosmetic emote: unitId dances for 10s (Shift+D); 0 = living monarch.
                    // queue=0 starts a real-time emote; queue=1 appends selection targets.
-    Reclaim,       // mobile builder unitId reclaims feature targetId for mana
+    Reclaim,       // mobile builder unitId reclaims feature targetId (metal / energy)
     Stance,        // set unitId's combat stance to targetId (0=offensive/1=defensive/
                    // 2=passive) -- gates auto-acquire and chase leash
     Cloak,         // canCloak unitId: targetId != 0 enables cloaking, 0 disables
     SetActive,     // onOffable unitId: targetId != 0 powers on, 0 powers down
     Repair,        // mobile builder unitId repairs damaged friendly targetId (restores
-                   // HP at its build rate, draining mana)
+                   // HP, paid in energy through its books)
     Headbang,      // cosmetic emote: unitId headbangs 10s (Shift+H); 0 = living monarch.
     SetSquad,      // assign unitId to a control squad: targetId = 0 none, +N group N,
                    // -N formation N (N=1..10). A unit is in exactly one squad; formations
@@ -37,8 +37,9 @@ enum class Cmd : uint8_t {
     ReclaimArea,   // persistent area clear: x/z through x2/z2, chooses each next target in sim
                    // (an engine feature: TA has no RECLAIMAREA, docs/ta-port-plan.md)
     GiveUnit,      // unitId = owned eligible unit, targetId = allied recipient player
-    ShareMana,     // targetId = allied recipient, queue = enabled; no unit required
-    BuildManaArea, // retired (Kingdoms' lodestone area build): kept for the numbering, never applied
+    ShareResources, // TA auto-share switch: targetId = econ::M (1) metal or econ::E (0) energy,
+                    // queue bit 0 = on, bit 1 = also set the threshold to x; no unit required
+    RetiredAreaBuild, // retired (Kingdoms' lodestone area build): kept for the numbering, never applied
     // An explicit selection order (Legion 10,000 stage 3): one
     // player intent over a whole selection, `order` holds it. Never sent in a
     // PlayerCommands message: the uplink carries it as an OrderBegin /
@@ -47,8 +48,8 @@ enum class Cmd : uint8_t {
     Order,
     // A power code (sim/powercodes.h), honoured only in a match created with
     // POWER CODES on: targetId = the sim::PowerCode (Atm..NowISee), queue = the
-    // sim::PowerArg (LOS On/Off), unitId = the unit for ManaMe (one command per
-    // selected unit). The server drops it when the room's option is off, and the
+    // sim::PowerArg (LOS On/Off), unitId = the selected unit for the
+    // codes that take one (one command per selected unit). The server drops it when the room's option is off, and the
     // sim ignores it there as well. An ordinary PlayerCommands item (base layout).
     PowerCode,
     // Protocol 305: the caster unitId raises the body of dead unit targetId
@@ -100,7 +101,7 @@ struct SelectionOrder;
 // of its point (retail 4d7a30). A producer's (or a repeating mobile builder's)
 // Move, AttackMove, Patrol and Attack act on its rally list. The AI and
 // scripts send only kQueueReplace and kQueueAppend. Other verbs keep their
-// own uses of the byte (ShareMana, Disco, PowerCode).
+// own uses of the byte (ShareResources, Disco, PowerCode).
 inline constexpr uint8_t kQueueReplace = 0, kQueueAppend = 1, kQueueFront = 2, kQueuePlace = 3,
                          kQueueToggle = 4;
 

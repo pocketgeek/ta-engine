@@ -48,7 +48,7 @@ Fight fight(const TypeRegistry& registry,const UnitType& attacker,const UnitType
     w.setPlayerCount(2);
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     w.buildNavClasses(registry);
-    w.player(0).mana=1e6;w.player(1).mana=1e6;
+    
     const float cx=2000,cz=2000;
     const int them=w.spawn(&target,cx+(circle>0 ? circle : 300.f),cz,0.f,1);
     w.unit(them)->standbyAllowed=false;

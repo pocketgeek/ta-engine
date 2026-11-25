@@ -2412,7 +2412,7 @@ void Server::tryStart(Client& c) {
                 // set-pieces. The AI lives server-side and emits ordinary commands
                 // into the tick stream, exactly as it does for a skirmish, so
                 // lockstep is unaffected. A "passive neutral" gets nothing: it is
-                // scenery. Mana income is deliberately NOT multiplied here -- a
+                // scenery. Income is deliberately NOT multiplied here -- a
                 // mission is balanced around its placements, not a skirmish curve.
                 // Mission opponents always play Classic, retail's own AI: it bakes the
                 // mission's aiprofile file (ai/<aiprofile>.txt, else ai/default.txt, by

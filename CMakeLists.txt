@@ -1393,9 +1393,6 @@ add_test(NAME jpeg_encode COMMAND jpeg_encode_test)
 add_executable(cpu_topology_test tools/cpu_topology_test.cpp)
 target_link_libraries(cpu_topology_test PRIVATE ta-formats)
 add_test(NAME cpu_topology COMMAND cpu_topology_test)
-add_executable(retail_construction_test tools/retail_construction_test.cpp)
-target_link_libraries(retail_construction_test PRIVATE ta-formats)
-add_test(NAME retail_construction COMMAND retail_construction_test)
 add_executable(retail_mission_test tools/retail_mission_test.cpp)
 target_link_libraries(retail_mission_test PRIVATE ta-formats)
 add_test(NAME retail_mission COMMAND retail_mission_test)
@@ -1483,6 +1480,18 @@ add_test(NAME retail_group COMMAND retail_group_test)
 add_test(NAME retail_motion COMMAND retail_motion_test)
 add_test(NAME auth COMMAND authtest)
 add_test(NAME unit_gift COMMAND unit_gift_test)
+# Formerly unbuilt sources, ported to TA's metal / energy books and fixtures
+# (close-out pass): construction overflow, map scenario rules, TA's site decay
+# (TotalA.exe GetBuilt 0x402da0 / 0x41bcd0) and the TDF limits.
+foreach(t hp_overflow scenario_actions site_decay scenario_info scenario_outcome
+          scenario_selectors tdf_limits)
+    add_executable(${t}_test tools/${t}_test.cpp)
+    target_link_libraries(${t}_test PRIVATE ta-formats)
+    add_test(NAME ${t} COMMAND ${t}_test)
+endforeach()
+add_executable(scenario_placement_test tools/scenario_placement_test.cpp src/cartographer/units.cpp)
+target_link_libraries(scenario_placement_test PRIVATE ta-formats)
+add_test(NAME scenario_placement COMMAND scenario_placement_test)
 add_test(NAME cmdflow COMMAND cmdflow_test)
 add_test(NAME reclaimarea COMMAND reclaimarea_test)
 # Raising the dead is an order (Cmd::Resurrect, area-reclaim children); nothing
@@ -3274,8 +3283,6 @@ if(TA_BUILD_CLIENT)
     add_test(NAME cartographer_savejob COMMAND cartographer_savejob_test)
 
             
-    # The AI-profile editor's model, checked against the engine's own profile parsers.
-    # It links the whole AI, so the levels' limits in play are checked against ai::paramsFor.
                 add_executable(cartographer_features_test tools/cartographer_features_test.cpp src/cartographer/features.cpp)
     target_link_libraries(cartographer_features_test PRIVATE ta-formats)
     add_test(NAME cartographer_feature_art COMMAND cartographer_features_test)

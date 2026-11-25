@@ -29,7 +29,7 @@ void Writer::cmd(const Command& c) {
     f32(c.z);
     u8(c.queue);
     b.insert(b.end(), c.type, c.type + 16);
-    if (c.kind == Cmd::ReclaimArea || c.kind == Cmd::BuildManaArea) { f32(c.x2); f32(c.z2); }
+    if (c.kind == Cmd::ReclaimArea || c.kind == Cmd::RetiredAreaBuild) { f32(c.x2); f32(c.z2); }
 }
 
 Command Reader::cmd() {
@@ -61,7 +61,7 @@ Command Reader::cmd() {
     if (avail(16)) { std::memcpy(c.type, p, 16); p += 16; }
     else ok = false;
     c.type[15] = 0;
-    if (c.kind == Cmd::ReclaimArea || c.kind == Cmd::BuildManaArea) { c.x2 = f32(); c.z2 = f32(); }
+    if (c.kind == Cmd::ReclaimArea || c.kind == Cmd::RetiredAreaBuild) { c.x2 = f32(); c.z2 = f32(); }
     return c;
 }
 
@@ -139,8 +139,8 @@ bool validOrder(const SelectionOrder& o) {
     return orderRecordBytes(o) <= kOrderMaxBytes;
 }
 
-// The byte order is the wire format and the replay header's (match_codec_test pins
-// it): append new fields at the end, matching get().
+// The byte order is the wire format and the replay header's: append new fields
+// at the end, matching get().
 void put(Writer& w, const GameOptions& o) {
     w.u8(o.forfeitSelfDestruct); w.u8(o.gameMods);
     w.u8(o.speed); w.u8(o.speedUnlock); w.u32(o.unitCap); w.u8(o.monarchExpendable);

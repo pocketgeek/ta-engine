@@ -33,6 +33,8 @@ struct RenderOrder {
     // A factory output's PARK and a flyer's landing (VTOL_LandIfCan): neither is work, so
     // the IDLE BUILDERS strip counts a unit holding only these as idle (as ai::idle does).
     bool park:1=false,landing:1=false;
+    // A RECLAIMUNIT leg, a D-gun shot and an attack at a point (the status line).
+    bool reclaimUnit:1=false,dgun:1=false,suppress:1=false;
     RenderOrder()=default;
     RenderOrder(const ta::sim::Order& o)
         :x(o.x),z(o.z),clickX(o.clickX),clickZ(o.clickZ),buildX(o.buildX),buildZ(o.buildZ),
@@ -41,6 +43,7 @@ struct RenderOrder {
          guard(o.guard),goal(o.goal),reclaimArea(bool(o.reclaimArea)),buildRectangle(bool(o.buildRectangle)) {
         revive=o.reviveKind!=0;
         park=bool(o.park);landing=o.landing;
+        reclaimUnit=o.reclaimUnit!=0;dgun=o.dgun;suppress=o.suppress;
         if (o.reclaimArea) {
             x=ta::sim::Fixed::raw(o.reclaimArea->minX);z=ta::sim::Fixed::raw(o.reclaimArea->minZ);
             buildX=ta::sim::Fixed::raw(o.reclaimArea->maxX);buildZ=ta::sim::Fixed::raw(o.reclaimArea->maxZ);
@@ -72,7 +75,7 @@ struct UnitR {
     std::array<int32_t,3> worldPosition{}; // exact, unprojected position for script queries
     int turnSpeedPercent = 0;
     int turnReqBam = 0;                // tick's requested turn (BAM) for TurnDirection anim
-    float hp = 0, mana = 0;
+    float hp = 0;
     int studyTint = 0;                 // render study only (TA_RENDER_VETERAN): the gold tint level 4..9; 0 in a game
     int kills = 0;                     // its own kill count (Unit::kills, the KillCount gadget)
     float deadFor = -1;
@@ -98,15 +101,16 @@ struct UnitR {
     std::array<uint32_t,2> constructionEmissions{};
     std::vector<ta::sim::RetailConstructionParticle> constructionParticles;
     float buildProgress = 0;
-    int constructionPercentLeft = 0;
     float buildRemaining = 0;       // retail unit+0x104: 1 at placement, 0 complete
     bool moverMoving = false;       // retail mover+0x20 (speed) nonzero
 
     const ta::sim::UnitType* replacementModel = nullptr;
     float replacementX=0,replacementZ=0,replacementHeading=0;
     float replacementOpacity=-1; // negative: ordinary construction presentation
-    int scriptHealthPercent = 100;
     bool yardOpen = false;
+    // The words TotalA.exe's COB GET reads (World::scriptGetWords): the display
+    // VM's GET answers from these as the sim's host does (client/displayget.h).
+    ta::sim::RetailGetUnit scriptWords;
     std::vector<const ta::sim::UnitType*> buildQueue;
     std::vector<RenderOrder> orders, rally;
     // Its own Legion spot on its current move-like leg (World::legionDestination), for
@@ -249,8 +253,7 @@ struct UnitR {
 // UnitR). Captured each tick so the HUD/scoreboard never reads live world_ players.
 struct PlayerR {
     std::string side; // Stable faction identity, including after elimination.
-    uint8_t manaShareMask = 0xff;
-    float mana = 0, storage = 0, income = 0, expenditure = 0; // expenditure: requested mana/s
+    uint8_t shareResources = 0;   // the auto-share switches (Player::shareResources)
     // Total Annihilation metal/energy (sim/taeconomy.h): stored, cap, and the last
     // second's income/expense, the figures the top bar shows.
     float metal = 0, energy = 0, metalCap = 0, energyCap = 0;
@@ -262,24 +265,6 @@ struct PlayerR {
         metalIncome = player.books.income[1]; metalExpense = player.books.expense[1];
         energyIncome = player.books.income[0]; energyExpense = player.books.expense[0];
         for (int r = 0; r < 2; ++r) { produced[r] = player.books.produced[r]; wasted[r] = player.books.wasted[r]; }
-        mana=float(player.mana);
-        storage=player.manaCapacity();
-        // Retail HUD calls 401330/401350: the oldest 29 tick samples of
-        // produced and REQUESTED mana, scaled to mana/second. The request is
-        // not capped by what the pool could pay, so -N can exceed +N.
-        // The current sample enters next tick.
-        double produced=0,used=0;
-        for (size_t i=0;i<29;++i) {
-            produced+=player.displayResources.samples[i][0];
-            used+=player.displayResources.samples[i][1];
-        }
-        income=float(produced*double(1.034482717514038f));
-        expenditure=float(used*double(1.034482717514038f));
-    }
-    int manaBulbFrame(int count) const {
-        if (count<=1 || storage<=0) return 0;
-        // 4b221e truncates; it does not round up to the next fill level.
-        return int(std::clamp(double(mana)/double(storage),0.0,1.0)*double(count-1));
     }
     int32_t score = 0;
     int kills = 0, unitCount = 0, team = 0;

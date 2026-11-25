@@ -29,6 +29,7 @@ struct SpeechEntry {
     int unitId = 0;          // entry +8
     std::string unitName;    // the text's "%s" (0x47ff69: the unit type's name)
     std::string soundClass;  // the unit type's sound class (0x47fd99: +0x20e)
+    std::string text;        // the line (0x47f780's text, else the row's; empty: none)
 };
 
 struct SpeechQueue {

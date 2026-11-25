@@ -5,7 +5,9 @@
 // return 0 (0x480abb). Kingdoms' 27..46 (heading, terrain, animation speeds,
 // veteran level, standing order) used to answer here, in the simulation's
 // host (World::ScriptHost::get) and in the client's display VM
-// (client/displayget.h). Both now answer 0 there, whatever the unit does.
+// (client/displayget.h). Both now answer 0 there, whatever the unit does; both run
+// the one routine (sim/retailscriptget.h), so the display VM's 1..20 answer as
+// the sim's do.
 
 #include "client/displayget.h"
 #include "cob/cob.h"
@@ -59,15 +61,32 @@ int main() {
     check(zero, "0, -1, 20 (ARMORED, not stored), 21, 27..34, 46, 100 answer 0", row);
 
     std::printf("display VM (client/displayget.h):\n");
+    // The snapshot of the same unit: the display host answers every id as the sim's.
+    u->underConstruction = true; u->buildStarted = true; u->buildRemaining = 0.25f;
+    u->moveState = 1; u->fireState = 2;
     UnitR r;
-    r.scriptHealthPercent = 50; r.yardOpen = true; r.constructionPercentLeft = 7;
-    r.kills = 10; r.standingOrder = 1; r.movementTerrainFlags = 0x1800; r.heading = 1.0f;
-    r.turnSpeedPercent = 40; r.verticalSpeedPercent = -50; r.horizontalSpeedPercent = 75;
-    check(ta::client::displayScriptGet(r, 4) == 50 && ta::client::displayScriptGet(r, 18) == 1 &&
-          ta::client::displayScriptGet(r, 17) == 7, "HEALTH, YARD_OPEN, BUILD_PERCENT_LEFT answer");
+    r.type = u->type; r.deadFor = -1; r.scriptWords = world.scriptGetWords(id);
+    r.worldPosition = {u->x.v, u->groundY.v, u->z.v};
+    UnitR other = r; other.worldPosition = {Fixed::fromInt(300).v, Fixed::fromInt(12).v, Fixed::fromInt(90).v};
+    const std::vector<uint8_t> heights(32 * 32, 100);
+    auto find = [&](int which) -> const UnitR* { return which == 7 ? &other : which == id ? &r : nullptr; };
+    ta::client::DisplayGetHost host{r, find, {}, &heights, 32, 32};
+    auto display = [&](int which, std::vector<int32_t> args = {}) { return ta::client::displayScriptGet(which, args, host); };
+    check(display(4) == 50, "HEALTH answers from the sim's words");
+    check(display(17) == ta::sim::retailConstructionPercent(0.25f) && display(2) == 1 && display(3) == 2,
+          "BUILD_PERCENT_LEFT is the remaining work; standing orders");
+    const auto words = world.scriptGetWords(id);
+    check(display(1) == int32_t(words.activated) && display(6) == int32_t(words.busy) && display(5) == int32_t(words.ready),
+          "ACTIVATION, INBUILDSTANCE and BUSY are the script's (not the queue or motion)");
+    check(uint32_t(display(9, {7})) == ta::sim::retailPackXZ(other.worldPosition[0], other.worldPosition[2]) &&
+          display(10, {7}) == other.worldPosition[1] && display(9, {99}) == 0,
+          "UNIT_XZ / UNIT_Y read the unit the argument names");
+    check(display(16, {int32_t(ta::sim::retailPackXZ(Fixed::fromInt(40).v, Fixed::fromInt(40).v))}) == 100 << 16,
+          "GROUND_HEIGHT reads the map");
+    check(display(15, {3 << 16, 4 << 16}) == 5 << 16, "HYPOT");
     bool none = true;
-    for (int v : {0, -1, 21, 27, 28, 29, 30, 32, 33, 34, 46, 100}) none &= ta::client::displayScriptGet(r, v) == 0;
-    check(none, "ids past 20 (and 0, -1) answer 0, as the simulation's do");
+    for (int v : {0, -1, 20, 21, 27, 28, 29, 30, 32, 33, 34, 46, 100}) none &= display(v) == 0;
+    check(none, "ids past 20 (and 0, -1, ARMORED) answer 0, as the simulation's do");
     if (g_fail) { std::printf("ta_get_range_test: %d FAILED\n", g_fail); return 1; }
     std::printf("ta_get_range_test: all passed\n");
     return 0;

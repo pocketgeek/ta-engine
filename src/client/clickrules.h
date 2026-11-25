@@ -232,9 +232,10 @@ inline UnitClick armedClick(char cmd, const ClickTarget& t, const ClickUnit& u, 
             // only; a reclaimable feature seen at the point is RESURRECT for a
             // canresurrect unit (0x43f5a5), else RECLAIM (0x43f68a); with none,
             // a unit there -- any owner's -- is RECLAIMUNIT (0x43f6aa).
-            // Retail's cursor says Reclaim over a body that is also a reclaimable
-            // feature; ours says Revive there, the order the click gives.
-            if (u.raise) return {ClickOrder::Resurrect, CursorId::Revive};
+            // The cursor is retail's: Reclaim over the feature even where the
+            // click raises it (every raisable TA corpse is a reclaimable feature,
+            // reviveKindFor), as TotalA.exe's selector shows it.
+            if (u.raise) return {ClickOrder::Resurrect, CursorId::Reclaim};
             if (u.reclaim) return {ClickOrder::Reclaim, CursorId::Reclaim};
             if (u.reclaimUnit) return {ClickOrder::ReclaimUnit, CursorId::Reclaim};
             return {};

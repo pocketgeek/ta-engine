@@ -80,9 +80,9 @@ inline constexpr bool defensiveLevel(Difficulty d) {
     return d == Difficulty::Defensive || d == Difficulty::AbsurdlyDefensive;
 }
 
-// Per-player mana-income multiplier for a difficulty. This is the ONE economy cheat:
+// Per-player production multiplier for a difficulty (PlayerBooks::mult). The one cheat:
 // Absurd and Absurdly Defensive earn double from every income source. It scales
-// HASHED sim state (mana), so every peer must apply the same factor to the same
+// HASHED sim state (the metal / energy books), so every peer must apply the same factor to the same
 // player -- it is derived from the broadcast aiLevel and set on the sim player at
 // match setup, never AI-local.
 inline constexpr float incomeMultFor(Difficulty d) {
@@ -98,7 +98,7 @@ inline constexpr float incomeMultFor(Difficulty d) {
 struct DiffParams {
     int  thinkPeriod;      // sim ticks between decisions (30 = 1 Hz); lower = faster reactions
     int  waveSize;         // base army size to gather before an attack; the actual "big
-                           // push" threshold scales UP with mana income (a rich AI masses
+                           // push" threshold scales UP with income (a rich AI masses
                            // a larger army, a poor one strikes with what it has)
     int  producersPerThink;// how many idle producers act each think (economy/APM pace)
     int  limitScale;       // percent applied to the profile's unit limits (100 = as shipped)
@@ -107,7 +107,7 @@ struct DiffParams {
                            // army musters (0 = no raiding)
     bool unbounded;        // no AI-imposed caps: the planner's targets scale with income
                            // without ceilings, profile limits do not apply, and spending
-                           // is paced by mana alone (the defensive levels)
+                           // is paced by the economy alone (the defensive levels)
 };
 DiffParams paramsFor(Difficulty d);
 

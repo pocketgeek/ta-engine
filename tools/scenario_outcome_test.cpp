@@ -36,10 +36,10 @@ void ticks(sim::World& world, int count) {
 
 int main() try {
     auto files = std::make_shared<hpi::Vfs::Files>();
-    const std::string fbi = "[UNITINFO]{\nunitname=monarch;\nobjectname=monarch;\n"
+    const std::string fbi = "[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=monarch;\nobjectname=monarch;\n"
         "maxdamage=100;\nfootprintx=1;\nfootprintz=1;\ncommander=1;\n}";
     (*files)["units/monarch.fbi"] = {fbi.begin(),fbi.end()};
-    const std::string hutFbi = "[UNITINFO]{\nunitname=hut;\nobjectname=hut;\n"
+    const std::string hutFbi = "[UNITINFO]{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=hut;\nobjectname=hut;\n"
         "maxdamage=100;\nfootprintx=1;\nfootprintz=1;\nbuildtime=100;\n}";
     (*files)["units/hut.fbi"] = {hutFbi.begin(),hutFbi.end()};
     hpi::Vfs vfs;vfs.setMapFiles(files);

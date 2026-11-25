@@ -106,7 +106,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
         check(!world.buildAllowed(registry.find("corak")) && !world.buildAllowed(registry.find("armpw")) &&
               world.buildAllowed(registry.find("armcom")),"transferred Use Only not installed");
         check(world.unit(1)->scenarioName==monarch.uniqueName.substr(0,31),"named placement lost on network participant");
-        check(world.player(0).scenarioResourceLimit==500 && world.player(0).mana==123,"startup resource actions lost on network participant");
+        check(world.player(0).scenarioResourceLimit==500 && world.books(0).stored[0]==123 && world.books(0).stored[1]==123,"startup resource actions lost on network participant");
         const auto* reinforcement=world.unit(3);
         check(reinforcement && reinforcement->type==registry.find("armpw") &&
               reinforcement->hp.floorInt()==reinforcement->type->maxHp-7,
@@ -146,7 +146,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
                 for(const auto& c:bundle.cmds)sim::applyCommand(world,registry,c);
                 for(const auto& e:bundle.events)sim::applyEvent(world,e);
                 world.tick(1.f/30.f);
-                if(tick<90)check(world.player(0).scenarioResourceLimit==500 && world.player(0).mana==123,
+                if(tick<90)check(world.player(0).scenarioResourceLimit==500 && world.books(0).stored[1]==123,
                                  "resource limit did not suppress natural income during network replay");
                 const auto hash=world.stateHash();
                 if(reference)hashes[tick]=hash;else check(hashes.at(tick)==hash,"solo observer replay diverged");
@@ -164,7 +164,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
             check(ht>240 && sent,"solo result occurred before authored victory condition");
             check(wh.scenarioOutcome(0)==1 && wo.scenarioOutcome(0)==1,"server result differs from scenario");
             check(wh.unit(1)->buildQueue.empty() && wh.units().size()==3,"network construction bypassed Use Only");
-            check(wh.player(0).scenarioResourceLimit==0 && wo.player(0).scenarioResourceLimit==0 && wh.player(0).mana>123,
+            check(wh.player(0).scenarioResourceLimit==0 && wo.player(0).scenarioResourceLimit==0 && wh.books(0).stored[1]>123,
                   "timed Resources Normal did not restore income across peers");
             check(wo.unit(1)->scenarioName==monarch.uniqueName.substr(0,31),"late observer lost authored display name");
             std::cout<<"PASS: solo authored names, neutral/stats/restrictions, scripted create/raw HP/move/resource reset, host/referee/late observer parity, victory verified after "<<ht<<" ticks hash "<<std::hex<<wh.stateHash()<<'\n';
@@ -827,13 +827,13 @@ int main(int argc, char** argv) try {
                 }
             }
             if (diplomacy && hostLoaded && ht>30 && !sharingSent) {
-                net::Command c;c.kind=net::Cmd::ShareMana;c.targetId=1;c.queue=0;
+                net::Command c;c.kind=net::Cmd::ShareResources;c.targetId=1;c.queue=1;   // metal on
                 c.player=7; // the server must stamp the actual sender, not trust this
                 host.sendCommands({c});sharingSent=true;
             }
-            if (diplomacy && sharingSent && !(wh.player(0).manaShareMask & 2)) sharingSeen=true;
+            if (diplomacy && sharingSent && (wh.player(0).shareResources & 1)) sharingSeen=true;
             if (diplomacy && sharingSeen && ht>150 && !sharingRestored) {
-                net::Command c;c.kind=net::Cmd::ShareMana;c.targetId=1;c.queue=1;
+                net::Command c;c.kind=net::Cmd::ShareResources;c.targetId=1;c.queue=0;   // metal off
                 host.sendCommands({c});sharingRestored=true;
             }
             if (spectatorLoaded && ht>30 && !chatSent) {
@@ -863,10 +863,10 @@ int main(int argc, char** argv) try {
             check(!host.desynced() && !peer.desynced(), "server map differs");
             if (ht==300 && pt==300 && st==300) {
                 if(diplomacy) {
-                    check(sharingSeen && sharingRestored && wh.player(0).manaShareMask==0xff &&
-                          wp.player(0).manaShareMask==0xff && ws.player(0).manaShareMask==0xff,
+                    check(sharingSeen && sharingRestored && wh.player(0).shareResources==0 &&
+                          wp.player(0).shareResources==0 && ws.player(0).shareResources==0,
                           "sharing command did not apply and restore on all peers");
-                    std::cout << "mana sharing: server-stamped sender, disable/enable, referee and spectator lockstep passed\n";
+                    std::cout << "resource sharing: server-stamped sender, enable/disable, referee and spectator lockstep passed\n";
                 }
                 auto has=[](const auto& messages,const char* text) {
                     return std::any_of(messages.begin(),messages.end(),[&](const auto& item){return item.second==text;});

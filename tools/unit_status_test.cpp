@@ -1,8 +1,5 @@
-// The information bar's status line (client/unitstatus.h). Every type
-// without activatewhenbuilt is created with its activation bit clear (4c033e,
-// default 0; the parser's default since protocol 312), so the archer is as
-// "off" as a new gate. Only a unit that can be switched off reads INACTIVE;
-// the line used to say it for every idle unit of such a type.
+// The information bar's status line (client/unitstatus.h): TotalA.exe's
+// mission status texts (the mission table 0x4fc490..).
 #include "client/unitstatus.h"
 #include "sim/sim.h"
 #include <cstdio>
@@ -40,10 +37,18 @@ int main() try {
     const std::string moving = ta::client::unitStatusLabel(snapshot(*w.unit(a)));
     check(moving == "MOVING", "a moving archer reads " + moving + ", not MOVING");
     const std::string off = ta::client::unitStatusLabel(snapshot(*w.unit(g)));
-    check(off == "INACTIVE", "a gate switched off reads " + off + ", not INACTIVE");
-    UnitR on = snapshot(*w.unit(g)); on.active = true;
-    const std::string onText = ta::client::unitStatusLabel(on);
-    check(onText == "STANDBY", "a gate switched on reads " + onText + ", not STANDBY");
+    check(off == "STANDBY", "a gate switched off reads " + off + ", not STANDBY (TA has no off line)");
+    // RECLAIMUNIT's own line (0x4047ba -> 0x438880): "Reclaiming".
+    {
+        UnitType reclaimer = archer; reclaimer.id = reclaimer.name = "reclaimer";
+        reclaimer.isBuilder = true; reclaimer.canReclaim = true; reclaimer.canMove = true; reclaimer.buildDist = 60;
+        const int r = w.spawn(&reclaimer, 300, 340, 0, 0);
+        w.reclaimUnit(r, g, false);
+        const std::string reclaiming = ta::client::unitStatusLabel(snapshot(*w.unit(r)));
+        check(reclaiming == "RECLAIMING", "a RECLAIMUNIT reads " + reclaiming + ", not RECLAIMING");
+        UnitR site = snapshot(*w.unit(g)); site.underConstruction = true;
+        check(std::string(ta::client::unitStatusLabel(site)) == "UNDER CONSTRUCTION", "GetBuilt's line");
+    }
     // 4b2513..4b2551: a multiplayer game names a commander after its player.
     {
         UnitType king; king.id = king.name = "monarch"; king.commander = true;
@@ -70,7 +75,7 @@ int main() try {
     w.destroy(a);
     w.unit(a)->selfDestructT = -5;
     const std::string leaving = ta::client::unitStatusLabel(snapshot(*w.unit(a)));
-    check(leaving == "LEAVING YOUR COMMAND", "a unit in the self-destruct's last wait reads " + leaving);
+    check(leaving == "SELF DESTRUCT ENGAGED", "a unit in the self-destruct's last wait reads " + leaving);
     std::puts("unit status: PASS");
     return 0;
 } catch (const std::exception& e) {

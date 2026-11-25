@@ -1,215 +1,144 @@
-// site_decay_test -- an abandoned construction site decays as retail's does,
-// in every game (KINGDOMS.icd, emulated by tools/re/check_site_decay.py).
+// site_decay_test -- an abandoned construction site decays as TotalA.exe's does.
 //
-// The site's own GetBuilt (402220) sleeps 300 ticks when it is new and 30 after
-// any work event; a timer wake with no work since runs 429d70 -> 429af0(site,
-// site, -0.5f) once a tick: 0.5 / buildtime of the build comes off the site and
-// float(that * buildcost) goes back to the SITE's owner. When no work would be
-// left the site dies instead (kind 11, its own hitter, no refund). Ours used to
-// bleed hp at the rate the site was last built from the first tick nobody
-// worked it, and gave nothing back.
-//
-// Synthetic types on a flat map.
+// GetBuilt (0x402da0) on an unfinished site: stage 0 sleeps 300 ticks, stage 1
+// 30, and stage 2 sleeps 30 after a work event or, on a timer wake with none,
+// runs 0x41bcd0(site, 11) and sleeps 11. 0x41bcd0 hands 0x41ba60 the unconjure
+// amount -(float)(buildtime * 11) / buildcostenergy: the remaining work c =
+// clamp(rem + 11 / buildcostenergy, 0, 1), the HP word loses int(c * maxdamage)
+// - int(rem * maxdamage), the SITE's metal accumulator gets buildcostmetal *
+// (c - rem) as production (x0.5 / x0.7 for an easy / medium computer), and a
+// site whose remaining work reaches 1 dies (kind 9) after that last refund.
+// No energy comes back. A site with no GetBuilt (a change of owner) never decays.
 
 #include "sim/sim.h"
 
+#include <cmath>
 #include <cstdio>
+#include <memory>
+#include <string>
 #include <vector>
 
 using namespace ta::sim;
 
+static int failures = 0;
+static void check(bool ok, const std::string& what) {
+    std::printf("%s %s\n", ok ? "PASS" : "FAIL", what.c_str());
+    if (!ok) ++failures;
+}
+
 namespace {
-int failures = 0;
-void check(bool ok, const char* what) {
-    std::printf("%s %s\n", ok ? "PASS" : "FAIL", what);
-    failures += !ok;
-}
-
-struct Types {
-    UnitType builder, hut, factory, sol;
-    Types() {
-        builder.id = builder.name = "builder";
-        builder.maxVel = Fixed::fromInt(2); builder.turnRate = builder.turnInPlaceRate = 10000;
-        builder.canMove = true; builder.maxHp = 300; builder.footX = builder.footZ = 2;
-        builder.isBuilder = true; builder.workerTime = 100; builder.buildDist = 80;
-        builder.storage = 100000; builder.upright = true;
-
-        hut.id = hut.name = "hut"; hut.maxHp = 2000; hut.maxVel = {}; hut.footX = hut.footZ = 2;
-        hut.buildTime = 300; hut.buildCost = 600;
-
-        factory.id = factory.name = "factory";
-        factory.maxVel = Fixed(); factory.maxHp = 5000; factory.footX = factory.footZ = 6;
-        factory.isBuilder = true; factory.workerTime = 10; factory.storage = 100000; factory.buildMenu = {"sol"};
-
-        sol = builder; sol.id = sol.name = "sol"; sol.isBuilder = false; sol.storage = 0;
-        sol.buildTime = 60; sol.buildCost = 300; sol.maxHp = 1000;
-    }
-};
-
 struct Rig {
-    World w;
-    Rig() {
-        w.setSerialThreads(true);
-        w.setTerrain(std::vector<uint8_t>(size_t(128) * 128, 100), 128, 128, 20);
-        w.setPathService(true);
-        w.setPlayerCount(2);
-        w.player(0).mana = 50000;
+    std::unique_ptr<World> w = std::make_unique<World>();
+    UnitType hut;
+    int site = 0;
+    explicit Rig(float bce, float bcm, float remaining, float mult = 1.0f) {
+        w->setTerrain(std::vector<uint8_t>(64 * 64, 100), 64, 64, 20);
+        hut.id = hut.name = "hut"; hut.maxHp = 1000; hut.maxVel = Fixed(); hut.footX = hut.footZ = 2;
+        hut.buildTime = 2000; hut.buildCostEnergy = bce; hut.buildCostMetal = bcm;
+        hut.metalStorage = 5000; hut.energyStorage = 5000;
+        site = w->spawn(&hut, 300, 300, 0, 0);
+        Unit& u = *w->unit(site);
+        u.underConstruction = u.buildBegun = u.buildStarted = true;
+        u.buildRemaining = remaining;
+        u.hp = Fixed::fromInt(int32_t((1.0f - remaining) * 1000.0f));
+        w->player(0).books.mult = mult;
     }
-    void ticks(int n) { for (int i = 0; i < n; ++i) w.tick(1.f / 30); }
+    Unit* u() { return w->unit(site); }
+    bool alive() { return u() && u()->alive(); }
+    void ticks(int n) { for (int i = 0; i < n; ++i) w->tick(1.0f / 30); }
 };
 
-// What one decay tick gives back and takes off, as 429af0 computes it.
-double refund(const UnitType& t) {
-    const double progress = 0.5 * double(float(1.0 / double(t.buildTime)));
-    return double(float(progress * double(t.buildCost)));
-}
-Fixed hpDrop(const UnitType& t) {
-    return Fixed::fromFloat(float(double(t.maxHp) * 0.95 * 0.5 * double(float(1.0 / double(t.buildTime)))));
-}
-
-// A worked site, abandoned: 30 quiet ticks after the last work, then a fixed
-// slice every tick with its mana back, until it dies with nothing left.
-void abandoned() {
-    Types t; Rig r;
-    const int id = r.w.spawn(&t.builder, 600, 1000, 0, 0);
-    const double before = r.w.player(0).mana;
-    r.w.queueBuild(id, &t.hut, 660, 1000, false);
-    int site = 0;
-    for (int i = 0; i < 900 && !(site && r.w.unit(site)->buildBegun); ++i) {
-        r.ticks(1); site = r.w.unit(id)->buildSiteId;
-    }
-    r.ticks(20);
-    const double paid = before - r.w.player(0).mana;
-    check(site && r.w.unit(site)->underConstruction && paid > 0, "the builder works the site");
-    r.w.cancelBuilds(id);
-    const Fixed hp = r.w.unit(site)->hp;
-    const double mana = r.w.player(0).mana;
-    r.ticks(29);
-    check(r.w.unit(site)->hp == hp && r.w.player(0).mana == mana,
-          "29 ticks after its last work the site is untouched");
-    r.ticks(1);
-    check(r.w.unit(site)->hp == hp - hpDrop(t.hut) && r.w.player(0).mana == mana + refund(t.hut),
-          "the 30th decays it by 0.5/buildtime and gives that much of its cost back");
-    r.ticks(1);
-    check(r.w.unit(site)->hp == hp - hpDrop(t.hut) - hpDrop(t.hut) && r.w.player(0).mana == mana + 2 * refund(t.hut),
-          "and so on every tick");
-    int steps = 2;
-    while (r.w.unit(site)->alive() && steps < 5000) { r.ticks(1); ++steps; }
-    const Unit* s = r.w.unit(site);
-    const double back = r.w.player(0).mana - mana;
-    check(s && !s->alive() && s->deathType == 11 && s->lastHitBy == site,
-          "with no work left it dies of kind 11, its own hitter");
-    check(back <= paid && back > paid - 2 * refund(t.hut),
-          "the refunds come to what was paid, less the last slice");
-}
-
-// The worker in a later unit slot than the site: retail dispatches the site
-// before it each tick, so the site's GetBuilt hears of the last work a tick
-// late and the decay starts on the 31st tick after it, not the 30th.
-void laterSlot() {
-    Types t; Rig r;
-    const int site = r.w.spawn(&t.hut, 660, 1000, 0, 0);
-    Unit* s = r.w.unit(site);
-    s->underConstruction = s->buildBegun = true;
-    s->hp = Fixed::fromInt(1000);
-    r.w.blockFoot(t.hut, 660, 1000, true);
-    const int id = r.w.spawn(&t.builder, 600, 1000, 0, 0);
-    check(id > site, "later slot: the helper comes after the site");
-    r.w.assist(id, site, false);
-    Fixed last = r.w.unit(site)->hp;
-    int worked = 0;
-    for (int i = 0; i < 300 && worked < 20; ++i) {
-        r.ticks(1);
-        if (r.w.unit(site)->hp > last) ++worked;
-        last = r.w.unit(site)->hp;
-    }
-    check(worked >= 20 && r.w.unit(site)->underConstruction, "later slot: the helper works the site");
-    r.w.cancelBuilds(id);
-    const double mana = r.w.player(0).mana;
-    r.ticks(30);
-    check(r.w.unit(site)->hp == last && r.w.player(0).mana == mana,
-          "later slot: 30 ticks after its last work the site is untouched");
-    r.ticks(1);
-    check(r.w.unit(site)->hp == last - hpDrop(t.hut) && r.w.player(0).mana == mana + refund(t.hut),
-          "later slot: the 31st decays it");
-}
-
-// A site nobody has worked: 300 ticks, then 30 more, then the decay.
-void neverWorked() {
-    Types t; Rig r;
-    r.w.spawn(&t.builder, 300, 1000, 0, 0);   // storage for the pool
-    const int site = r.w.spawn(&t.hut, 600, 1000, 0, 0);
-    Unit* s = r.w.unit(site);
-    s->underConstruction = s->buildBegun = true;
-    s->hp = Fixed::fromInt(1000);
-    const double mana = r.w.player(0).mana;
-    r.ticks(330);
-    check(r.w.unit(site)->hp == Fixed::fromInt(1000) && r.w.player(0).mana == mana,
-          "an unworked site waits 330 ticks");
-    r.ticks(1);
-    check(r.w.unit(site)->hp == Fixed::fromInt(1000) - hpDrop(t.hut) && r.w.player(0).mana == mana + refund(t.hut),
-          "then decays");
-}
-
-// A site that changes sides is a new object, created finished, that takes
-// the old one's remaining work: it has no GetBuilt at all.
-void changedSides() {
-    Types t; Rig r;
-    r.w.spawn(&t.builder, 300, 1000, 0, 1);   // storage for the new owner
-    const int site = r.w.spawn(&t.hut, 600, 1000, 0, 0);
-    Unit* s = r.w.unit(site);
-    s->underConstruction = s->buildBegun = true;
-    s->hp = Fixed::fromInt(1000);
-    r.ticks(200);
-    check(r.w.scenarioTransfer(site, 1), "changed sides: the site goes over");
-    const double mana = r.w.player(1).mana;
-    // 514da0 makes the new object finished and copies the remaining work
-    // over after: it carries no GetBuilt, so nothing ever decays it.
-    r.ticks(1200);
-    const Unit* now = r.w.unit(site);
-    check(now && now->alive() && now->player == 1 && now->underConstruction && now->hp == Fixed::fromInt(1000),
-          "changed sides: the new object has no GetBuilt and never decays");
-    check(r.w.player(1).mana == mana, "changed sides: no refund either");
-}
-
-// A factory's output that its factory stops working is HELD, not decayed:
-// our choice, not retail's (whose GetBuilt would decay it once the work
-// stops). It keeps its progress and costs nothing back or again. Only an
-// output its producer no longer holds decays, 30 ticks after it let go.
-void factoryOutput() {
-    Types t; Rig r;
-    const int f = r.w.spawn(&t.factory, 600, 1000, 0, 0);
-    r.w.train(f, &t.sol, 1);
-    int site = 0;
-    for (int i = 0; i < 300 && !site; ++i) { r.ticks(1); site = r.w.unit(f)->productionSiteId; }
-    r.ticks(100);
-    check(site && r.w.unit(site)->underConstruction, "the factory works its output");
-    const int32_t progress = r.w.unit(f)->buildProgress;
-    const Fixed hp = r.w.unit(site)->hp;
-    const double mana = r.w.player(0).mana;
-    r.w.unit(f)->paralyzedFor = 400;
-    r.ticks(360);
-    const Unit* held = r.w.unit(site);
-    const bool kept = held && held->alive() && held->hp == hp && r.w.unit(f)->productionSiteId == site;
-    check(kept && r.w.unit(f)->buildProgress == progress && r.w.player(0).mana == mana,
-          "a stopped factory's output is held: no decay, no refund");
-    if (!kept) return;
-    r.w.unit(f)->productionSiteId = 0;   // the producer lets go of it
-    r.ticks(29);
-    check(r.w.unit(site)->hp == hp && r.w.player(0).mana == mana,
-          "an output its producer let go of waits 30 ticks");
-    r.ticks(1);
-    check(r.w.unit(site)->hp == hp - hpDrop(t.sol) && r.w.player(0).mana == mana + refund(t.sol),
-          "then decays as any site");
+// One 0x41ba60 decay step from `rem`, as decayConstruction takes it.
+float stepRemaining(float rem, float bce, int bt = 2000) {
+    const float amount = -float(double(bt * 11) / double(bce));
+    const double v = double(rem) - double(amount) / double(bt);
+    return v < 1.0 ? (v > 0.0 ? float(v) : 0.0f) : 1.0f;
 }
 }  // namespace
 
 int main() {
-    abandoned();
-    laterSlot();
-    neverWorked();
-    changedSides();
-    factoryOutput();
-    if (failures) std::printf("%d FAILED\n", failures);
+    {
+        // A half-built site, never worked again: nothing for 300 + 30 ticks,
+        // then a step every 11.
+        Rig r(3000, 600, 0.5f);
+        int first = -1;
+        for (int t = 1; t <= 400 && first < 0; ++t) {
+            r.ticks(1);
+            if (r.u()->buildRemaining != 0.5f) first = t;
+        }
+        check(first >= 330 && first <= 333, "the first decay comes 300 + 30 ticks after creation (got " +
+              std::to_string(first) + ")");
+        const float after1 = stepRemaining(0.5f, 3000);
+        check(r.u()->buildRemaining == after1, "a step takes 11 / buildcostenergy of the build");
+        check(r.u()->hp.floorInt() == 500 + (int32_t(0.5f * 1000) - int32_t(after1 * 1000)),
+              "the HP word loses the matching hit points");
+        const float refund = 600 * (after1 - 0.5f);
+        check(std::fabs(r.u()->books.r[1].prod - refund) < 1e-4f && r.u()->books.r[0].prod == 0,
+              "the site's metal accumulator gets buildcostmetal x the step; no energy");
+        r.ticks(10);
+        check(r.u()->buildRemaining == after1, "...and sleeps 11 ticks");
+        r.ticks(1);
+        check(r.u()->buildRemaining == stepRemaining(after1, 3000), "...then steps again");
+    }
+    {
+        // An easy computer gets half of it (0x4fcc98), a medium one 0.7 (0x4fcc90).
+        for (const auto& [mult, k] : {std::pair{0.5f, 0.5}, std::pair{0.7f, 0.7}}) {
+            Rig r(3000, 600, 0.5f, mult);
+            r.ticks(335);
+            const float after = stepRemaining(0.5f, 3000);
+            const float refund = float(double(-(600.0f * (0.5f - after))) * k);
+            check(std::fabs(r.u()->books.r[1].prod - refund) < 1e-4f,
+                  "a computer owner's refund is scaled by its difficulty (" + std::to_string(k) + ")");
+        }
+    }
+    {
+        // Run to the end: the site dies once nothing of it is left, refunded in full.
+        Rig r(300, 600, 0.5f);
+        r.w->setStartResources(0, 0, 0);
+        UnitType bank; bank.id = bank.name = "bank"; bank.maxHp = 100; bank.maxVel = Fixed(); bank.metalStorage = 5000;
+        r.w->spawn(&bank, 600, 600, 0, 0);   // room in the store for the refund
+        int died = -1;
+        for (int t = 1; t <= 3000 && died < 0; ++t) { r.ticks(1); if (!r.alive()) died = t; }
+        check(died > 330, "the site decays away (dead at tick " + std::to_string(died) + ")");
+        r.ticks(40);
+        // Every step's refund lands at a settle while the site stands; what the
+        // dying site's own accumulator holds since the last settle (up to three
+        // 22-metal steps) goes with it (taSettle sums live units).
+        const float back = r.w->books(0).stored[1];
+        check(back >= 300.0f - 3 * 22.0f - 0.05f && back <= 300.05f && r.w->books(0).stored[0] == 0,
+              "its owner got back the half built, in metal only (" + std::to_string(back) + ")");
+    }
+    {
+        // A never worked frame (remaining 1) goes at its first step, with nothing back.
+        Rig r(3000, 600, 1.0f);
+        r.ticks(340);
+        check(!r.alive(), "an unworked site goes at its first decay");
+    }
+    {
+        // buildcostenergy 0: the amount is -inf and the first step takes all of it.
+        Rig r(0, 600, 0.25f);
+        r.ticks(329);
+        check(r.alive(), "buildcostenergy 0: standing until the first step");
+        r.ticks(5);
+        check(!r.alive(), "...which unbuilds it at once");
+    }
+    {
+        // No GetBuilt (a change of owner's new object): never decays.
+        Rig r(3000, 600, 0.5f);
+        r.u()->siteGetBuilt = false;
+        r.ticks(1200);
+        check(r.alive() && r.u()->buildRemaining == 0.5f, "a site without GetBuilt never decays");
+    }
+    {
+        // Work wakes GetBuilt: each tick of work restarts the 30-tick wait.
+        Rig r(3000, 600, 0.5f);
+        UnitType builder; builder.id = builder.name = "builder"; builder.maxHp = 100; builder.isBuilder = true;
+        builder.maxVel = Fixed::fromInt(1); builder.canMove = true; builder.workerTime = 300; builder.buildDist = 200;
+        const int b = r.w->spawn(&builder, 300, 360, 0, 0);
+        r.w->assist(b, r.site, false);
+        r.ticks(600);
+        check(!r.alive() || r.u()->buildRemaining < 0.5f, "a worked site does not decay");
+    }
+    std::printf("site_decay_test: %d failures\n", failures);
     return failures ? 1 : 0;
 }
