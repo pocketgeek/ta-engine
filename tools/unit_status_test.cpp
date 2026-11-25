@@ -41,7 +41,7 @@ int main() try {
     // RECLAIMUNIT's own line (0x4047ba -> 0x438880): "Reclaiming".
     {
         UnitType reclaimer = archer; reclaimer.id = reclaimer.name = "reclaimer";
-        reclaimer.isBuilder = true; reclaimer.canReclaim = true; reclaimer.buildDist = 60;
+        reclaimer.isBuilder = true; reclaimer.canReclaim = true; reclaimer.canMove = true; reclaimer.buildDist = 60;
         const int r = w.spawn(&reclaimer, 300, 340, 0, 0);
         w.reclaimUnit(r, g, false);
         const std::string reclaiming = ta::client::unitStatusLabel(snapshot(*w.unit(r)));
