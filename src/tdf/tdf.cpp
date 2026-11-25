@@ -47,11 +47,11 @@ struct Parser {
         else {
             // TotalA.exe's section lookup returns the FIRST section of a name
             // (docs/retail-data.md section 1): a later duplicate is kept only as
-            // history and never answers child().
-            node.childEntries.at(latest.at(key)).previous=int(node.previousChildren.size());
-            node.previousChildren.push_back(std::move(child));
+            // history and never answers child(). orderedChildren() still lists
+            // every definition where it stood.
             latest[key]=node.childEntries.size();
-            node.childEntries.push_back({key,-1});
+            node.childEntries.push_back({key,int(node.previousChildren.size())});
+            node.previousChildren.push_back(std::move(child));
             return;
         }
         latest[key]=node.childEntries.size();
