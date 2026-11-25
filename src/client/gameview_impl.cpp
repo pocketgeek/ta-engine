@@ -4209,7 +4209,7 @@
                     centerOnSelection();
                     voice(monarch, "select");
                 } else {
-                    notice_ = "NO MONARCH"; noticeTimer_ = 2;
+                    notice_ = "NO COMMANDER"; noticeTimer_ = 2;
                 }
                 return true;
             }

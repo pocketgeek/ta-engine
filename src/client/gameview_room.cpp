@@ -26,7 +26,8 @@ std::string ruleValue(RoomField field, const ta::net::GameOptions& o) {
     case RoomField::Scenario: return onOff(o.mapScenario);
     case RoomField::DoubleSight: return onOff(o.doubleSight);
     case RoomField::UnitCap: return std::to_string(o.unitCap);
-    case RoomField::Monarch: return onOff(o.monarchExpendable);
+    // TA's skirmish option (SKIRMISH.GUI CommanderDeath: Game Ends / Continues).
+    case RoomField::Monarch: return o.monarchExpendable ? "CONTINUES" : "GAME ENDS";
     case RoomField::SpeedUnlock: return onOff(o.speedUnlock);
     case RoomField::Fog: return kFogName[std::min<int>(o.fogExplored, 2)];
     case RoomField::StartLocations:
@@ -54,8 +55,8 @@ std::string ruleLabel(RoomField field, const ta::net::GameOptions& o) {
 // never resizes its text. Measured in the current UI FONT.
 float roomRulePx(float maxW) {
     static const char* const kCaptions[] = {
-        "DOUBLE SIGHT/RADAR: OFF", "UNIT CAP: 2000", "MONARCH EXPENDABLE: SCENARIO",
-        "MONARCH EXPENDABLE: OFF", "ALLOW SPEED CHANGE: OFF", "POWER CODES: OFF", "ALLOW SPECTATORS: OFF",
+        "DOUBLE SIGHT/RADAR: OFF", "UNIT CAP: 2000", "COMMANDER DEATH: SCENARIO",
+        "COMMANDER DEATH: GAME ENDS", "COMMANDER DEATH: CONTINUES", "ALLOW SPEED CHANGE: OFF", "POWER CODES: OFF", "ALLOW SPECTATORS: OFF",
         "MAP SCENARIO: OFF", "MAP SCENARIO: ON (TEST MAP)"};
     float px = 1.6f;
     ta::net::GameOptions o;

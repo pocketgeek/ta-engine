@@ -13,7 +13,7 @@ const char* roomFieldCaption(RoomField field) {
     case RoomField::Scenario: return "MAP SCENARIO";
     case RoomField::DoubleSight: return "DOUBLE SIGHT/RADAR";
     case RoomField::UnitCap: return "UNIT CAP";
-    case RoomField::Monarch: return "MONARCH EXPENDABLE";
+    case RoomField::Monarch: return "COMMANDER DEATH";
     case RoomField::SpeedUnlock: return "ALLOW SPEED CHANGE";
     case RoomField::Fog: return "FOG OF WAR";
     case RoomField::StartLocations: return "START LOCATIONS";

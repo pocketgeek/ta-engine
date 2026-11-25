@@ -751,7 +751,29 @@ std::string defaultGameName(const std::string& player) {
         else if (auto o = src->tryRead(ta::vpath::replaceExtension(tntPath, ".ota"))) ota.assign(o->begin(), o->end());
         int w = 0, h = 0; const uint8_t* idx = nullptr;
         std::vector<uint8_t> rgba;
-        if (tntIndexedImage(d, 12, w, h, idx) || tntIndexedImage(d, 11, w, h, idx)) {
+        if (u32(0) == 0x2000) {
+            // A Total Annihilation map (TNT 0x2000): its own minimap (header +0x28), 8-bit
+            // through the game palette, padded out with index 0x64 past the map's own
+            // aspect -- trimmed off, as TA's SELECT MAP shows it.
+            try {
+                const auto m = ta::tnt::Map::load(d, tntPath);
+                if (m.minimapW <= 0 || m.minimapH <= 0 || m.minimap.size() < size_t(m.minimapW) * m.minimapH) return;
+                const auto pb = vfs_.read("palettes/palette.pal");   // the game's palette: a map package holds only its map
+                const auto pal = ta::gaf::Palette::fromBytes(pb, "palettes/palette.pal");
+                int usedW = 0, usedH = 0;
+                for (int y = 0; y < m.minimapH; ++y)
+                    for (int x = 0; x < m.minimapW; ++x)
+                        if (m.minimap[size_t(y) * m.minimapW + x] != 0x64) { usedW = std::max(usedW, x + 1); usedH = std::max(usedH, y + 1); }
+                w = usedW ? usedW : m.minimapW; h = usedH ? usedH : m.minimapH;
+                rgba.resize(size_t(w) * h * 4);
+                for (int y = 0; y < h; ++y)
+                    for (int x = 0; x < w; ++x) {
+                        const uint8_t i = m.minimap[size_t(y) * m.minimapW + x];
+                        uint8_t* o = &rgba[(size_t(y) * w + x) * 4];
+                        o[0] = pal.rgba[i][0]; o[1] = pal.rgba[i][1]; o[2] = pal.rgba[i][2]; o[3] = 255;
+                    }
+            } catch (...) { return; }
+        } else if (tntIndexedImage(d, 12, w, h, idx) || tntIndexedImage(d, 11, w, h, idx)) {
             const std::vector<uint8_t>* pal = kingdomPalette(otaField(ota, "kingdom"));
             if (!pal) pal = kingdomPalette("aramon");   // maps without a kingdom get a default
             if (!pal) return;
