@@ -52,8 +52,12 @@ def begin(port, h, alice_name, bob_name, bob_loads):
     auth.slot_update(bob, 1, 1, 1, 1, 1, 1, 2)
     assert alice.pump(10, lambda p: any(lobby(auth.Reader(b))[3][1][0][4] for b in p.other.get(auth.MSG['LobbyState'], [])))
     alice.send('StartGame')
+    # GameStarting follows the server's referee build, which refbuild deliberately
+    # slows by SILENT_DROPPED (7.5 s) on top of a Debug build's real one: take's
+    # default 10 s left ~2.5 s of slack, missed under parallel ctest load. The
+    # silence timers under test run server-side, so this wait is not the measure.
     for p in (alice, bob):
-        r = p.take('GameStarting')
+        r = p.take('GameStarting', SILENT_DROPPED + 30)
         lobby(r)
         p.slot, _seed, p.token = r.num('<B'), r.num('<I'), r.num('<Q')
     alice.send('Loaded', struct.pack('<Q', h))
