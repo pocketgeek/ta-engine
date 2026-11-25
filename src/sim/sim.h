@@ -2324,10 +2324,6 @@ public:
     const PathService& pathStats() const { return paths_; }
     void setPathfindingMode(PathfindingMode mode);
     PathfindingMode pathfindingMode() const { return pathfindingMode_; }
-    // Retail mode's native group record for a unit (null outside Retail or ungrouped).
-    const RetailGroupRecord* retailGroupRecord(int unitId) const {
-        const Unit* u=unit(unitId);return u?retailGroupOf(*u):nullptr;
-    }
 
     // Legion mode's formation slot for a member of a formation -- an Alt+N
     // formation or a classic AI squad flagged as one (legionFormationGroup) --
@@ -3659,7 +3655,6 @@ private:
     void tickFlyingGuard(Unit& u);
     void guardHelpPick(Unit& u, const Unit& g, int& help, int& mend);
     void guardInsertJob(Unit& u, int help, int mend);
-    void pushGuardFormation(Unit& u);
     RetailRingGoal guardRing(const Unit& u, const Unit& g) const;
     bool guardInDoorLane(const Unit& u, const Unit& g, int64_t x, int64_t z) const;
     void guardDoorPoint(const Unit& u, const Unit& g, Fixed& x, Fixed& z) const;
@@ -4749,7 +4744,7 @@ private:
         placementDirty_.push_back({x,z,w,h});
     }
     // (Kingdoms' group records and their pacing, 51b890 / 4d95f0, are gone:
-    // TotalA.exe keeps none, World::retailGroupOf.)
+    // TotalA.exe keeps none.)
     std::array<std::bitset<100>,kMaxPlayers> aiFormation_{};   // retail AI records' +8 (setAiGroup)
     // Legion: where a flyer in a mixed formation (squad < 0 with ground
     // members) keeps station this tick, by unit index. Rebuilt each tick from
@@ -4786,7 +4781,6 @@ private:
     const LegionFlightStation* legionFlightStation(const Unit& u) const;
     static int retailGroupIndex(const Unit& u);
     RetailGroupMember retailGroupMember(const Unit& u) const;
-    const RetailGroupRecord* retailGroupOf(const Unit& u) const;
     uint32_t retailMissionFlags(Unit& u);
     // The registry flags (+0x5a) of the mission an order runs: its
     // Order::mission.flags, with the row's own flags for SUPPRESS and the
@@ -4801,29 +4795,13 @@ private:
     static bool retailTaAttackMission(const Unit& u);
     // The next mission's flags (+0x66's +0x5a) behind orders[index]; 0 for none.
     uint32_t retailNextMissionFlags(const Unit& u,size_t index) const;
-    // 51d1e0(unit, 1, level) for an attack's group check (its flags lack 0x4000000).
-    bool retailAttackOutOfSlot(const Unit& u,int level) const;
     // The attack a formation leg its group check put ahead of it leads
     // (SUPPRESS, a flyer's attack), or null: the push left its slots as they were.
     static const Order* formationAttack(const std::vector<Order>& orders);
-    // Kingdoms' flyer attack group check, the base of the AirStrike,
-    // AirToAir and VTOL_SeekAttack hosts: VTOL_Move_Formation (level -4)
-    // would go ahead once the dispatch is done (push). No TotalA.exe flyer
-    // mission has a group check (docs/ta-port-plan.md), so none of them calls
-    // formation() and push() never fires.
+    // The base of the AirStrike, AirToAir and VTOL_SeekAttack hosts. (No
+    // TotalA.exe flyer mission has a group check, docs/ta-port-plan.md.)
     struct AirAttackGroup {
         World& w; Unit& u;
-        bool formationTo=false;
-        bool outOfSlot() const { return w.retailAttackOutOfSlot(u,5); }
-        // 50c480 then 4d6a50(unit, 0): a guard's group check lets it go.
-        void cancel() const { w.cancelPath(u);u.orders.clear();u.routeStamp=-1; }
-        uint32_t nextFlags() const { return w.retailNextMissionFlags(u,0); }
-        void leave() const {}   // 50c480: no TA group record to leave
-        bool formation() { formationTo=true;return true; }
-        // Puts the formation ahead (level -4) and runs it at once, as the
-        // dispatcher goes on to the head it was handed: true when it did
-        // (the caller's mover is done for the tick).
-        bool push();
     };
 
     void planLegionFlightStations();

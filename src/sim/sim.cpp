@@ -2273,20 +2273,6 @@ static bool plainFlightPatrol(const Unit& u) {
     return order.flightMoveMission || order.patrol;
 }
 
-// The VTOL_Move_Formation a group check pushes ahead of a flyer's mission
-// (4d7750), at `level` (+0x56): built with no target and no point, so the
-// ctor (4d6d66 / 4d6d6f) leaves the row's 0x1000402 as 0x1000002, and
-// VTOL_Move_FormationStandby's 0x5000402 (standby: VTOL_Standby and
-// VTOL_LandIfCan push it) as 0x5000002. Its point is the flyer's own until
-// stage 0 takes the group centre.
-static Order flightFormation(const Unit& u,int level,bool standby,uint32_t tick) {
-    Order formation;
-    formation.x=u.x;formation.z=u.z;formation.goal=formation.flightMoveMission=true;
-    formation.formationLevel=int8_t(level);formation.mission.flags=standby ? 0x5000002u : 0x1000002u;
-    formation.issuedTick=tick;
-    return formation;
-}
-
 // A FormationStandby (Move_Ground's or a flyer's) at the head: the standby or
 // landing it went ahead of stays under it, as under a step-out, and goes on
 // from stage 0 once it retires.
@@ -2334,75 +2320,9 @@ void World::tickFlightPatrol(Unit& u) {
             // VTOL_Patrol (0x410e70) push no step-out (TA has no VTOL_StepOut
             // row or name; mission tables 0x4fc6e8 / 0x4fca18). Kingdoms'
             // stepped out of a stack past stage 0.
-            const RetailGroupRecord* group=w.retailGroupOf(u);
-            if (u.orders.front().flightMoveMission && u.orders.front().formationLevel) {
-                // 417750 VTOL_Move_Formation: fly to the group centre until
-                // back inside the level's radius; a FormationStandby stays
-                // while its group moves (retailFlightFormation).
-                auto& order=u.orders.front();
-                const int level=order.formationLevel;
-                const bool all=(m.flags&0x4000000u)!=0;
-                const auto member=w.retailGroupMember(u);
-                return retailFlightFormation(m,w.tickCounter_,level,u.type->canFly,portHeadingToRetail(u.heading),
-                    [&] { return group && (level>0 ? retailGroupOutOfSlot(*group,member,false,level,all)
-                                                   : retailGroupOutOfSlot(*group,member,true,-level,all)); },
-                    [&] {
-                        const auto c=retailGroupCentre(*group,member,all,level<=0);
-                        order.x=Fixed::fromInt(int16_t(c.x));order.z=Fixed::fromInt(int16_t(c.z));
-                    },
-                    [&] {
-                        // 416c50, as VTOL_Move's stage 0.
-                        if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
-                            script->second.activated=true;w.notifyUnitScript(u,"Activate");
-                        }
-                        w.notifyUnitScript(u,"BeginFlight");
-                    },
-                    [&] {
-                        order.x=footprintWaypoint(footprintCell(order.x,u.type->footX),u.type->footX);
-                        order.z=footprintWaypoint(footprintCell(order.z,u.type->footZ),u.type->footZ);
-                        order.flightGoal=RetailFlightGoal{{order.x.v,u.flightY.v,order.z.v},0x30,0,16};
-                    },
-                    [&](int n) { return random(n); },
-                    [&] { return group && retailGroupMoving(*group); },
-                    [&] {
-                        // 4179ef: 4d8370, then 4d7de0(unit, found, 0, 0, 1, 0);
-                        // the attack goes ahead once the dispatch is done.
-                        const int found=w.retailHostScan(u);
-                        if (!found || !w.retailIssueAutoAttackAllowed(u,found,false)) return false;
-                        attackTo=found;
-                        return true;
-                    },
-                    [&](uint16_t angle,uint32_t distance) {
-                        // 417a25..417ac3: 4e40e0 at the point, 4e4540(0x40), 4d4d40.
-                        const auto p=retailAirRunPoint({u.x.v,u.flightY.v,u.z.v},u.flightY.v,angle,distance);
-                        order.x=Fixed::raw(p.x);order.z=Fixed::raw(p.z);
-                        order.flightGoal=RetailFlightGoal{p,0x30,0,64};
-                        m.pending&=~0x3700u;
-                    });
-            }
-            if ((u.orders.front().flightMoveMission || u.orders.front().patrol) && group) {
-                // 417e02..418052 (VTOL_Move) and 419f9b..41a21b (VTOL_Patrol):
-                // Move_Ground's two group checks (402b00) before their
-                // stages, against the move's goal or the patrol's leg
-                // (mission +0x22). As on the ground, the y terms are left at
-                // zero (docs/pathfinding-port.md).
-                auto& order=u.orders.front();
-                const int check=retailGroundGroupCheck(*group,w.retailGroupMember(u),m.flags,{u.x.v,0,u.z.v},
-                    {order.x.v,0,order.z.v},[&](int n){return int(random(n));});
-                if (check==1) {
-                    // Ahead again: 50c480, then 4d6a50(unit,0) drops every mission.
-                    u.orders.clear();
-                    return 2;
-                }
-                if (check) {
-                    // The parent restarts at stage 0 when the formation retires
-                    // (the patrol at the same leg: its stage 0 appends no second
-                    // anchor, 4d6b80); inserting invalidates m, so set it first.
-                    m.stage=0;
-                    u.orders.insert(u.orders.begin(),flightFormation(u,check,false,w.tickCounter_));
-                    return 4;
-                }
-            }
+            // No group check either: TotalA.exe keeps no group records
+            // (World's formation legs and Kingdoms' VTOL_Move_Formation,
+            // 417750, are gone with them).
             // TotalA.exe's stage 0 of VTOL_Move (0x40fb0c) and VTOL_Patrol
             // (0x4110c3): no mover or no canfly (type +0x241 0x800) ends it
             // (7); every slot's held target is let go and the slots are made
@@ -3170,10 +3090,6 @@ RetailGroupMember World::retailGroupMember(const Unit& u) const {
 // every Kingdoms group check (walk or fly back to the group, leave it on a
 // draw, the standbys' re-form) finds none, and nothing is paced. Ctrl groups
 // stay selection groups; Legion keeps its own formations (legionFormationGroup).
-const RetailGroupRecord* World::retailGroupOf(const Unit&) const {
-    return nullptr;
-}
-
 uint32_t World::retailOrderFlags(const Unit& u,const Order& o) const {
     // SUPPRESS's row 0x1000410. A flyer's attack at a point has no target, so
     // the ctor (4d6d66) clears the row's target bit 0x200: AirStrike 0x1000600
@@ -3241,11 +3157,6 @@ uint32_t World::retailNextMissionFlags(const Unit& u,size_t index) const {
     return index+1<u.orders.size() ? retailOrderFlags(u,u.orders[index+1]) : 0;
 }
 
-bool World::retailAttackOutOfSlot(const Unit& u,int level) const {
-    const RetailGroupRecord* group=retailGroupOf(u);
-    return group && retailGroupOutOfSlot(*group,retailGroupMember(u),true,level,false);
-}
-
 const Order* World::formationAttack(const std::vector<Order>& orders) {
     if (orders.empty()) return nullptr;
     const size_t leg=currentLeg(orders);
@@ -3256,28 +3167,6 @@ const Order* World::formationAttack(const std::vector<Order>& orders) {
     const Order& next=orders[leg+1];
     return next.suppress || next.airPoint || next.seekAttack || (next.targetId && !next.guard && !next.load)
         ? &next : nullptr;
-}
-
-// 41db51 / 41c1f1 / 41b7f6, and AirToAir's 41cd35, VTOL_Evade's 41e5b1 and
-// VTOL_SeekAttack's 41954b: VTOL_Move_Formation (row 5ebca1), level -4
-// (+0x56): the moving members' centre until back within level 4; the attack
-// starts again at stage 0 when it retires.
-//
-// The attack returns 0 with the formation at the head (+0x60, 4d7750), and
-// the dispatcher (4d8450) goes on to it in the same dispatch, as SUPPRESS's
-// (tickSuppress): its first stages run now, and the mover flies its
-// controller this tick. The attack's weapons have fired already (52ae90
-// runs first), so only the formation's dispatch and the mover run here.
-bool World::AirAttackGroup::push() {
-    if (!formationTo) return false;
-    Order formation=flightFormation(u,-4,false,w.tickCounter_);
-    formation.attackFormation=true;
-    u.orders.insert(u.orders.begin(),formation);
-    w.noteOrders(u.id);
-    w.tickFlightPatrol(u);
-    if (formationAttack(u.orders)) { w.tickFlightMovement(u);w.notifyFlightOccupancy(u); }
-    else { w.tickFlightBody(u);w.notifyFlightOccupancy(u); }
-    return true;
 }
 
 // Flags of the unit's current mission (+0x5a), for the missions this host
@@ -4043,41 +3932,19 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
         }
         void clear() { w.cancelPath(u); u.orders.clear(); u.routeStamp=-1; u.standbyActive=false; u.landing.reset(); }
         void stopBuilding() {}
-        // A standby's or the landing's group check
-        // (retailStandbyGroupCheck): 51d1e0(unit, 1, level) on its own
-        // mission (the rows' 0x4000000 counts the member in its centre);
-        // out of the slot the FormationStandby goes ahead (4d7750). A
-        // standby waits under it (0: stage 0 when it retires); the landing
-        // retires (5). Legion has no group records: a ground standby runs
-        // our counterpart instead (legionStandbyCheck), at the same wakes.
+        // The standbys' group check (Standby 407779, VTOL_Standby 417527,
+        // VTOL_LandIfCan 416eda: 51d1e0 on a group record) finds no record
+        // in TA. Legion's ground standby runs our counterpart instead
+        // (legionStandbyCheck), at the same wakes.
         int standbyGroupCheck(RetailStandbyCheck kind) {
-            const RetailGroupRecord* group=w.retailGroupOf(u);
-            if (!group) return kind==RetailStandbyCheck::Standby ? w.legionStandbyCheck(u) : -1;
-            return retailStandbyGroupCheck(kind,[&](int level) {
-                return retailGroupOutOfSlot(*group,w.retailGroupMember(u),true,level,true);
-            },[&](int level,int mode) {
-                if (u.type->canFly) {
-                    u.orders.insert(u.orders.begin(),flightFormation(u,level,true,w.tickCounter_));
-                } else {
-                    // Move_Ground_FormationStandby (row 0x5eb854, 0x15000400)
-                    // with no point: 0x15000000; +0x52 = -1 (4077b7).
-                    Order o;
-                    o.x=u.x;o.z=u.z;o.goal=o.groundMission=true;
-                    o.formationLevel=int8_t(level);o.mission.flags=0x15000000u;
-                    o.groundResponse.mode=mode;
-                    o.issuedTick=w.tickCounter_;
-                    u.orders.insert(u.orders.begin(),o);
-                }
-                w.noteOrders(u.id);
-                return true;
-            });
+            return kind==RetailStandbyCheck::Standby ? w.legionStandbyCheck(u) : -1;
         }
         int handle(RetailMissionState& m, uint32_t events) {
             if (u.landing && &m==&u.landing->mission) {
                 // TotalA.exe's VTOL_LandIfCan (0x40f2a0, retailLanding): no
                 // air-traffic step-out (no VTOL_StepOut row in TA). Kingdoms'
                 // group check (416eda) follows; it finds no group in TA
-                // (retailGroupOf).
+                // (it keeps no group records).
                 if (!u.landing->canceled && !(events&0x200))
                     if (const int result=standbyGroupCheck(RetailStandbyCheck::LandIfCan);result>=0) return result;
                 return retailLanding(*u.landing,events,{u.x.v,u.flightY.v,u.z.v},
@@ -4274,30 +4141,20 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 if (m.stage==0) { resetGoal(4); m.waitMask=0x700; return 1; }
                 return 5;
             }
-            // Retail group pacing: Move_Ground_Formation (402880) and the
-            // two group checks at the head of Move_Ground (402b00..402cd8).
-            const RetailGroupRecord* group=w.retailGroupOf(u);
+            // Move_Ground_Formation (402880): a formation leg (none is built
+            // in TA: no group records, so no group check pushes one) retires
+            // at once, its member never out of a slot. Kingdoms' two group
+            // checks at the head of Move_Ground (402b00..402cd8) are gone.
             if (goal.formationLevel) {
                 const int level=goal.formationLevel;
-                const bool all=(m.flags&0x4000000u)!=0;
                 const int result=retailGroundFormation(m,w.tickCounter_,level,u.embarked(),response.mode,
-                    [&] { return group && (level>0
-                        ? retailGroupOutOfSlot(*group,w.retailGroupMember(u),false,level,all)
-                        : retailGroupOutOfSlot(*group,w.retailGroupMember(u),true,-level,all)); },
+                    [&] { return false; },
                     [&] {
                         // 4d4d40(mission,0): drop the controller; the mover brakes.
                         w.cancelPath(u);goal.controller=0;goal.navigationExhausted=true;
                         m.pending&=~0x3700u;
                     },
-                    [&] {
-                        const auto c=retailGroupCentre(*group,w.retailGroupMember(u),all,level<=0);
-                        // 402918..40292f writes the centre to mission+0x22: the
-                        // mission point itself, which 4d4da0 then hands to the
-                        // controller. Retarget missionTarget too, or the reset
-                        // below would steer to the first cycle's stale centre.
-                        goal.x=Fixed::fromInt(int16_t(c.x));goal.z=Fixed::fromInt(int16_t(c.z));
-                        goal.missionTarget=std::pair{goal.x,goal.z};
-                    },
+                    [&] {},
                     [&] { resetGoal(4); },[&] {
                         // 40296c: off Hold Position, 4d8370; mode > 0 on
                         // Maneuver drops a hit at or beyond the leash from
@@ -4323,31 +4180,6 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 // stage first (0 after an attack).
                 if (auxiliary) u.orders.insert(u.orders.begin(),*auxiliary);
                 return result;
-            }
-            if (group && w.pathfindingMode_==PathfindingMode::Retail && !goal.park) {
-                const auto member=w.retailGroupMember(u);
-                // The formation goal's y terms are left at zero (see
-                // docs/pathfinding-port.md); x/z use the 16.16 positions.
-                const int check=retailGroundGroupCheck(*group,member,m.flags,{u.x.v,0,u.z.v},
-                    {goal.x.v,0,goal.z.v},[&](int n){return int(random(n));});
-                if (check==1) {
-                    // Ahead again: drop out of the moving centre and the orders.
-                    w.cancelPath(u);u.orders.clear();u.routeStamp=-1;u.standbyActive=false;
-                    return 2;
-                }
-                const int8_t level=int8_t(check);
-                if (level) {
-                    Order formation;
-                    formation.x=u.x;formation.z=u.z;formation.goal=formation.groundMission=true;
-                    formation.formationLevel=level;formation.mission.flags=0x11000000u;
-                    formation.groundResponse.mode=response.mode;
-                    formation.issuedTick=w.tickCounter_;
-                    // The parent restarts at stage 0 when the formation mission
-                    // retires; inserting invalidates m, so set it first.
-                    m.stage=0;
-                    u.orders.insert(u.orders.begin(),formation);
-                    return 4;
-                }
             }
             // Fight-move and patrol used to bypass the ground mission host.
             // Partial routes then completed at their last corner and failed
@@ -12948,57 +12780,19 @@ void World::tickGuardHelp(Unit& u) {
     // the look at once, and the look answers it first.
     const bool alarm=guardAlarm(u,*g);
     // The group check at the head of every dispatch (40800c..40810e,
-    // retailGuardGroupCheck: 51d1e0(unit, 1, 4), VTOL_Follow's): out of the
-    // slot Move_Ground_Formation at level -3 (response mode 0) goes ahead and
-    // the guard starts again when it retires; flagged and out again, rand(4)
-    // == 0 drops the guard from the group's moving centre and every order.
-    // A dispatch is a look (the sleep below) or the ward's event 0x10. Only
-    // a unit in a group record takes the looks' sleep when not a builder:
-    // the check is all its look runs.
-    const bool grouped=retailGroupOf(u)!=nullptr;
-    if ((u.type->isBuilder || grouped) && (alarm || tickCounter_>=u.guardHelpTick)) {
-        bool formation=false;
-        const int result=retailGuardGroupCheck(u.orders[end].mission.flags,retailAttackOutOfSlot(u,4),
-            [&](int n) { return int(pathRand(uint32_t(n))); },
-            [&] { cancelPath(u);u.orders.clear();u.routeStamp=-1; },
-            [&] { return formation=true; });
-        if (result==2) return;                    // the guard has gone with the orders
-        if (result>=0) {
-            if (alarm) u.guardHeard=g->attackedTick;
-            pushGuardFormation(u);
-            u.guardHelpTick=tickCounter_+1;
-            return;
-        }
-    }
+    // 51d1e0(unit, 1, 4)) finds no group record in TA: a dispatch is a look
+    // (the sleep below) or the ward's event 0x10.
     if (alarm) {
         u.guardHeard=g->attackedTick;
         if (guardDefend(u,*g)) { u.guardHelpTick=tickCounter_+1; return; }
     }
     if (!alarm && tickCounter_<u.guardHelpTick) return;
-    if (!u.type->isBuilder) {
-        if (grouped) u.guardHelpTick=tickCounter_+15+pathRand(15);
-        return;
-    }
+    if (!u.type->isBuilder) return;
     int help=0,mend=0;
     guardHelpPick(u,*g,help,mend);
     if (!help && !mend) { u.guardHelpTick=tickCounter_+15+pathRand(15); return; }
     u.guardHelpTick=tickCounter_+1;
     guardInsertJob(u,help,mend);
-}
-
-// 408066..4080c6: Move_Ground_Formation (row 0x604d70), level -3, response
-// mode 0, ahead of the guard: the moving members' centre until back within
-// level 3 (tickGroundMission, this dispatch). The guard's walk goes with
-// its route; it is set up again when the formation retires.
-void World::pushGuardFormation(Unit& u) {
-    guardStandAside(u);
-    cancelPath(u);
-    Order formation;
-    formation.x=u.x;formation.z=u.z;formation.goal=formation.groundMission=true;
-    formation.formationLevel=-3;formation.mission.flags=0x11000000u;
-    formation.issuedTick=tickCounter_;
-    u.orders.insert(u.orders.begin(),formation);
-    noteOrders(u.id);
 }
 
 // The guard's look for a job, Follow_Ground's and VTOL_Follow's alike (see
@@ -14557,7 +14351,7 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
         }
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
-            return !padTo && !retargetTo && !formationTo && !u.orders.empty() && owns(u.orders.front())
+            return !padTo && !retargetTo && !u.orders.empty() && owns(u.orders.front())
                 ? &u.orders.front().mission : nullptr;
         }
         bool hasNext(const RetailMissionState&) const { return u.orders.size()>1; }
@@ -14664,7 +14458,6 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
     retailDispatchMissions(tickCounter_,u.missionEvents,host);
     if (host.retargetTo && retailIssueAutoAttack(u,host.retargetTo,false,false))
         u.orders.front().aheadOfDefault=aheadOfDefault;
-    if (host.push()) return;
     if (host.padTo) { pushAirPadLanding(u,host.padTo); flyAirPadGoal(u,u.orders.front()); return; }
     if (host.seekTo) { seekLostPoint(u,pointX,pointZ);return; }
     if (!u.orders.empty() && host.owns(u.orders.front())) {
@@ -14746,7 +14539,7 @@ void World::tickAirToAir(Unit& u,const Unit& target,const Weapon*) {
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
             Order* o=order();
-            if (!o || formationTo) return nullptr;
+            if (!o) return nullptr;
             return o->airToAir->evade ? &o->airToAir->evade->mission : &o->mission;
         }
         bool hasNext(const RetailMissionState&) const { return u.orders.size()>1; }
@@ -14845,7 +14638,6 @@ void World::tickAirToAir(Unit& u,const Unit& target,const Weapon*) {
         }
     } host{{*this,u},target};
     retailDispatchMissions(tickCounter_,u.missionEvents,host);
-    if (host.push()) return;
     if (u.orders.empty() || u.orders.front().targetId!=target.id || !u.orders.front().airToAir) {
         tickFlightBody(u);notifyFlightOccupancy(u);return;
     }
@@ -14949,7 +14741,7 @@ void World::tickSeekAttack(Unit& u,bool carriesTarget) {
         int padTo=0;          // a repair pad's VTOL_LANDING, put ahead once the dispatch is done
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
-            return !padTo && !formationTo && !u.orders.empty() && u.orders.front().seekAttack
+            return !padTo && !u.orders.empty() && u.orders.front().seekAttack
                 ? &u.orders.front().mission : nullptr;
         }
         // 0x410518..0x4105ee: the controller goes (0x41057a) and the landing
@@ -15016,7 +14808,6 @@ void World::tickSeekAttack(Unit& u,bool carriesTarget) {
     } host{{*this,u},carriesTarget};
     retailDispatchMissions(tickCounter_,u.missionEvents,host);
     if (host.retargetTo) retailIssueAutoAttack(u,host.retargetTo,false,false);
-    if (host.push()) return;
     if (host.padTo) { pushAirPadLanding(u,host.padTo); flyAirPadGoal(u,u.orders.front()); return; }
     if (!u.orders.empty() && u.orders.front().seekAttack) { flyMissionGoal(u,u.orders.front()); return; }
     tickFlightBody(u);notifyFlightOccupancy(u);
@@ -20319,7 +20110,7 @@ void World::tick(float dt) {
                     f->garea += u.type->footX * u.type->footZ;
                 }
             }
-    // No group records in TA (retailGroupOf): Kingdoms' aggregation (51b890) and pacing do not run.
+    // No group records in TA (TotalA.exe keeps none): Kingdoms' aggregation (51b890) and pacing do not run.
     if (pathfindingMode_!=PathfindingMode::Retail) updateLegionFormationSlots();
     planLegionFlightStations();
     // An idle member standing against an idle same-player body that is nearer

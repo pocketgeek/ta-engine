@@ -7,14 +7,11 @@
 
 namespace ta::sim {
 
-// Retail group records (player+0x84, 99 records of 0xc4 bytes). 51b890
-// rebuilds the aggregates every tick before 51d3e0 runs missions and movers.
-// Members split into three classes: ground, boat (0x80000 with a positive
-// minimum water depth) and flyer (type flag 0x800). "all" covers every
-// completed member with a mover; "moving" only those whose current mission
-// has 0x1000000 and not 0x4000000. Centres are integer means of the integer
-// world positions (the high words of unit+0x68/0x6c/0x70); "area" sums the
-// footprint products unit+0x78 * unit+0x7a.
+// Kingdoms kept group records (player+0x84) whose aggregates paced and
+// re-formed a group's members (its group checks); TotalA.exe keeps none, so
+// they and the checks are gone. What is left: the member classes and the
+// formation numbering Legion's own formations use (legionFormationGroup,
+// legionStandbyCheck), the octagonal distance, and BeCarried's row flags.
 enum class RetailGroupClass : uint8_t { Ground=0, Boat=1, Flyer=2 };
 
 struct RetailGroupPoint { int32_t x=0, y=0, z=0; };
@@ -23,17 +20,6 @@ struct RetailGroupPoint { int32_t x=0, y=0, z=0; };
 // through a clear (4) and neither moving (0x1000000) nor paced (0x2000000).
 // A passenger's mission while it rides (51b5a0 -> 4d49f0 puts it in front).
 inline constexpr uint32_t kRetailBeCarriedFlags = 0x24;
-
-struct RetailGroupAggregate {
-    int32_t count=0, area=0;
-    RetailGroupPoint centre;   // retained when a later tick has no members
-};
-
-struct RetailGroupRecord {
-    std::array<RetailGroupAggregate,3> all{}, moving{};
-    bool active=false, changed=false;     // record +0x2c / +0xb0
-    int32_t groundSpeed=0, boatSpeed=0;   // record +0x58 / +0x84 (16.16)
-};
 
 // 535e90: octagonal distance, max + min/4 with arithmetic shift.
 constexpr int32_t retailOctDistance(int32_t dx,int32_t dz) {
@@ -48,113 +34,8 @@ struct RetailGroupMember {
     bool mover=true;
 };
 
-namespace detail {
-// Centres are stored as 16.16 vectors and read back through their high words.
-constexpr int32_t retailGroupWord(int32_t value) { return int16_t(uint16_t(uint32_t(value))); }
-constexpr RetailGroupPoint retailGroupMean(const RetailGroupAggregate& g,const RetailGroupPoint& p,bool sameY) {
-    const int32_t n=g.count;
-    const int32_t x=(n*retailGroupWord(g.centre.x)+p.x)/(n+1);
-    const int32_t z=(n*retailGroupWord(g.centre.z)+p.z)/(n+1);
-    const int32_t y=sameY ? x : (n*retailGroupWord(g.centre.y)+p.y)/(n+1);
-    return {x,y,z};
-}
-}
-
-// 51c700(unit, includeSelf, moving): the point a member holds formation on.
-// It is the group centre for the member's class, not a per-member slot. The
-// ground variant's self-inclusive mean copies x into y (retail 51cdcd); that
-// y is never read by the slot test.
-constexpr RetailGroupPoint retailGroupCentre(const RetailGroupRecord& g,const RetailGroupMember& u,
-                                             bool includeSelf,bool moving) {
-    if (!u.mover) return {};
-    const auto own=[&](RetailGroupClass c) {
-        const auto& all=g.all[size_t(c)];const auto& part=g.moving[size_t(c)];
-        if (!moving || part.count<=0) return all.centre;
-        if (!includeSelf) return part.centre;
-        return detail::retailGroupMean(part,u.position,c==RetailGroupClass::Ground);
-    };
-    if (u.kind!=RetailGroupClass::Flyer) return own(u.kind);
-    constexpr int32_t kNoMember=99999999;
-    const auto& boat=g.all[size_t(RetailGroupClass::Boat)];
-    const auto& ground=g.all[size_t(RetailGroupClass::Ground)];
-    const auto distance=[&](const RetailGroupAggregate& a) {
-        return retailOctDistance(u.position.x-detail::retailGroupWord(a.centre.x),
-                                 u.position.z-detail::retailGroupWord(a.centre.z));
-    };
-    const int32_t boatDistance=boat.count>0 ? distance(boat) : kNoMember;
-    const int32_t groundDistance=ground.count>0 ? distance(ground) : kNoMember;
-    if (groundDistance>=kNoMember && boatDistance>=kNoMember) {
-        const auto& all=g.all[size_t(RetailGroupClass::Flyer)];
-        const auto& part=g.moving[size_t(RetailGroupClass::Flyer)];
-        if (!moving || part.count<=0) return all.centre;
-        return includeSelf ? detail::retailGroupMean(part,u.position,false) : part.centre;
-    }
-    // A flyer formates on the nearer surface group (ties choose ground),
-    // always counting itself as one more member.
-    return detail::retailGroupMean(boatDistance<groundDistance ? boat : ground,u.position,false);
-}
-
-// 51ce40(unit, includeSelf, moving): the footprint area the slot test scales.
-constexpr int32_t retailGroupRadius(const RetailGroupRecord& g,const RetailGroupMember& u,
-                                    bool includeSelf,bool moving) {
-    if (!u.mover) return 1;
-    const auto own=[&](RetailGroupClass c) {
-        const auto& part=g.moving[size_t(c)];
-        if (!moving || part.count<=0) return g.all[size_t(c)].area;
-        return includeSelf ? part.area+u.area : part.area;
-    };
-    if (u.kind!=RetailGroupClass::Flyer) return own(u.kind);
-    constexpr int32_t kNoMember=99999999;
-    const auto& boat=g.all[size_t(RetailGroupClass::Boat)];
-    const auto& ground=g.all[size_t(RetailGroupClass::Ground)];
-    const auto distance=[&](const RetailGroupAggregate& a) {
-        return retailOctDistance(u.position.x-detail::retailGroupWord(a.centre.x),
-                                 u.position.z-detail::retailGroupWord(a.centre.z));
-    };
-    const int32_t flyers=g.all[size_t(RetailGroupClass::Flyer)].area;
-    const int32_t boatDistance=boat.count>0 ? distance(boat) : kNoMember;
-    const int32_t groundDistance=ground.count>0 ? distance(ground) : kNoMember;
-    if (groundDistance<kNoMember || boatDistance<kNoMember) {
-        const int32_t value=u.area+(boatDistance<groundDistance ? boat.area : ground.area);
-        return value>flyers ? value : flyers;
-    }
-    return own(RetailGroupClass::Flyer);
-}
-
-// 51d1e0(unit, moving, level): is the member outside its formation radius?
-// Level 1..5 scales the area by 1/4, 1/2, 1, 2, 4; with `moving`, an empty
-// moving subset relaxes the level by one. missionAll is the current mission's
-// 0x4000000 flag, which makes the moving centre and area include the member.
-constexpr bool retailGroupOutOfSlot(const RetailGroupRecord& g,const RetailGroupMember& u,
-                                    bool moving,int level,bool missionAll) {
-    if (!u.mover || !g.active || level<1 || level>=6) return false;
-    if (moving) {
-        const bool empty=u.kind==RetailGroupClass::Flyer
-            ? g.all[size_t(RetailGroupClass::Boat)].count==0 && g.all[size_t(RetailGroupClass::Ground)].count==0 &&
-              g.moving[size_t(RetailGroupClass::Flyer)].count==0
-            : g.moving[size_t(u.kind)].count==0;
-        if (empty) ++level;
-    }
-    if (level==6) return false;
-    const bool includeSelf=moving && missionAll;
-    const auto centre=retailGroupCentre(g,u,includeSelf,moving);
-    int32_t radius=retailGroupRadius(g,u,includeSelf,moving);
-    const int32_t distance=retailOctDistance(u.position.x-detail::retailGroupWord(centre.x),
-                                             u.position.z-detail::retailGroupWord(centre.z))/16;
-    switch (level) {
-    case 5: radius*=4; break;
-    case 4: radius*=2; break;
-    case 2: radius/=2; break;
-    case 1: radius/=4; break;
-    default: break;
-    }
-    radius=std::max(radius,2);
-    if (u.kind==RetailGroupClass::Flyer) radius*=2;
-    return distance*distance/4>radius;
-}
-
-// The record a unit belongs to (unit+0xc8) and whether that record is a
-// formation (record +8). Retail has one record per number, written by the
+// The group a unit belongs to (unit+0xc8) and whether it is a formation
+// (record +8). Retail has one record per number, written by the
 // console's CreateSquad (48e170 -> 522170 -> 50b4f0 for the members, 50b700
 // for +8): "CreateSquad N" rebuilds group N from the selection as a plain
 // group (+8 clear), "CreateSquad N f" as a formation (+8 set), each replacing
@@ -173,95 +54,9 @@ constexpr RetailGroupSlot retailGroupSlot(int squad,int aiGroup=0,bool aiFormati
     return {};
 }
 
-// 402b00..402cd8: Move_Ground's two group checks before its own stages.
-// Positions are 16.16; the comparison sums the high words of the squared
-// component differences. Returns 0 (none), -2 (re-form on the moving
-// centre), 4 (wait), or 1 (cancel: 50c480 then 4d6a50(unit,0)).
-struct RetailGroupPoint16 { int32_t x=0, y=0, z=0; };
-template<class Random>
-int retailGroundGroupCheck(const RetailGroupRecord& g,const RetailGroupMember& u,uint32_t& flags,
-                           RetailGroupPoint16 unit,RetailGroupPoint16 goal,Random random) {
-    if (retailGroupOutOfSlot(g,u,true,3,(flags&0x4000000u)!=0)) {
-        const auto c=retailGroupCentre(g,u,false,true);
-        const auto square=[](int32_t d) { return int32_t((int64_t(d)*d)>>32); };
-        const auto wide=[](int32_t v) { return int32_t(uint32_t(detail::retailGroupWord(v))<<16); };
-        const int32_t toCentre=square(goal.x-wide(c.x))+square(goal.y-wide(c.y))+square(goal.z-wide(c.z));
-        const int32_t toMember=square(goal.x-unit.x)+square(goal.y-unit.y)+square(goal.z-unit.z);
-        if (toCentre>toMember) {
-            if ((flags&0x8000000u) && random(4)==0) return 1;
-            flags|=0x8000000u;
-        }
-        return -2;
-    }
-    return retailGroupOutOfSlot(g,u,false,4,false) ? 4 : 0;
-}
-
-// The group check at the head of the attacks: SUPPRESS (404e12..404f1b:
-// 51d1e0(unit, 1, 4), leave on rand(3), clear on rand(15),
-// Move_Ground_Formation level -3) and the flyer attacks AirToGround
-// (41c19a), AirStrike (41b7a4) and AirToGroundHover (41dafa) (51d1e0(unit,
-// 1, 5), rand(2), rand(25), VTOL_Move_Formation level -4). outOfSlot is
-// 51d1e0's answer, taken before any draw. Out of slot on a mission already
-// flagged 0x8000000, rand(leave) == 0 lets the member go: 50c480 unless the
-// next mission (+0x66, `next` its flags, 0 for none) moves with the group
-// (0x1000000 without 0x4000000), and 8. Otherwise out of slot flags the
-// mission and pushes the formation ahead (4d7750): 0, so the attack starts
-// again at stage 0 when the formation retires, or 7 when it could not be
-// built. In slot, rand(clear) == 0 clears the flag. -1: run the stages.
-template<class Random,class Leave,class Formation>
-int retailAttackGroupCheck(uint32_t& flags,bool outOfSlot,uint32_t next,int leave,int clear,
-                           Random random,Leave leaveGroup,Formation formation) {
-    if (outOfSlot) {
-        if ((flags&0x8000000u) && random(leave)==0) {
-            if (!(next&0x1000000u) || (next&0x4000000u)) leaveGroup();
-            return 8;
-        }
-        flags|=0x8000000u;
-        return formation() ? 0 : 7;
-    }
-    if ((flags&0x8000000u) && random(clear)==0) flags&=~0x8000000u;
-    return -1;
-}
-
-// The guards' group check (VTOL_Follow 418a7b..418b72, VTOL_SeekGuard
-// 4199b2..419aac), after their head's exits and the air-traffic check:
-// 51d1e0(unit, 1, 4), outOfSlot here. Out of the slot on a mission already
-// flagged 0x8000000, rand(4) == 0 lets the member go: 50c480, then
-// 4d6a50(unit, 0) drops every mission (cancel), and 2. Otherwise out of the
-// slot it flags the mission and pushes VTOL_Move_Formation at level -3
-// ahead (4d7750): 0, so the guard starts again at stage 0 when the formation
-// retires, or 7 when it could not be built. In the slot, rand(10) == 0
-// clears the flag. -1: run the stages.
-template<class Random,class Cancel,class Formation>
-int retailGuardGroupCheck(uint32_t& flags,bool outOfSlot,Random random,Cancel cancel,Formation formation) {
-    if (outOfSlot) {
-        if ((flags&0x8000000u) && random(4)==0) { cancel(); return 2; }
-        flags|=0x8000000u;
-        return formation() ? 0 : 7;
-    }
-    if ((flags&0x8000000u) && random(10)==0) flags&=~0x8000000u;
-    return -1;
-}
-
-// The standbys' group check, at every wake past their exits (and a flyer's
-// air-traffic check): VTOL_Standby 417527 and Standby 407779 ask
-// 51d1e0(unit, 1, 2), VTOL_LandIfCan 416eda 51d1e0(unit, 1, 3). Out of the
-// slot the FormationStandby goes ahead (4d7750): VTOL_Move_FormationStandby
-// at level -1 (the landing's at -2), or Move_Ground_FormationStandby at -1
-// with response mode -1 (+0x52). formation(level, mode) builds and pushes
-// it: false when it could not be built (7). A standby then returns 0 (it
-// waits under the formation and starts again at stage 0); the landing
-// returns 5, so it retires and the default mission follows the formation.
-// -1: in the slot, the stages run. No draw. (E: check_retail_group.py
-// standby.)
+// The standbys whose group check (Standby 407779, VTOL_Standby 417527,
+// VTOL_LandIfCan 416eda) Legion's counterpart stands in for.
 enum class RetailStandbyCheck : uint8_t { VtolStandby, Standby, LandIfCan };
-template<class OutOfSlot,class Formation>
-int retailStandbyGroupCheck(RetailStandbyCheck kind,OutOfSlot outOfSlot,Formation formation) {
-    const bool landing=kind==RetailStandbyCheck::LandIfCan;
-    if (!outOfSlot(landing ? 3 : 2)) return -1;
-    if (!formation(landing ? -2 : -1,kind==RetailStandbyCheck::Standby ? -1 : 0)) return 7;
-    return landing ? 5 : 0;
-}
 
 // Legion's counterpart of the standbys' group check (ours, not retail; see
 // World::legionStandbyCheck): retail's tolerance, 51d1e0(unit, 1, 2) for a
@@ -276,15 +71,6 @@ constexpr bool legionStandbyOutOfSlot(const LegionSlotClass& c,int32_t ownArea,i
     radius=std::max(radius,2);
     const int32_t distance=retailOctDistance(dx,dz)/16;
     return distance*distance/4>radius;
-}
-
-// 41798b..4179e9: the group is active (50b800) with a moving member of any
-// class (50b900 ground, 50bd20 boat, 50c140 flyer): a
-// VTOL_Move_FormationStandby back in its slot stays (retailFlightFormation).
-inline bool retailGroupMoving(const RetailGroupRecord& g) {
-    return g.active && (g.moving[size_t(RetailGroupClass::Ground)].count!=0 ||
-                        g.moving[size_t(RetailGroupClass::Boat)].count!=0 ||
-                        g.moving[size_t(RetailGroupClass::Flyer)].count!=0);
 }
 
 } // namespace ta::sim
