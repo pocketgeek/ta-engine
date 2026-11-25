@@ -1503,23 +1503,41 @@
         // attached branch (0x43d6d0) copies the piece's position (0x43e060, the
         // sim's unitPiecePoint) and sets its own orientation to the pad's plus
         // that piece's own turn angles (0x43d78e -> 0x43e180: unit +0x64/+0x66/
-        // +0x68 = the carrier's + the piece's). The heading is the visible part
-        // (a building has no pitch or roll; pad pieces turn about y).
-        if (s.padPiece >= 0 && s.inTransport) {
-            const UnitR* pad = frameUnitP(s.inTransport);
-            if (pad && pad->padPiece < 0) {
-                float px, pz, ph;
-                interpPose(*pad, px, pz, ph);
-                float turn = 0;
-                if (const auto at = anims_.find(pad->id); at != anims_.end() && at->second.vm) {
-                    const auto& pieces = at->second.vm->pieces();
-                    if (size_t(s.padPiece) < pieces.size()) turn = pieces[size_t(s.padPiece)].rot[1];
-                }
-                // The piece turn enters the model as -rot (scriptRot) under the
-                // body's -heading, so the rider's heading is the pad's plus rot.
-                heading = ph + turn;
-            }
+        // +0x68 = the carrier's + the piece's). Heading here; the x and z turns
+        // in bodyAttitude.
+        const UnitR* pad = nullptr;
+        const auto* piece = padPiecePose(s, pad);
+        if (pad) {
+            float px, pz, ph;
+            interpPose(*pad, px, pz, ph);
+            // The piece turn enters the model as -rot (scriptRot) under the
+            // body's -heading, so the rider's heading is the pad's plus rot.
+            heading = ph + (piece ? piece->rot[1] : 0.0f);
         }
+    }
+
+    // The pad piece a repair-pad rider sits on, in the pad's script pose (null
+    // when `s` is not on a pad or the pad has no script; `pad` is set whenever
+    // the pad itself is in the frame).
+    const ta::cob::PieceState* GameView::padPiecePose(const UnitR& s, const UnitR*& pad) const {
+        pad = nullptr;
+        if (s.padPiece < 0 || !s.inTransport) return nullptr;
+        pad = frameUnitP(s.inTransport);
+        if (!pad || pad->padPiece >= 0) { pad = nullptr; return nullptr; }
+        const auto at = anims_.find(pad->id);
+        if (at == anims_.end() || !at->second.vm) return nullptr;
+        const auto& pieces = at->second.vm->pieces();
+        return size_t(s.padPiece) < pieces.size() ? &pieces[size_t(s.padPiece)] : nullptr;
+    }
+
+    // The body's x/z attitude words (modelBodyTransform's pitch, roll). On a
+    // repair pad they are the pad's plus the pad piece's x and z turns, the
+    // rider's own attitude replaced (0x43e180; client/padrider.h).
+    std::pair<uint16_t, uint16_t> GameView::bodyAttitude(const UnitR& s) const {
+        const UnitR* pad = nullptr;
+        const auto* piece = padPiecePose(s, pad);
+        if (!pad) return {s.bodyPitch, s.bodyRoll};
+        return ta::padrider::attitude(pad->bodyPitch, pad->bodyRoll, piece ? piece->rot : nullptr);
     }
 
     const UnitR& GameView::frameUnit(int id) const {
@@ -1803,24 +1821,32 @@
         // [unit+0x92]+0x20e, slot "underattack"; warning1 in every shipped class), with
         // no position, at speech priority, when UNIT SPEECH allows it -- which starts the
         // 20 s cooldown -- and "<unit>: Under Attack" goes into the message area when
-        // UNIT CHAT TEXT allows it (0x47ff69 -> 0x463ca0). The queue holds one request
-        // of an event at a time (0x47fb0a), so one hit list asks once.
+        // UNIT CHAT TEXT allows it (0x47ff69 -> 0x463ca0). Each request goes through
+        // the speech queue (client/speechqueue.h), which holds one entry of an event
+        // at a time (0x47fb0a) and plays one entry a frame, its speech at most once
+        // every 30 ticks (0x47f6bb) and its text line regardless.
+        const auto playSpeech = [&](const ta::SpeechQueue::Turn& turn, uint32_t now) {
+            const auto& entry = turn.entry;
+            if (turn.speak && ta::MonarchAlert::speaks(unitSpeech_)) {
+                const std::string* wav = entry.soundClass.empty()
+                                             ? nullptr : soundClasses_.pick(entry.soundClass, "underattack", salt_++);
+                if (wav) {   // 0x47fe03: a class with no variant for the slot says nothing
+                    sounds_.play(*wav, 1.f, 1.f, 7, false);
+                    monarchAlert_.spoken(now);
+                }
+            }
+            if (ta::MonarchAlert::shows(unitChatText_))
+                gameChat_.push_back({std::string(), ta::MonarchAlert::line(entry.unitName), 0, true});
+        };
         for (const auto& [tick, id] : hurt) {
             const UnitR* u = frameUnitP(id);
             if (!u || !u->type ||   // a fatal hit too: 0x406f80 runs before the death
                 !monarchAlert_.admit(u->player, localPlayer_, watchOnly(), onScreen(*u), tick)) continue;
-            if (ta::MonarchAlert::speaks(unitSpeech_)) {
-                const std::string* wav = u->type->soundClass.empty()
-                                             ? nullptr : soundClasses_.pick(u->type->soundClass, "underattack", salt_++);
-                if (wav) {   // 0x47fe03: a class with no variant for the slot says nothing
-                    sounds_.play(*wav, 1.f, 1.f, 7, false);
-                    monarchAlert_.spoken(tick);
-                }
-            }
-            if (ta::MonarchAlert::shows(unitChatText_))
-                gameChat_.push_back({std::string(), ta::MonarchAlert::line(u->type->name), 0, true});
-            break;
+            if (const auto evicted = speechQueue_.request({ta::MonarchAlert::kEvent, ta::MonarchAlert::kPriority,
+                                                           u->id, u->type->name, u->type->soundClass}))
+                playSpeech(*evicted, front().gameTick);
         }
+        if (const auto turn = speechQueue_.next(front().gameTick)) playSpeech(*turn, front().gameTick);
         // Total Annihilation firing sounds: each shot launched since the last frame
         // plays its weapon's soundstart (a WAV stem) where it left the barrel.
         {
@@ -4650,7 +4676,7 @@
         auto vt = visuals_.find(u.type ? u.type->id : std::string());
         if (vt == visuals_.end() || !u.type) return false;
         float m[3];
-        if (!pieceModelOrigin(vt->second.model.root, &a, modelBodyTransform(u.bodyPitch,u.bodyRoll), pieceName, m)) return false;
+        if (!pieceModelOrigin(vt->second.model.root, &a, bodyTransform(u), pieceName, m)) return false;
         // Match the body rotation, including a building's birth heading.
         float facing = -u.heading;
         float cy = std::cos(facing), sy = std::sin(facing);

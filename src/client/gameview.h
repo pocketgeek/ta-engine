@@ -101,6 +101,8 @@
 #include "client/retailfog.h"     // the local display fog (plane, overlay, radar)
 #include "client/replayfile.h"   // .tarep parser (extracted leaf)
 #include "client/monarchalert.h"
+#include "client/speechqueue.h"
+#include "client/padrider.h"
 #include "client/sound.h"     // WAV mixer + music + soundclasses (extracted leaf)
 #include "client/threadpool.h"   // data-parallel worker pool (extracted leaf)
 #include "client/workschedule.h"   // estimated-cost plans for the pool passes (workstream I)
@@ -827,6 +829,12 @@ public:
     // the last two ticks by interpAlpha_ (0..1 through the current tick interval). Falls
     // back to live state when the option is off or there's no history. Viewer-only.
     void interpPose(const UnitR& s, float& x, float& z, float& heading) const;
+    const ta::cob::PieceState* padPiecePose(const UnitR& s, const UnitR*& pad) const;
+    std::pair<uint16_t, uint16_t> bodyAttitude(const UnitR& s) const;
+    Xform bodyTransform(const UnitR& s) const {
+        const auto [pitch, roll] = bodyAttitude(s);
+        return modelBodyTransform(pitch, roll);
+    }
     // Lookup helper: the render snapshot record for a unit id (empty default if absent).
     const UnitR& frameUnit(int id) const;
     // Pointer form matching world_.unit()'s semantics: nullptr unless the id is a unit that
@@ -901,6 +909,7 @@ public:
     // the under-attack alert's input. Guarded by hitQueueMutex_; survives queue overflow.
     std::vector<std::pair<uint32_t, int>> pendingHurt_;
     ta::MonarchAlert monarchAlert_;
+    ta::SpeechQueue speechQueue_;   // the unit speech queue (client/speechqueue.h)
     // TotalA.exe's unit speech / unit chat text levels (game +0x37f17 / +0x37f18,
     // 0|5|10; Settings::unitSpeech / unitChatText).
     int unitSpeech_ = 10, unitChatText_ = 5;

@@ -2629,7 +2629,7 @@
                 const RingBox& rb = unitRingBox(u.type);
                 float ix, iz, ih; interpPose(u, ix, iz, ih);
                 if (u.replacementModel) ih = u.replacementHeading;
-                const Xform body = modelBodyTransform(u.bodyPitch, u.bodyRoll);
+                const Xform body = bodyTransform(u);
                 const float cosF = std::cos(-ih), sinF = std::sin(-ih);
                 const float ox0 = hp.x, oy0 = hp.y + 12.0f * zms;
                 const float rx = 1.2f * rb.halfX, ry = 1.2f * rb.halfZ;
@@ -4947,7 +4947,7 @@
         word(uint64_t(u.id));word(reinterpret_cast<uintptr_t>(u.type));
         word(reinterpret_cast<uintptr_t>(&vt->second));
         word(reinterpret_cast<uintptr_t>(atlas));word(uint64_t(u.player));word(uint64_t(slot));
-        word(u.bodyPitch);word(u.bodyRoll);word(u.underConstruction);
+        {const auto attitude=bodyAttitude(u);word(attitude.first);word(attitude.second);}word(u.underConstruction);
         word(u.corpsePhase);word(reinterpret_cast<uintptr_t>(meta));word(shadowsOnFrame_);word(floatBits(facing));
 #ifndef NDEBUG
         if (key.size()!=kLocalKeyFixedWords) throw std::logic_error("local geometry key layout");
@@ -5242,7 +5242,7 @@
         // Sorted compact indices into the collector output (scratch), kept for the
         // single-pass check below.
         std::vector<size_t>& triangleOrder=ws.order;
-        const Xform base=modelBodyTransform(u.bodyPitch,u.bodyRoll);
+        const Xform base=bodyTransform(u);
         // The piece transforms serve the body collection and the silhouette; with
         // the body held back (G) they are prepared only when the silhouette is
         // collected.
@@ -5586,7 +5586,7 @@
                      i<cached->children.size() ? &cached->children[i] : nullptr,false,
                      pose ? &pose->children[i] : nullptr);
         };
-        collectShadow(collectShadow,root,modelBodyTransform(u.bodyPitch,u.bodyRoll),&meta,true,prepared);
+        collectShadow(collectShadow,root,bodyTransform(u),&meta,true,prepared);
         same=same && opaqueCount==g.shadowLocal.size() && maskedCount==g.maskedShadowLocal.size() &&
              previousRuns==g.maskedShadowRuns;
         g.shadowLocal.resize(opaqueCount);
@@ -5612,7 +5612,7 @@
         thread_local std::vector<uint8_t> zbuffer, covered;
         tris.clear();nc.clear();
 
-        collect(tris,atlas,visual.model.root,modelBodyTransform(u.bodyPitch,u.bodyRoll),anim,facing,
+        collect(tris,atlas,visual.model.root,bodyTransform(u),anim,facing,
                 u.player,false,true,false,nullptr,meta,false,nullptr,isStructure(u.type),&nc);
 
         int first=0,second=0;
