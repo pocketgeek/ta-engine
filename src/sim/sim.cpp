@@ -19979,14 +19979,14 @@ void World::tick(float dt) {
         // TotalA.exe's second mission list (0x43bad0) runs after the main
         // dispatcher (0x48af98 -> 0x48af9e), before the mover. Its one World
         // mission is the self-destruct countdown (common row 10, 0x402010;
-        // the stockpile build, row 9, has no World counterpart): 0x402147's
+        // the stockpile build, row 9, runs as ScriptedOrder BuildWeapon): 0x402147's
         // hit of 30000 is lethal to every TA unit, and World ends the update
         // with the death there. The unit's own states that skip the main
         // dispatch below still run it.
         const auto secondList=[&] {
             if (!runSecondList(u)) return false;
-            if (!(u.retailSite && u.underConstruction)) { sweepDeath(u); return true; }
-            return false;
+            sweepDeath(u);
+            return true;
         };
         if (u.constructionHolding && (u.buildSiteId || u.repairId)) { secondList(); continue; }
         if (u.legionLift && tickLegionLift(u)) { secondList(); continue; }
