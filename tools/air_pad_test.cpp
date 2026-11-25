@@ -232,6 +232,60 @@ int main(int argc,char** argv) {
         }
     }
 
+    // The same take-off at the head of the other flyer missions' stage 0:
+    // VTOL_Reclaim (0x41485e), AirStrike (0x41215c) and AirToAir (0x4133fa)
+    // each climb straight up over the landed flyer's spot to cruisealt / 2
+    // (0x44e2d0 / 0x44e6c0) and wait on that controller (0xe0). AirToAir
+    // also sleeps one tick (0x413444), so its stage 1 takes over on the next
+    // tick and it heads for the target while it climbs.
+    {
+        struct Case { const char* name; const char* flyer; int kind; };
+        for (const Case& c:{Case{"VTOL_Reclaim (0x41485e)","armca",0},Case{"AirStrike (0x41215c)","armthund",1},
+                            Case{"AirToAir (0x4133fa)","armfig",2}}) {
+            Field f;setup(f,registry,nullptr,0,0,0);
+            World& w=f.w;
+            const UnitType* type=registry.find(c.flyer);
+            const UnitType* pw=registry.find("armpw");
+            if (!type || !pw) { check(false,std::string(c.flyer)+" and armpw load");continue; }
+            const int b=w.spawn(type,1800,1800,0.f,0);
+            w.unit(b)->fireState=0;
+            for (int t=0;t<120;++t) w.tick(kTick);
+            const bool landed=w.unit(b)->flightGroundMode==1;
+            const float x0=w.unit(b)->x.toFloat(),z0=w.unit(b)->z.toFloat(),y0=w.unit(b)->flightY.toFloat();
+            if (c.kind==0) {
+                w.addFeature(1,x0+400,z0,75,1,1,false);
+                w.reclaim(b,1,false);
+            } else if (c.kind==1) {
+                UnitType sturdy=*pw;sturdy.maxVel={};
+                const int t=w.spawn(&sturdy,x0+600,z0,0.f,1);
+                w.attack(b,t,false);
+            } else {
+                const int t=w.spawn(type,x0+900,z0,0.f,1);
+                w.unit(t)->fireState=0;
+                w.order(t,x0+1400,z0,false);
+                for (int k=0;k<90;++k) w.tick(kTick);
+                w.attack(b,t,false);
+            }
+            float drift=0,climbed=0;bool reached=false,airborne=false;
+            for (int k=0;k<300 && !reached;++k) {
+                w.tick(kTick);
+                const Unit& u=*w.unit(b);
+                if (k==0) airborne=u.flightGroundMode==2;
+                drift=std::max(drift,std::hypot(u.x.toFloat()-x0,u.z.toFloat()-z0));
+                climbed=u.flightY.toFloat()-y0;
+                if (climbed>=float(type->cruiseAlt/2)-1.f) reached=true;
+            }
+            std::printf("  %s take-off: landed %d, climbed %.1f of %d with %.1f px drift\n",
+                        c.name,int(landed),climbed,type->cruiseAlt/2,drift);
+            if (c.kind==2)
+                check(landed && airborne && drift>2.f,std::string(c.name)+
+                      ": a landed fighter takes off at once and heads off while it climbs (0x413444)");
+            else
+                check(landed && airborne && reached && drift<=2.f,std::string(c.name)+
+                      ": a landed flyer climbs to cruisealt / 2 over its spot first");
+        }
+    }
+
     // Landing by order.
     {
         Field f;setup(f,registry,"armasp",1400,1400,0);

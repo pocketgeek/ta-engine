@@ -2273,7 +2273,7 @@ int World::flightGround(const Unit& u) const {
 // leg (attackMove, ours: TA has no fight-move) flies VTOL_Move with response
 // mode -1 (markFightLeg): its stage-2 scan puts the attacks ahead of it.
 // Every flyer's patrol is VTOL_Patrol, armed or a builder: its stage-2 scan
-// (TotalA.exe 0x41106c) and job search (tickPatrolRepair).
+// (TotalA.exe 0x41106c) and job search (flyingPatrolLook, at its stage-1 wakes).
 static bool plainFlightPatrol(const Unit& u) {
     if (!u.type || !u.type->canFly || u.orders.empty()) return false;
     const auto& order=u.orders.front();
@@ -2566,10 +2566,19 @@ void World::tickFlightPatrol(Unit& u) {
                         order.flightGoal.reset();m.waitMask=0;padTo=pad;
                         return 0;
                     }
-                    // The job search that follows (0x41547d..) is
-                    // tickFlyingPatrolLook, run on the same 45-tick cadence
-                    // from tickPatrolRepair.
-                    return 2;
+                    // The job search (0x41547d..): 6 a repair (the look
+                    // moved the patrol to the back), 3 a job ahead (a
+                    // reclaim clears the wait word first), 2 nothing.
+                    if (!w.patrolRepairs_ || !u.type->isBuilder || u.type->workerTime<=0) return 2;
+                    const int found=w.flyingPatrolLook(u);
+                    if (found==2) return 2;
+                    if (found!=6)
+                        for (auto& o:u.orders) if (o.patrol) {
+                            if (found==-3) o.mission.waitMask=0;
+                            o.mission.sleep(w.tickCounter_,random(15)+30);
+                            break;
+                        }
+                    return 4;
                 }
                 return 7;
             }
@@ -4367,6 +4376,39 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             // (see the Move mask below); Legion owns its arrival.
             if (goal.patrol && w.legion_ && isLegionPathfinding(w.pathfindingMode_) && w.legion_->supports(u))
                 events&=~0x2600u;
+            // A canreclamate builder's patrol is RepairPatrol (0x405980;
+            // 0x43f3b9..0x43f41d), its look for work on its own wakes.
+            if (goal.patrol && w.patrolRepairs_ && u.type->isBuilder && u.type->canReclaim &&
+                u.type->workerTime>0) {
+                bool reordered=false;
+                const int result=retailGroundRepairPatrol(m,w.tickCounter_,events,[&] {
+                        if (!goal.patrolOpen) return;
+                        goal.patrolOpen=false;
+                        const size_t current=currentLeg(u.orders);
+                        bool loop=false;
+                        for (size_t i=current+1;i<u.orders.size();++i)
+                            loop|=u.orders[i].goal && u.orders[i].patrol && !u.orders[i].patrolOpen;
+                        if (!loop) {patrolReturn=std::pair{u.x,u.z};patrolReturnIdentity=goal.identity();}
+                    },[&](uint32_t radius) {
+                        // 0x438930(mission, +0x22, 16): the circle's radius
+                        // is the stored radius + 4 (resetGoal).
+                        if (goal.missionTarget) { goal.x=goal.missionTarget->first;goal.z=goal.missionTarget->second; }
+                        goal.missionRadius=radius-4u;
+                        resetGoal(radius);
+                    },[&] {
+                        // The look rewrites the queue: m and goal are not
+                        // read once it put a job in.
+                        const int found=w.groundPatrolLook(u);
+                        reordered=found!=2;
+                        return found;
+                    });
+                if (!reordered) return result;
+                // The patrol's own wake for 3 (0x43b890: 30 + rand(15)) or
+                // nothing for 6 (the look moved it to the back already).
+                if (result==3)
+                    for (auto& o:u.orders) if (o.patrol) { o.mission.sleep(w.tickCounter_,random(15)+30);break; }
+                return 4;
+            }
             if (goal.patrol) {
                 int patrolAttack=0;
                 const int result=retailGroundPatrol(m,goal.missionRadius,w.tickCounter_,events,
@@ -13503,20 +13545,11 @@ void World::tickFlyingGuard(Unit& u) {
     o.mission.deadline=tickCounter_+30;   // 0x410225: 0x439e80(0x1e)
 }
 
-void World::tickPatrolRepair(Unit& b) {
-    if (!patrolRepairs_ || !b.type || !b.type->isBuilder || !b.type->canMove || b.type->isStructure() ||
-        b.type->workerTime<=0 || b.underConstruction || b.embarked() || b.incapacitated() ||
-        b.buildSiteId || b.repairId || b.reclaimId || b.repeatType || !b.buildQueue.empty() ||
-        hasQueuedWork(b) || b.orders.empty() || !b.orders.front().patrol) return;
-    if (b.type->canFly) { tickFlyingPatrolLook(b); return; }
-    tickGroundPatrolLook(b);
-}
 
 // TotalA.exe RepairPatrol (0x405980), the ground patrol of a canreclamate
-// type (table 0x4fc6e8 row 15). Its stage 1 heads for the waypoint on a
-// radius-16 circle (0x4059ca) and looks for work at every wake, a sleep of 60
-// ticks (0x4059d3); ours runs the look on a 60-tick timer from here and keeps
-// World's patrol navigation. The look:
+// type (table 0x4fc6e8 row 15): retailGroundRepairPatrol, whose stage 1
+// heads for the waypoint on a radius-16 circle (0x4059ca) and runs this look
+// at every wake, a sleep of 60 ticks (0x4059d3). The look:
 //  - while the energy stored is at least a fifth of the storage (0x4059ea..
 //    0x405a03; 0x4fc950 = 0.2): the units 0x47e890 finds within sightdistance
 //    (type +0x202), one drawn at random (0x405a8c); an allied one (owner
@@ -13531,8 +13564,7 @@ void World::tickPatrolRepair(Unit& b) {
 //    with the patrol's controller gone (0x4388d0) and the wait cleared.
 // (Kingdoms' patrol repaired the nearest damaged unit in sight every 30
 // ticks, with a path test, and never reclaimed.)
-void World::tickGroundPatrolLook(Unit& b) {
-    if (!b.type->canReclaim || (uint32_t(b.id)+tickCounter_)%60!=0) return;
+int World::groundPatrolLook(Unit& b) {
     const auto& books=players_[size_t(b.player)].books;
     if (!(double(books.cap[econ::E])*0.2>double(books.stored[econ::E]))) {
         const int32_t sight=std::max(0,sightDistance(*b.type));
@@ -13583,17 +13615,17 @@ void World::tickGroundPatrolLook(Unit& b) {
                     std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
                 }
                 noteOrders(b.id);
-                return;
+                return 6;
             }
             if (c.underConstruction && canHelpBuild(b,c)) {
                 guardInsertJob(b,c.id,0);
-                return;
+                return 3;
             }
         }
     }
     const bool energyLow=double(books.cap[econ::E])*0.2>double(books.stored[econ::E]);
     const bool metalLow=double(books.cap[econ::M])*0.2>double(books.stored[econ::M]);
-    if (!energyLow && !metalLow) return;   // 0x405b18..0x405b54
+    if (!energyLow && !metalLow) return 2;   // 0x405b18..0x405b54
     struct Pick { int32_t x=0,z=0; float value=0; int target=0; };
     std::vector<Pick> energy,metal;
     std::unordered_map<int,int> targets;
@@ -13645,7 +13677,7 @@ void World::tickGroundPatrolLook(Unit& b) {
     else if (e && energyLow) go=e;
     else if (m && books.stored[econ::M]+m->value<=books.cap[econ::M]) go=m;
     else if (e && books.stored[econ::E]+e->value<=books.cap[econ::E]) go=e;
-    if (!go) return;
+    if (!go) return 2;
     const Pick pick=*go;
     guardStandAside(b);   // 0x4388d0(0): the patrol's controller goes
     const size_t oldSize=b.orders.size();
@@ -13653,14 +13685,14 @@ void World::tickGroundPatrolLook(Unit& b) {
     if (b.orders.size()>oldSize)
         std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
     noteOrders(b.id);
+    return -3;   // 0x405c13 / 0x405d1d: the wait word cleared, then 3
 }
 
 // TotalA.exe VTOL_RepairPatrol (0x4152f0), the patrol of a flyer whose type
 // has canreclamate (flagsB +0x245 bit 9; the order's mission is picked at
 // 0x43f3e6..0x43f404 -- any other flyer flies VTOL_Patrol, which looks for no
 // work). Its stage 1 (0x415345) flies to the waypoint on a point controller
-// and looks for work at every wake, a sleep of 45 ticks (0x415386); ours
-// looks every 45th tick of the patrol. A look:
+// and runs this look at every wake, a sleep of 45 ticks (0x415386). A look:
 //  - below 3/4 health (0x415397) it would land on a random repair pad of its
 //    own within 3840 px (0x40b530, VTOL_LANDING); not modelled: the engine has
 //    no pad repair;
@@ -13685,8 +13717,7 @@ void World::tickGroundPatrolLook(Unit& b) {
 // Not modelled: the candidate filter's skip of a unit last hit by the
 // repairer's player with damage kind 5 (+0xf4 / +0xf5, 0x415943); the order
 // within one sector is ours (by id), not retail's insertion order.
-void World::tickFlyingPatrolLook(Unit& b) {
-    if (!b.type->canReclaim || (uint32_t(b.id)+tickCounter_)%45!=0) return;
+int World::flyingPatrolLook(Unit& b) {
     const auto& books=players_[size_t(b.player)].books;
     if (!(double(books.cap[econ::E])*0.2>double(books.stored[econ::E]))) {
         const int32_t sight=std::max(0,sightDistance(*b.type));
@@ -13734,11 +13765,11 @@ void World::tickFlyingPatrolLook(Unit& b) {
                     std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
                 }
                 noteOrders(b.id);
-                return;
+                return 6;   // 0x415564
             }
             if (c.underConstruction && repairTopAboveSea(c) && canHelpBuild(b,c)) {
                 guardInsertJob(b,c.id,0);
-                return;
+                return 3;   // 0x415603
             }
         }
     }
@@ -13794,7 +13825,7 @@ void World::tickFlyingPatrolLook(Unit& b) {
     else if (e && double(books.cap[econ::E])*0.2>double(books.stored[econ::E])) go=e;
     else if (m && books.stored[econ::M]+m->value<=books.cap[econ::M]) go=m;
     else if (e && books.stored[econ::E]+e->value<=books.cap[econ::E]) go=e;
-    if (!go) return;
+    if (!go) return 2;   // 0x4157bd
     const Pick pick=*go;
     guardStandAside(b);   // 0x4388d0(0): the patrol's controller goes
     const size_t oldSize=b.orders.size();
@@ -13805,6 +13836,7 @@ void World::tickFlyingPatrolLook(Unit& b) {
         std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
     }
     noteOrders(b.id);
+    return -3;   // 0x415790 / 0x4157ab: the wait word cleared, then 3
 }
 
 void World::repair(int builderId, int targetId, bool queue) {
@@ -20815,7 +20847,6 @@ void World::tick(float dt) {
             u.orders.front().placementFailures>0;
         if (!placementWait) {
             tickGuardHelp(u);
-            tickPatrolRepair(u);
             if (g_phase) {
                 PhaseSpan span(g_moveMs,probe::kMovement);
                 tickGroundMission(u);

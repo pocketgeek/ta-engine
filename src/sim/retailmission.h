@@ -324,6 +324,38 @@ int retailGroundPatrol(RetailMissionState& m,uint32_t& radius,uint32_t tick,
 // brakes (0x44f3e9..0x44f3f0).
 constexpr bool retailProvisionalRoute(uint32_t headFlags) { return !(headFlags & 0x800000u); }
 
+// TotalA.exe RepairPatrol (0x405980), the ground patrol of a builder whose
+// type has canreclamate (0x43f3b9..0x43f41d picks it for flagsB +0x245 bits
+// 6 and 9 on a unit without canfly). Stage 0 (0x405d59): the target's point
+// into +0x22 when there is one, the return waypoint (0x43a020), 1 -- stage 1
+// runs in the same dispatch. Stage 1 (0x4059ac): any navigator event (TA
+// 0xe0, World's 0x700) moves on to the next waypoint (6); else a circle of
+// radius 16 on the waypoint (0x4059c5 -> 0x438930), a sleep of 60
+// (0x4059cf) and the navigator's events in the wait (0x4059d8..0x4059e1),
+// then the look for work: 2 nothing, 3 a job went ahead (a reclaim clears
+// the wait word first, 0x405c13 / 0x405d1d; the host passes -3), 6 a repair
+// was issued and the patrol goes to the back (0x405ae0). No combat scan.
+template<class Initialize,class Circle,class Look>
+int retailGroundRepairPatrol(RetailMissionState& m,uint32_t tick,uint32_t events,
+        Initialize initialize,Circle circle,Look look) {
+    switch (m.stage) {
+    case 0:
+        initialize();
+        return 1;
+    case 1: {
+        if (events&0x700u) return 6;
+        circle(16u);
+        m.sleep(tick,60);
+        m.waitMask|=0x700u;
+        const int found=look();
+        if (found==-3) { m.waitMask=0;return 3; }
+        return found;
+    }
+    default:
+        return 7;
+    }
+}
+
 // TotalA.exe's mission dispatcher (0x43b7c0). Host: enabled(), head(),
 // hasNext(state), handle(state, events), random(bound), remove(state),
 // rotate(state), clear(), idle(). Re-fetch the head and enabled state after

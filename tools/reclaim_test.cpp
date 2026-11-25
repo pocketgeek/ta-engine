@@ -96,6 +96,34 @@ int main(int argc,char**) {
         check(job==canReclaim,canReclaim ? "a canreclamate builder's RepairPatrol repairs a damaged ally in sight"
                                          : "a builder without canreclamate patrols without looking for work");
     }
+    {
+        // The look runs at the mission's own wakes: at once when the patrol
+        // starts (stage 0 -> 1 in one dispatch), then every 60 ticks of
+        // stage 1's sleep (0x4059cf), each wake re-installing a radius-16
+        // circle on the waypoint (0x4059c5). A unit hurt between two wakes
+        // waits for the next one.
+        sim::World w;flat(w);
+        auto type=builderType(1,10);type.canReclaim=true;type.sight=300;type.canPatrol=true;
+        sim::UnitType hurtType;hurtType.id="hurt";hurtType.maxHp=100;hurtType.footX=hurtType.footZ=1;
+        const int b=w.spawn(&type,300,300,0.0f,0),h=w.spawn(&hurtType,330,330,0.0f,0);
+        w.patrol(b,1400,300);
+        w.tick(1.f/30);
+        const uint32_t start=w.tickCount();
+        const sim::Order* leg=nullptr;
+        for (const auto& o:w.unit(b)->orders) if (o.patrol && o.goal) { leg=&o;break; }
+        check(leg && leg->mission.stage==1 && leg->mission.deadline==start+60 &&
+              (leg->mission.waitMask&0x701u)==0x701u && int32_t(leg->missionRadius+4u)==16,
+              "RepairPatrol's stage 1: a radius-16 circle, a sleep of 60 and the navigator's events");
+        for (int i=0;i<20;++i) w.tick(1.f/30);
+        w.unit(h)->hp=sim::Fixed::fromInt(30);
+        int job=-1;
+        for (int tick=0;tick<120 && job<0;++tick) {
+            w.tick(1.f/30);
+            for (const auto& o:w.unit(b)->orders) if (o.patrolRepair) job=int(w.tickCount());
+        }
+        check(job==int(start)+60,"a unit hurt between two wakes is found at the next 60-tick wake (got tick "+
+              std::to_string(job-int(start))+" after the start)");
+    }
     // ---- countdown and wake schedule (406250 stage 1, 406529) -------------
     check(sim::retailReclaimCountdown(0)==15 && sim::retailReclaimCountdown(75)==90 &&
           sim::retailReclaimCountdown(250)==265 && sim::retailReclaimCountdown(525)==540 &&

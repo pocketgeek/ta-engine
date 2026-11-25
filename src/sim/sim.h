@@ -2709,9 +2709,9 @@ public:
     // the builder's work rate, draining mana proportionally). tickRepair runs it.
     void repair(int builderId, int targetId, bool queue);
     void tickRepair(Unit& b, float dt);
-    void tickPatrolRepair(Unit& b);
-    void tickFlyingPatrolLook(Unit& b);
-    void tickGroundPatrolLook(Unit& b);
+
+    int flyingPatrolLook(Unit& b);
+    int groundPatrolLook(Unit& b);
     void setPatrolRepairs(bool enabled) { patrolRepairs_=enabled; }
     // True if (x,z) lies over water (for choosing the water impact effect).
     // Retail (icd 0x509760): a unit is "on road" only when EVERY cell under its
