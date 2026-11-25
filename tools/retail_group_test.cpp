@@ -3,9 +3,12 @@
 // no formation or step-out mission, and its moves, patrols, standbys and
 // guards (Move_Ground 0x4031d0, Patrol 0x4033a0, Standby 0x405fe0,
 // Follow_Ground 0x406300, VTOL_Move 0x40fa20, VTOL_Patrol 0x410e70,
-// VTOL_Standby 0x40f7d0, VTOL_Follow 0x40fbe0) run no group check. A
-// formation (-N), a Ctrl group (+N) or a computer player's squad is therefore
-// never paced, never re-forms and has no record (World::retailGroupOf). The
+// VTOL_Standby 0x40f7d0, VTOL_Follow 0x40fbe0) run no group check. A Ctrl
+// group (+N) or a computer player's squad is therefore never paced, never
+// re-forms and has no record (World::retailGroupOf). An Alt+N formation (-N)
+// is the engine's own, kept in both modes (docs/ta-port-plan.md "Known
+// deviations"): it walks at its slowest member's pace, but it gets no
+// Kingdoms formation mission either (tools/group_spots_test.cpp). The
 // Kingdoms group helpers (sim/retailgroup.h, the attacks' and flyer missions'
 // head checks) are still checked on their own below; nothing in TA calls them.
 #include "navigation_test_common.h"
@@ -33,8 +36,9 @@ UnitType flyer(int kind=0) {
     return t;
 }
 
-// A formation (-N), a Ctrl group (+N) and a flagged computer squad: the fast
-// member walks at its own maximum, past the slow type's, and nobody re-forms.
+// A Ctrl group (+N) and a flagged computer squad: the fast member walks at its
+// own maximum, past the slow type's; an Alt+N formation (-N) holds it to the
+// slow type's (the engine's formation pacing). Nobody re-forms.
 void unpaced() {
     for (int kind=0;kind<3;++kind) {
         World world;dry(world,PathfindingMode::Retail);world.setPlayerCount(2);world.player(0).automaticGates=true;
@@ -56,7 +60,8 @@ void unpaced() {
                 require(!formationMission(*world.unit(id)),"a group member re-formed (TA has no formation mission)");
             }
         }
-        require(fastest>slow.maxVel+Fixed::fromFloat(0.5f),"a group was paced at its slowest member");
+        if (kind==0) require(fastest<=slow.maxVel+Fixed::fromFloat(0.05f),"an Alt+N formation was not paced at its slowest member");
+        else require(fastest>slow.maxVel+Fixed::fromFloat(0.5f),"a group was paced at its slowest member");
         std::printf("scenario=unpaced kind=%d fast_max=%.4f slow_type=%.4f\n",kind,fastest.toFloat(),slow.maxVel.toFloat());
     }
 }

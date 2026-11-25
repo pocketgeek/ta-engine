@@ -430,7 +430,8 @@ public:
     void drawOrderTrails(int mvw, int winH);
     void drawRangeCircles(int mvw, int winH);   // retail's Shift range circles (0x4d6530)
     // Destination markers (ours, not retail): the footprint outline of each own unit's
-    // OWN Legion spot (UnitR::hasSpot), flashed for kSpotFlashMs after a move-like order
+    // OWN spot (UnitR::hasSpot: its Legion slot, else its group order's own point,
+    // sim/groupspots.h), in both pathfinding modes, flashed for kSpotFlashMs after a move-like order
     // and held under Shift for the selected units until they get there.
     void drawUnitSpots(int mvw, int winH);
     // A unit's spot belongs to its current leg; usable only when that leg is the first
@@ -553,7 +554,8 @@ public:
     // (Retail, offline) gets them exactly as before, one command per unit. Scopes
     // nest; only the outermost flushes. setClickMove declares the right-click move
     // (its Move run is sent as OrderShape::Offsets at click (wx, wz)); setFlyerSpread
-    // an armed move / patrol whose flyers keep retail's spread (OrderShape::FlyerOffsets).
+    // an armed move / patrol / fight-move (OrderShape::FlyerOffsets). Either way the sim
+    // recomputes every member's own spot (sim/groupspots.h) from the click.
     struct ClickBuffer {
         std::vector<ta::net::Command> cmds;
         ta::net::ClickShape shape;

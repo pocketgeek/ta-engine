@@ -3066,36 +3066,57 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         }
         if (ta::devFlag("TA_UNIT_SPOTS_TEST")) {
             // Destination markers (GameView::drawUnitSpots): a mixed-speed right-click
-            // move of Peewees, Hammers and Stumpies under Legion. Every unit's own
-            // spot is captured (UnitR::hasSpot), no two alike, and outlined; with
-            // TA_UNIT_SPOTS_CAPTURE=<prefix> the flash and the Shift view are saved.
+            // move of Peewees, Hammers and Stumpies, four Peewee stragglers far outside
+            // TotalA.exe's reach (0x48cf30: retail sends them all to the click) and
+            // three Freedom Fighters, under Legion or (TA_UNIT_SPOTS_MODE=retail)
+            // Retail pathfinding. Every unit's own spot is captured (UnitR::hasSpot),
+            // no two alike, and outlined; with TA_UNIT_SPOTS_CAPTURE=<prefix> the
+            // flash and the Shift view are saved.
             constexpr int W=1200,H=800;
             winW_=W;winH_=H;noFog_=true;edgeScrollOn_=false;uiScale_=1.0f;
             if(!cursors_.ok()) {cursorsInit_=true;cursors_.load(ren_,vfs_,settings_);}
-            writableWorld().setPathfindingMode(ta::sim::PathfindingMode::Legion);
+            const char* modeEnv=ta::devEnv("TA_UNIT_SPOTS_MODE");
+            const bool retail=modeEnv && std::string(modeEnv)=="retail";
+            writableWorld().setPathfindingMode(retail ? ta::sim::PathfindingMode::Retail : ta::sim::PathfindingMode::Legion);
             writableWorld().setPathService(true);   // as a real match's setup (sim/matchsetup.cpp): Legion plans through it
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
             static constexpr const char* kinds[]={"armpw","armham","armstump"};
             std::vector<int> ids;
-            for (int i=0;i<15;++i) {
-                const float x=cx-300+float(i%5)*44,z=cz-90+float(i/5)*60;
-                const auto* type=registry_.find(kinds[i%3]);
-                if (!type || !world_.canPlace(type,x,z)) continue;
-                if (const int id=spawn(kinds[i%3],x,z,0,localPlayer_); id>0) ids.push_back(id);
-            }
-            if (ids.size()<9) throw std::runtime_error("unit spots: fixture");
+            const auto add=[&](const char* kind,float x,float z) {
+                const auto* type=registry_.find(kind);
+                if (!type || !world_.canPlace(type,x,z)) return;
+                if (const int id=spawn(kind,x,z,0,localPlayer_); id>0) ids.push_back(id);
+            };
+            for (int i=0;i<15;++i) add(kinds[i%3],cx-300+float(i%5)*44,cz-90+float(i/5)*60);
+            for (int i=0;i<4;++i) add("armpw",cx-300+float(i)*40,cz+420);    // stragglers
+            for (int i=0;i<3;++i) add("armfig",cx-300+float(i)*60,cz-260);   // flyers
+            if (ids.size()<16) throw std::runtime_error("unit spots: fixture");
             selection_=ids;
             const auto publish=[&] {captureFrame();beginFrame();cosmeticStep(0);};
             publish();
             const float tx=cx+260,tz=cz;
             issueClickPlan(planClick(0,tx,tz,nullptr,0,false,true),0,0);
-            for (int i=0;i<30;++i) writableWorld().tick(1.f/30);
-            publish();
+            // Legion hands a big click's slots out over several ticks: wait for them
+            // (at most four seconds; a far straggler waits about two), the flyers still
+            // climbing off the ground or on their way.
+            for (int i=0;i<120;++i) {
+                writableWorld().tick(1.f/30);
+                if (i<29) continue;
+                publish();
+                if (std::all_of(ids.begin(),ids.end(),[&](int id) {
+                        const UnitR* u=frameUnitP(id);return u && spotLeg(*u,0);})) break;
+            }
             std::set<std::pair<float,float>> spots;
+            int flyers=0;
             for (const int id:ids)
-                if (const UnitR* u=frameUnitP(id); u && spotLeg(*u,0)) spots.insert({u->spotX,u->spotZ});
+                if (const UnitR* u=frameUnitP(id); u && spotLeg(*u,0)) {
+                    spots.insert({u->spotX,u->spotZ});
+                    flyers+=u->type->canFly;
+                    std::fprintf(stderr,"unit spots: %s id=%d at %.1f,%.1f spot %.1f,%.1f\n",
+                                 u->type->id.c_str(),id,u->x,u->z,u->spotX,u->spotZ);
+                }
             mapView_.setZoom(1.0f);
-            mapView_.setOffset((cx-300+tx)*0.5f-float(W-300)*0.5f,cz-terrainLift(cx,cz)-float(H)*0.5f);
+            mapView_.setOffset(tx-float(W-300)*0.5f,tz-terrainLift(tx,tz)-float(H)*0.5f);
             const char* cap=ta::devEnv("TA_UNIT_SPOTS_CAPTURE");
             const auto frame=[&](SDL_Keymod mods,const char* tag) {
                 SDL_SetModState(mods);
@@ -3112,11 +3133,12 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             frame(KMOD_LSHIFT,"shift");
             const size_t held=spotBatch_.size()/24;
             SDL_SetModState(KMOD_NONE);
-            std::fprintf(stderr,"unit spots: %zu units, %zu own spots, %zu flashed, %zu held under Shift\n",
-                         ids.size(),spots.size(),flashed,held);
+            std::fprintf(stderr,"unit spots: %zu units, %zu own spots (%d flyers), %zu flashed, %zu held under Shift\n",
+                         ids.size(),spots.size(),flyers,flashed,held);
             if (spots.size()!=ids.size()) throw std::runtime_error("unit spots: a unit has no spot of its own, or two share one");
+            if (flyers!=3) throw std::runtime_error("unit spots: a flyer has no spot");
             if (flashed!=ids.size() || held!=ids.size()) throw std::runtime_error("unit spots: not every spot is outlined");
-            std::fprintf(stderr,"PASS: every unit of a mixed Legion move shows its own spot\n");
+            std::fprintf(stderr,"PASS: every unit of a mixed %s move shows its own spot\n",retail ? "Retail" : "Legion");
             return;
         }
         if (ta::devFlag("TA_AREA_DRAG_TEST")) {

@@ -29,6 +29,7 @@
 #include "tdf/tdf.h"
 #include "tnt/tnt.h"
 #include "tnt/mapgen.h"
+#include "sim/groupspots.h"
 
 namespace ta::sim {
 
@@ -51,45 +52,40 @@ static void applySelectionOrder(World& world, const TypeRegistry& reg, const ta:
         const Unit* u = world.unit(id);
         return u && u->alive() && u->type && u->player == int(c.player) ? u : nullptr;
     };
-    // Offsets: the centroid of the live owned members (raw Fixed, truncated mean),
-    // and (both offset shapes) retail's whole-pixel centre for the flyers' spread.
+    // Both offset shapes: the click goes in the template and the members' goals
+    // are recomputed here from their positions at activation.
     const bool spread = o.shape == OrderShape::Offsets || o.shape == OrderShape::FlyerOffsets;
-    int64_t sx = 0, sz = 0, n = 0;
-    FlyerGroupCentre air;
-    if (spread)
-        for (const int32_t id : o.members)
-            if (const Unit* u = owned(id)) { sx += u->x.v; sz += u->z.v; ++n; air.add(u->x.v, u->z.v); }
     const bool legion = isLegionPathfinding(world.pathfindingMode());
     // The verbs whose template carries the click: their members share an area there.
     const bool point = o.tmpl.kind == ta::net::Cmd::Move || o.tmpl.kind == ta::net::Cmd::AttackMove ||
                        o.tmpl.kind == ta::net::Cmd::Patrol;
+    // Every member of a move, patrol or fight-move gets its OWN spot (an engine
+    // feature, docs/ta-port-plan.md "Known deviations"; TotalA.exe 0x48cf30 lets
+    // stragglers share the click) except Legion's planned surface movers, which
+    // Legion slots on the shared point itself (and buildings: theirs is a rally).
+    std::vector<GroupSpotMember> spotMembers;
+    std::vector<int32_t> spotIds;
+    if (spread && point)
+        for (const int32_t id : o.members)
+            if (const Unit* u = owned(id)) {
+                const bool legionPlans = legion && legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ);
+                spotMembers.push_back({u->x.v, u->z.v, u->type->footX, u->type->footZ,
+                                       !legionPlans && !u->type->isStructure(), legionPlans});
+                spotIds.push_back(id);
+            }
+    const auto spots = groupSpots(spotMembers, cx0.v, cz0.v, world.mapW() * 16, world.mapH() * 16);
     world.beginOrder(o.serial, int(c.player), point, cx0, cz0);
     for (const int32_t id : o.members) {
         m.unitId = id;
         world.orderMember(id);
-        if (spread && n) {
+        if (spread) {
             const Unit* u = owned(id);
             if (!u) continue;
-            // TA's spread (sim/retailflyerspread.h, TotalA.exe 0x48cf30): every
-            // flyer, and in Retail mode every member of a move or patrol (the
-            // rows Move_Ground / Patrol carry the offset flag 0x2 as VTOL_Move /
-            // VTOL_Patrol do), either shape.
-            const bool taSpread = u->type->canFly ||
-                (!legion && (o.tmpl.kind == ta::net::Cmd::Move || o.tmpl.kind == ta::net::Cmd::Patrol));
-            if (taSpread) {
-                int32_t gx = 0, gz = 0;
-                air.goal(u->x.v, u->z.v, cx0.v, cz0.v, gx, gz);
-                m.x = Fixed::raw(gx).toFloat();
-                m.z = Fixed::raw(gz).toFloat();
-            } else if (o.shape == OrderShape::Offsets &&
-                       !(legion && legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ))) {
-                constexpr int64_t kReach = int64_t(60) << 16;
-                const int64_t ox = std::clamp<int64_t>(int64_t(u->x.v) - sx / n, -kReach, kReach);
-                const int64_t oz = std::clamp<int64_t>(int64_t(u->z.v) - sz / n, -kReach, kReach);
-                // Saturating (fixed.h): a click within 60 px of the east or south
-                // edge of a 2048-cell map keeps its members' points on that edge.
-                m.x = Fixed::raw(satAdd32(cx0.v, int32_t(ox))).toFloat();
-                m.z = Fixed::raw(satAdd32(cz0.v, int32_t(oz))).toFloat();
+            const auto at = std::lower_bound(spotIds.begin(), spotIds.end(), id);
+            if (at != spotIds.end() && *at == id) {
+                const auto& g = spots[size_t(at - spotIds.begin())];
+                m.x = Fixed::raw(g[0]).toFloat();
+                m.z = Fixed::raw(g[1]).toFloat();
             } else {
                 m.x = o.tmpl.x;
                 m.z = o.tmpl.z;

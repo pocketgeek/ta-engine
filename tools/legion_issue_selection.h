@@ -7,17 +7,14 @@
 //
 //  1. hudCommands -- the commands the HUD builds for one click, in selection
 //     order. Each verb copies one client path:
-//       Move    right-click on open ground   gameview_hud.cpp:258-303
-//               (TA's spread, sim/retailflyerspread.h, TotalA.exe 0x48cf30:
-//               the unclamped offset from the selection's centre within
-//               sqrt(3000 n) px, else the point -- every unit in Retail mode,
-//               flyers in Legion; Legion shares the point for surface movers
-//               with footprints 1..8, and its oversize bodies keep their
-//               offset from the selection centroid, clamped to +-60 px per axis)
+//       Move    right-click on open ground   gameview_clicks.cpp issueClickPlan
+//               (every unit its own spot, sim/groupspots.h: TA's spread,
+//               TotalA.exe 0x48cf30, within sqrt(3000 n) px of the centre,
+//               else the nearest free spot to the click; Legion shares the
+//               point for the surface movers it plans, footprints 1..8)
 //       Attack  right-click on an enemy      gameview_hud.cpp:230-237
-//       Fight / Patrol  armed order (F / P)  gameview_hud.cpp:1062-1090
-//               (flyers take TA's spread, and in Retail every unit on a
-//               Patrol; everyone else the point)
+//       Fight / Patrol  armed order (F / P)  gameview_clicks.cpp issueClickPlan
+//               (the same per-unit spots as Move)
 //       Guard   armed order (G)              gameview_hud.cpp:994-1013
 //       Stop    Act::Stop                    gameview_impl.cpp:4707-4714
 //       Squad   Ctrl/Alt+N (assignSquad)     gameview_impl.cpp:4748-4767
@@ -48,7 +45,8 @@
 #include "net/protocol.h"
 #include "net/orderpack.h"
 #include "sim/pathmode.h"
-#include "sim/retailflyerspread.h"
+#include "sim/groupspots.h"
+#include "sim/legion.h"
 #include "sim/sim.h"
 
 #include <algorithm>
@@ -56,6 +54,7 @@
 #include <cstdlib>
 #include <deque>
 #include <map>
+#include <tuple>
 #include <unordered_set>
 #include <vector>
 
@@ -72,15 +71,33 @@ struct SelectionOrder {
     bool append = false;   // Squad: Shift held (append instead of replace)
 };
 
-// gameview_hud.cpp flyerSpreadGoal: retail's flyer spread, from the frame's floats.
-inline void flyerSpreadGoal(const ta::sim::FlyerGroupCentre& air, const ta::sim::Unit& u, float wx, float wz,
-                            float& gx, float& gz) {
+// gameview_clicks.cpp's move / patrol / fight-move goals: every unit its own
+// spot (sim/groupspots.h), members in increasing id order, from the frame's
+// floats; Legion's planned surface movers keep the click and hold room there.
+inline std::map<int, std::pair<float, float>> groupSpotGoals(const ta::sim::World& world,
+                                                             const std::vector<int>& selection, float wx, float wz) {
     using ta::sim::Fixed;
-    int32_t x = 0, z = 0;
-    air.goal(Fixed::fromFloat(u.x.toFloat()).v, Fixed::fromFloat(u.z.toFloat()).v, Fixed::fromFloat(wx).v,
-             Fixed::fromFloat(wz).v, x, z);
-    gx = Fixed::raw(x).toFloat();
-    gz = Fixed::raw(z).toFloat();
+    const bool legion = ta::sim::isLegionPathfinding(world.pathfindingMode());
+    std::vector<int> members;
+    for (int id : selection)
+        if (const auto* u = world.unit(id); u && u->alive()) members.push_back(id);
+    std::sort(members.begin(), members.end());
+    members.erase(std::unique(members.begin(), members.end()), members.end());
+    std::vector<ta::sim::GroupSpotMember> spots;
+    for (int id : members) {
+        const auto* u = world.unit(id);
+        const auto* t = u->type;
+        const bool legionPlans = legion && t && ta::sim::legionSharedClick(t->canFly, t->footX, t->footZ);
+        spots.push_back({Fixed::fromFloat(u->x.toFloat()).v, Fixed::fromFloat(u->z.toFloat()).v, t ? t->footX : 1,
+                         t ? t->footZ : 1, t && !legionPlans && !t->isStructure(), legionPlans});
+    }
+    const auto goals = ta::sim::groupSpots(spots, Fixed::fromFloat(wx).v, Fixed::fromFloat(wz).v,
+                                           world.mapW() * 16, world.mapH() * 16);
+    std::map<int, std::pair<float, float>> out;
+    for (size_t i = 0; i < members.size(); ++i)
+        out[members[i]] = spots[i].place ? std::pair{Fixed::raw(goals[i][0]).toFloat(), Fixed::raw(goals[i][1]).toFloat()}
+                                         : std::pair{wx, wz};
+    return out;
 }
 
 // The commands one click builds, in the order the client issues them (before
@@ -104,28 +121,11 @@ inline std::vector<ta::net::Command> hudCommands(const ta::sim::World& world,
     };
     switch (order.verb) {
     case Verb::Move: {
-        const bool legion = ta::sim::isLegionPathfinding(world.pathfindingMode());
-        float cx = 0, cz = 0;
-        int n = 0;
-        ta::sim::FlyerGroupCentre air;
-        for (int id : selection)
-            if (const auto* u = live(id)) {
-                cx += u->x.toFloat(); cz += u->z.toFloat(); ++n;
-                air.add(ta::sim::Fixed::fromFloat(u->x.toFloat()).v, ta::sim::Fixed::fromFloat(u->z.toFloat()).v);
-            }
-        if (n) { cx /= float(n); cz /= float(n); }
+        const auto goals = groupSpotGoals(world, selection, order.x, order.z);
         for (int id : selection) {
-            const auto* u = live(id);
-            if (!u) continue;
+            if (!live(id)) continue;
             auto c = make(Cmd::Move, id);
-            const auto* t = u->type;
-            const bool shared = t && legion && ta::sim::legionSharedClick(t->canFly, t->footX, t->footZ);
-            // TA's spread (TotalA.exe 0x48cf30): flyers, and every unit in Retail.
-            if (t && (t->canFly || !legion)) flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
-            else {
-                c.x = shared ? order.x : order.x + std::clamp(u->x.toFloat() - cx, -60.0f, 60.0f);
-                c.z = shared ? order.z : order.z + std::clamp(u->z.toFloat() - cz, -60.0f, 60.0f);
-            }
+            std::tie(c.x, c.z) = goals.at(id);
             c.queue = order.queue;
             out.push_back(c);
         }
@@ -141,20 +141,12 @@ inline std::vector<ta::net::Command> hudCommands(const ta::sim::World& world,
         break;
     case Verb::Fight:
     case Verb::Patrol: {
-        const bool legion = ta::sim::isLegionPathfinding(world.pathfindingMode());
-        ta::sim::FlyerGroupCentre air;
-        for (int id : selection)
-            if (const auto* u = live(id))
-                air.add(ta::sim::Fixed::fromFloat(u->x.toFloat()).v, ta::sim::Fixed::fromFloat(u->z.toFloat()).v);
+        const auto goals = groupSpotGoals(world, selection, order.x, order.z);
         for (int id : selection) {
             auto c = make(order.verb == Verb::Fight ? Cmd::AttackMove : Cmd::Patrol, id);
             c.x = order.x;
             c.z = order.z;
-            const auto* u = live(id);
-            // TA's spread: flyers, and in Retail every unit on a patrol (Patrol's
-            // row carries the offset flag as VTOL_Patrol's does, 0x48cf30).
-            if (u && u->type && (u->type->canFly || (!legion && order.verb == Verb::Patrol)))
-                flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
+            if (const auto g = goals.find(id); g != goals.end()) std::tie(c.x, c.z) = g->second;
             c.queue = order.queue ? 1 : 0;
             out.push_back(c);
         }

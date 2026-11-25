@@ -25,10 +25,10 @@ namespace ta::sim {
 // Fixed::fromFloat) and the sim (an explicit order's OrderShape::Offsets /
 // FlyerOffsets) compute the same goals.
 //
-// Retail pathfinding mode gives every member this spread on a move or patrol;
-// Legion keeps its own rule for the surface movers (gameview_clicks.cpp: +-60
-// px per axis on a right-click, the shared point for the movers it plans, the
-// point itself on an armed move or patrol), a deliberate engine feature.
+// The engine keeps TA's goal for the members within that reach and gives every
+// other member its own free spot instead of the click (sim/groupspots.h, both
+// pathfinding modes: a kept engine feature, docs/ta-port-plan.md "Known
+// deviations"); Legion slots its own surface movers on the shared point.
 struct FlyerGroupCentre {
     int64_t sx = 0, sz = 0;
     int64_t n = 0;

@@ -122,18 +122,15 @@ struct Command {
 // How an order's members get their goal (only Move uses Offsets; only Move,
 // Patrol and AttackMove use FlyerOffsets):
 //   Shared        every member is given the template's command as it stands;
-//   Offsets       the right-click move rule (client/gameview_clicks.cpp): a flyer,
-//                 and in Retail mode every member, takes TA's spread
-//                 (sim/retailflyerspread.h, TotalA.exe 0x48cf30: the click plus
-//                 its unclamped offset from the members' centre when within
-//                 sqrt(3000 n) px, else the click); in Legion mode a member Legion
-//                 plans on a shared point (legionSharedClick, Legion mode only)
-//                 takes the click itself; every other member the click plus its
-//                 offset from the centroid of the order's live owned members,
-//                 clamped to 60 px per axis;
-//   FlyerOffsets  the armed MOVE / PATROL / fight-move rule: a flyer takes
-//                 TA's spread as above, and so does every member of a Retail
-//                 mode MOVE or PATROL; every other member the click itself.
+//   Offsets       the right-click move (client/gameview_clicks.cpp) and
+//   FlyerOffsets  the armed MOVE / PATROL / fight-move: the same rule for both
+//                 (sim/groupspots.h) -- every member its own spot: TA's goal
+//                 (TotalA.exe 0x48cf30: the click plus its unclamped offset from
+//                 the members' centre) within sqrt(3000 n) px when that spot is
+//                 free, else the nearest free footprint spot to the click; in
+//                 Legion mode a member Legion plans on a shared point
+//                 (legionSharedClick) takes the click itself (the shapes differ
+//                 only in which verbs they carry);
 // The sim computes the offsets at activation from hashed positions (integer
 // Fixed arithmetic), so no per-member coordinates travel.
 enum class OrderShape : uint8_t { Shared = 0, Offsets = 1, FlyerOffsets = 2 };

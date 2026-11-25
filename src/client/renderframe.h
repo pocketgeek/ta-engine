@@ -113,7 +113,8 @@ struct UnitR {
     ta::sim::RetailGetUnit scriptWords;
     std::vector<const ta::sim::UnitType*> buildQueue;
     std::vector<RenderOrder> orders, rally;
-    // Its own Legion spot on its current move-like leg (World::legionDestination), for
+    // Its own spot on its current move-like leg (World::legionDestination, else that
+    // leg's goal for a unit Legion does not plan: sim/groupspots.h), for
     // the destination markers; captured with the orders, so only for the units whose
     // orders are (never another side's destination for a player). hasSpot false: none.
     bool hasSpot = false;
