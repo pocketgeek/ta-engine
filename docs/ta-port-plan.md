@@ -226,10 +226,58 @@ What these entries describe is ported; what is left of each is under "Open".
   bit 0, 0x485ad1) redraws them every frame with the playing frame (0x4586d6 ->
   0x459641 arg 0); others only while active / moving (0x458845, 0x458635).
   Under construction a mobile unit plays all, a structure none (0x45960d).
-- Repair pads (client): a rider's heading is the pad's plus its pad piece's own
-  y turn (0x43d78e -> 0x43e180); the pad sprays from its QueryNanoPiece to the
-  rider's box on each tick SelfRepair mends it (0x402518 -> 0x40252e ->
-  0x4025ae, the builder repair's emitter).
+- Repair pads (client): a rider's orientation is the pad's plus its pad
+  piece's own turns (0x43d78e -> 0x43e180: unit +0x64/+0x66/+0x68 = carrier +
+  piece). Axes: 0x43def0 composes a piece as (piece +0x14 + unit +0x64, +0x12 +
+  +0x66, +0x10 + +0x68) (0x43df67..0x43df9c; records of 0x36 from the list's
+  +0x22) and 0x4b6cc0 turns about z, then x, then y, so the piece's x turn goes
+  to +0x68 (the body's pitch), z to +0x64 (roll), y to the heading
+  (client/padrider.h, pad_rider test: the body built from those words turns a
+  point as the piece's script turn does). Drawn: heading, pitch and roll, the
+  bank a plane landed with replaced (evidence: armasp before/after, a fighter
+  parked banked before, level after). No shipped pad script turns its pad
+  pieces (armasp, corasp, armcarry, corcarry), so the pad's own attitude is
+  what shows. The pad sprays from its QueryNanoPiece to the rider's box on each
+  tick SelfRepair mends it (0x402518 -> 0x40252e -> 0x4025ae, the builder
+  repair's emitter).
+- Model primitives (client/primitivedraw.h): every objects3d load
+  (0x4cb560 -> 0x4cb4c0 -> 0x4cb370, called at 0x4cb552) swaps a piece's
+  selection primitive into slot 0 (0x4cb37b..0x4cb3b7) and bubble-sorts
+  primitives 1..n-1 by ascending average raw y (strict-greater swaps, int32
+  sum / count with idiv; 0x4cb3e8..0x4cb4a5), so the draw loops that start at
+  1 when +0xc != -1 (0x459aa5 object bitmap, 0x45908a nanoframe outline,
+  0x458568 direct draw) skip exactly the selection primitive. The body and the
+  nanoframe walk primitives in that order. Untextured primitives keep the
+  file's flag word (0x42a140; bit 0 on all 6066 shipped ones) and are flat
+  polygons of any vertex count in their raw palette index, unshaded (0x4c1000
+  / 0x4c0310 -> span writer 0x4c06e0); index 0 is opaque black (the object
+  bitmap's transparent key is 1: 0x4598ae, read at +8 by 0x458d30). The body
+  draw had skipped them (a null atlas op); they now draw through 8x8 palette
+  swatches (`#pal<index>`) in the atlas -- armcv's colour-0 face was a hole,
+  now black. A texture name found nowhere is colour 0xd1 (0x42a204; none in
+  the shipped models). A textured primitive is drawn only as a quad (0x4585e2,
+  0x459b1a; none shipped besides selection primitives) and still outlined by
+  the nanoframe (0x459080 has no count test). Evidence: primitive_draw test;
+  armca / corlab / armcv finished and nanoframe captures (debug harness
+  TA_CONJURE_REMAINING places a site at a chosen build fraction).
+- Unit speech queue (client/speechqueue.h): the global queue (0x51e68c, made
+  at 0x47edea: spacing +0xa1 = 30 ticks, 0x47ee07) takes a request unless the
+  event's next-allowed tick is ahead (0x47faf0) or the event is queued
+  (0x47fb0a); a full queue (8, 0x47fb1a) plays its last entry text-only
+  (0x47fb27); entries go before the first of strictly lower priority. Once a
+  frame (0x4999a6 -> 0x47f680) the head plays: its speech only when 30 ticks
+  have passed since the last voiced turn (0x47f6bb), which then restarts the
+  spacing (0x47f6d7), its text line regardless (0x47f6df). The under-attack
+  alert goes through it (speech_queue test).
+- Ring goal acceptance (sim/retailgoal.h) is TotalA.exe's: accepts
+  `(in/16)^2 <= d^2 <= (out/16)^2` (0x44d800 against the squares 0x44d3b0
+  stores at +0x14 / +0x18) and measures 18*max + 7*min against in / out
+  (0x44d840). Retail has the same acceptance gap (a cell whose octile distance
+  is 0 the squared test refuses); a PARK round a TA factory meets it as retail
+  does (navyyard_exit counts such ships). A PARK round a *mobile* producer is
+  an engine deviation no TA data reaches (no shipped BMcode=1 unit has a
+  mobile unit in its build menu, guis/*.gui and download/*.tdf), kept only for
+  the production / movement_orders fixtures, which settle.
 - Death accounting (countTaDeath, retailveterancy.h, retaildeath.h): non-weapon
   damage goes through taDamageRecord (0x489bb0 -> 0x489ce0: the damagemodifier
   under 30000, kill scaling, +0xf5 / +0xf0 / +0xf4); the commander rule (only
@@ -517,26 +565,19 @@ data (cleanup, no gameplay).
   0x409730) is drawn from the AI's own stream (TaRetailBrain::random), not the
   sim's: retail draws the whole AI on one host, so its interleaving with the
   sim stream cannot be reproduced (docs/retail-ai.md "RNG in lockstep").
-- (b, cosmetic) Nanoframe: retail skips primitive 0, not the selection
-  primitive, whenever a piece has one (0x459aa5, 0x45908a, 0x458568; pieces are
-  not reordered at load, 0x4cb4c0), so 24 unit models (armca, corlab,
-  cortitan...) draw their selection quad and drop a textured face in retail;
-  the client keeps skipping the selection primitive. Retail draws a textured
-  primitive only as a quad (0x459b1a, 0x4585e2); the nanoframe does, the
-  finished-unit draw does not.
-- (b, cosmetic) Repair pads: the pad piece's x/z turns go to +0x64 / +0x68 but
-  which entry word is which axis is not traced, and the sim does not set the
-  rider's own heading.
-- (b, cosmetic) Unit speech: the queue's global spacing (+0x9d / +0xa1,
-  0x47f6bb) is not modelled (one request per frame, text at once);
-  RECLAIMUNIT's "Reclaiming" status line, its speech lines (0x47f780) and work
-  sound (0x47f780(unit, 0xb)); the cursor over a raisable feature shows
-  reclaim. The display VM's own GET 1..19 read its snapshot (ACTIVATION from
-  the build queue, BUSY from motion) rather than the sim's state.
-- (c) A PARK round a *mobile* producer (a test fixture; no TA unit builds
-  mobile units in the field) can still circle in the ring's acceptance gap --
-  the octile distance (0x44d840) is 0 a cell inside the squared inner test
-  (0x44d800) -- when parked outputs wall the band. The client watch/spectator
+- (b) Repair pads (sim): the rider's own orientation words are not set while
+  it is parked (0x43d78e -> 0x43e180 writes +0x64/+0x66/+0x68 every mover
+  tick), so it leaves the pad on the heading it landed with rather than the
+  pad's plus the pad piece's y turn. The client draws the retail pose (see
+  "Repair pads (client)"); the sim's heading is hashed, so this is a sim
+  change with baselines to retake.
+- (b, cosmetic) Unit speech: RECLAIMUNIT's "Reclaiming" status line, its
+  speech lines (0x47f780; they would join the speech queue, client/
+  speechqueue.h) and work sound (0x47f780(unit, 0xb)); the cursor over a
+  raisable feature shows reclaim. The display VM's own GET 1..19 read its
+  snapshot (ACTIVATION from the build queue, BUSY from motion) rather than the
+  sim's state.
+- (c) The client watch/spectator
   harness checks (gameview_devharness.cpp) still spawn Kingdoms units. A
   script-less (test) carrier keeps the old transport stand-in (fifteen ticks
   of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
