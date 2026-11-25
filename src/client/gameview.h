@@ -753,12 +753,10 @@ public:
     int debugSmokeDrawCount_ = 0;
     int debugPointDrawCount_ = 0;
     int debugGlowDrawCount_ = 0;
-    int debugNimbusDrawCount_ = 0;
     int debugDamageFlameDrawCount_ = 0;
     int debugFeatureFlameDrawCount_ = 0;
     int debugFeatureFlameExpected_ = 2;
     int debugFeatureSmokeDrawCount_ = 0;
-    int debugFlameDrawCount_ = 0; // render-thread screenshot admission only
 #endif
     const std::string& netError() const { return netError_; }
 
@@ -1715,15 +1713,15 @@ private:
     struct PaintItem { float z; const UnitR* u; const FeatureInst* f; int layer = 0; int32_t fx = -1; };
     std::vector<PaintItem> paintItems_;   // per-frame painter list (capacity reused)
     // World effects in the painter list (collectWorldFx). One entry per drawable:
-    // a projectile, a beam, a flame-stream particle, a ring sprite, an explosion, a
-    // glow, a nimbus, a debris piece (with its shadow), a blood point, a particle,
+    // a projectile, a beam, a ring sprite, an explosion, a
+    // glow, a debris piece (with its shadow), a blood point, a particle,
     // or one of a unit's attached smoke / damage-flame / point sprites. `p`, `a` and
     // `b` locate it in its family's container (valid for this frame only: nothing
     // mutates them between collection and the draw). `queued`: it went into the
     // painter list; the rest (far outside the view) draw in the late pass, in the
     // old family order, so nothing is ever dropped.
-    enum class FxKind : uint8_t { Flame, Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
-                                  Debris, Glow, Nimbus, Effect, Point, Smoke, DamageFlame, UnitFx };
+    enum class FxKind : uint8_t { Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
+                                  Debris, Glow, Effect, Point, Smoke, DamageFlame, UnitFx };
     struct FxItem { const void* p; uint32_t a, b; FxKind kind; bool queued; };
     std::vector<FxItem> fxItems_;
     std::vector<uint32_t> fxOrder_;   // fxItems_ indices in painter order (DrawOp::fxFirst)
@@ -2437,7 +2435,6 @@ private:
     std::unordered_map<int, float> birthFx_;
     static constexpr float kBirthFxDur = 0.9f;
     float birthProgress(int id) const;
-    std::map<std::pair<int,int>,SDL_Texture*> lightningTextures_;
     std::map<std::string, std::vector<SDL_Texture*>> textures_;
     std::map<std::string, std::vector<ShadowMaskFrame>> shadowMasks_;
     struct ShadowMaskPage { SDL_Texture* texture;int width,height,x=0,y=0,rowHeight=0;
@@ -4847,10 +4844,6 @@ private:
     std::vector<std::string> explosionClassOrder_; // numeric COB classes follow authored order
     std::map<std::string, std::vector<std::string>> explosionClasses_;  // class -> anim names
     std::map<std::string, EffectAnim> effectAnims_;                     // anim name -> frames
-    struct NimbusEffect { const EffectAnim* anim = nullptr; uint32_t started = 0; };
-    std::unordered_map<int, NimbusEffect> nimbusEffects_;
-    std::map<std::string, std::string> factionNimbus_;
-    bool factionNimbusLoaded_ = false;
     bool explosionsLoaded_ = false;
     struct EffectInst {
         const EffectAnim* anim = nullptr;
@@ -4961,10 +4954,6 @@ private:
                    float dur, int sprites, float maxR);
     void updateRings(float dt);
 
-    // Frame a nimbus shows at the current tick (frames.size() once it has played out),
-    // and the lifetime rule of the effect draws, run once a frame by collectWorldFx.
-    size_t nimbusFrame(const NimbusEffect& effect) const;
-    void pruneNimbusEffects();
     // Per-family draws of single world effects (drawFxItem).
     void drawFxBeam(const BeamFx& b);
     void drawFxProjectile(const ta::sim::Projectile& p);

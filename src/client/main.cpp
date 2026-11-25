@@ -3167,7 +3167,6 @@ int main(int argc, char** argv) {
             if(ta::devEnv("TA_SMOKE_TEST") && gameView)ready=ready && gameView->debugSmokeDrawCount_>=2;
             if(ta::devEnv("TA_DAMAGE_FLAME_TEST") && gameView)ready=ready && gameView->debugDamageFlameDrawCount_>=1;
             if(ta::devEnv("TA_FEATURE_FLAME_TEST") && gameView)ready=ready && gameView->debugFeatureFlameDrawCount_>=gameView->debugFeatureFlameExpected_ && gameView->debugFeatureSmokeDrawCount_>=1;
-            if(ta::devEnv("TA_SHOT_FLAME") && gameView)ready=ready && gameView->debugFlameDrawCount_>=3;
             if(gameView && gameView->replayMode())ready=ready && !gameView->replaySeekScriptBusy();
 #endif
             static bool shotArmed = false;

@@ -84,7 +84,6 @@ struct UnitR {
     int stance = 1;
     int8_t outputStance = -1;   // a producer's stance for its output (-1: none chosen)
     uint8_t standingOrder = 3;
-    int weaponSlot = 0;
     std::array<int32_t,3> weaponReloads{};
     bool underConstruction = false, buildBegun = false;
     bool selectable = true;     // retail +0x130 & 0x20: false while a mission script runs it
@@ -339,7 +338,6 @@ struct Frame {
     int effectVisW = 0, effectVisH = 0;
 
     std::vector<ta::sim::Projectile> projectiles;
-    std::vector<ta::sim::FlameShot> flames;
     std::vector<ta::sim::World::HitFx> hits;   // weapon impacts this tick (cosmeticStep FX)
     int winningTeam = -1;                // world_.winningTeam() (victory overlay)
     ta::sim::RetailWind wind;
