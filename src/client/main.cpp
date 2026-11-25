@@ -1379,6 +1379,11 @@ int main(int argc, char** argv) {
             }
             if (tc == ta::TaFrontEnd::Choice::Exit) { quitApp = true; break; }
             if (tc == ta::TaFrontEnd::Choice::Menu) continue;   // back to the TA main menu
+            if (tc == ta::TaFrontEnd::Choice::Intro) {          // the intro movie, then the title
+                std::fprintf(stderr, "front end: INTRO plays 1.zrb\n");
+                ta::MainMenu::playIntro(ren, dataRoot, "1.zrb");
+                continue;
+            }
             // SINGLE: the engine's single-player game (a local server, stopping in its
             // lobby), as the engine menu's single-player door does.
             if (tc == ta::TaFrontEnd::Choice::EngineSingle) {

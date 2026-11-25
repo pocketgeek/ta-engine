@@ -570,6 +570,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             else if (h2 == "MULTI") return Choice::EngineMulti;
             else if (h2 == "OPTIONS") return Choice::Options;
             else if (h2 == "CAMPAIGN") goPage(Page::Campaigns);
+            else if (h2 == "INTRO") return Choice::Intro;
             else if (h2 == "EXIT") return Choice::Exit;
             break;
         case Page::Single:

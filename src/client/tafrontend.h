@@ -65,7 +65,10 @@ public:
     // opens the engine's SETTINGS menu. CAMPAIGN opens the engine's campaign picker
     // (CampaignScreen, on TA data TA's any-mission screen) here: a picked mission goes
     // through MSNBRIEF and returns Campaign like NEWGAME's.
-    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu, EngineSingle, EngineMulti };
+    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu, EngineSingle, EngineMulti,
+                        // INTRO: front-end state 1 (TotalA.exe 0x425ff7 sets game+0x2bbe = 1;
+                        // the state switch 0x426ecb plays 1.zrb at 0x426f0e), then the title.
+                        Intro };
     TaFrontEnd(SDL_Renderer* ren, SDL_Window* win, const hpi::Vfs& vfs);
     // Runs until a choice is made. `setup` is filled for Skirmish (and kept between
     // calls, like retail's registry-backed skirmish settings). Campaign: NEWGAME ->
