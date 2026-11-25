@@ -4413,6 +4413,18 @@ private:
         return true;
     }
 
+    // The same test over a footprint rectangle at its origin cell.
+    bool rectFree(int cx, int cz, int fx, int fz, int selfId) const {
+        if (occW_ <= 0) return true;
+        for (int z = cz; z < cz + fz; ++z)
+            for (int x = cx; x < cx + fx; ++x) {
+                if (x < 0 || z < 0 || x >= occW_ || z >= occH_) continue;
+                const int32_t o = occ_[size_t(z) * size_t(occW_) + size_t(x)];
+                if (o != 0 && o != selfId) return false;
+            }
+        return true;
+    }
+
     std::vector<int> gHead_, gNext_;
     std::vector<size_t> gTouched_;
     // Conservative owner mask for rejecting all-allied target cells. Capture

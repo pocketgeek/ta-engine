@@ -1151,6 +1151,11 @@ static void retailRoster(const char* root) {
             // the TransportDrop boom's reach (BoomCalc); it unloads on open land.
             w.setTerrain(type.canHover ? std::vector<uint8_t>(128*128,100) : coastHeights(128,128,50),128,128,40);
             w.buildNavClasses(registry);w.setPathService(true);
+            // A known coast: unexplored cells read clear to the search (TotalA.exe,
+            // docs/retail-pathfinding.md D7), so on a fresh map a ship first
+            // scouts the land behind the shore before its unload circle fails.
+            auto& explored=w.editNavigationExploration();
+            std::fill(explored.begin(),explored.end(),uint16_t(0xffff));
             const auto* foot=registry.find("armpw");
             check(foot && foot->transportSize==foot->footX,
                 "passenger size is its final movement footprint x (TotalA.exe 0x489b0b)");
@@ -1606,16 +1611,27 @@ static void groundPickupApproach() {
     UnitType carrier=boatType(),passenger=footType();
     const int tid=w.spawn(&carrier,300,400),cid=w.spawn(&passenger,800,400),second=w.spawn(&passenger,800,500);
     w.loadInto(cid,tid);w.loadInto(second,tid,true);
-    bool approached=false;int boarded=-1;
+    bool approached=false,timed=false;int boarded=-1,wakes=0;
     for(int tick=0;tick<3000 && boarded<0;++tick) {
-        w.tick(1.f/30);
         const auto* t=w.unit(tid);
+        const ta::sim::Order* leg=t->orders.empty() ? nullptr : &t->orders[World::currentLeg(t->orders)];
+        const bool circling=leg && leg->transportPickup && leg->transportMission.stage==5;
+        w.tick(1.f/30);
+        t=w.unit(tid);
+        leg=t->orders.empty() ? nullptr : &t->orders[World::currentLeg(t->orders)];
+        // Stage 5 waits on the navigator and event 8 only (0xe8, 0x4068a1):
+        // no timer, so only a navigator event moves it on.
+        if(leg && leg->transportPickup && leg->transportMission.stage==5)
+            timed|=(leg->transportMission.waitMask&1u)!=0;
+        if(circling && leg && leg->transportPickup && leg->transportMission.stage!=5) ++wakes;
         approached|=!t->orders.empty() && t->orders.front().transportPickup && t->speed>ta::sim::Fixed();
         if(w.unit(cid)->embarked())boarded=tick;
         check(!w.unit(cid)->embarked() || w.unit(cid)->inTransport==tid,"attached to its carrier");
     }
     check(approached,"the carrier drives toward a passenger out of its boom's reach");
     check(boarded>0,"the carrier picks up a distant passenger");
+    check(!timed && wakes>=1,
+          "the circle on the standing passenger wakes on the navigator's failure, no timer (0x44f080 -> 0x40)");
     for(int tick=0;tick<3000 && !w.unit(second)->embarked();++tick)w.tick(1.f/30);
     check(w.unit(second)->embarked(),"the queued second pickup follows");
     const auto& cargo=w.unit(tid)->cargo;
@@ -1678,7 +1694,7 @@ static void passengerMissionSchedule() {
         void approach(){++approaches;}
         void release(){++releases;}
         int handle(RetailMissionState& m,uint32_t events) {
-            return retailGroundPickup(m,calls,now,events,true,false,*this);
+            return retailGroundPickup(m,calls,now,events,true,*this);
         }
         uint32_t random(uint32_t){return draw;}
         void remove(RetailMissionState&){active=false;}
@@ -2693,8 +2709,8 @@ int main(int argc,char** argv) {
         unsigned stage,attempts,next,inRange,mover;
         while (std::scanf("%u %u %u %u %u",&stage,&attempts,&next,&inRange,&mover)==5) {
             ta::sim::RetailMissionState m{uint8_t(stage)};unsigned approaches=0;
-            const int result=ta::sim::retailTransportUnloadApproach(m,attempts,100,0,
-                inRange!=0,mover!=0,next!=0,false,[&]{++approaches;},[](int){return 0u;});
+            const int result=ta::sim::retailTransportUnloadApproach(m,attempts,100,
+                inRange!=0,mover!=0,next!=0,[&]{++approaches;},[](int){return 0u;});
             const unsigned delay=(m.waitMask&1u) ? m.deadline-100u : 0u;
             std::printf("%d %u %u %u %u %u\n",result,unsigned(m.stage),attempts,
                 m.waitMask,delay,approaches);
@@ -2716,7 +2732,8 @@ int main(int argc,char** argv) {
             void rotate(RetailMissionState&) { active=false; }
             void clear() { active=false; }
             int handle(RetailMissionState& m,uint32_t events) {
-                return retailTransportUnloadApproach(m,attempts,now,events,inRange,hasMover,false,false,
+                (void)events;
+                return retailTransportUnloadApproach(m,attempts,now,inRange,hasMover,false,
                     [&]{++requests;},[](int){return 0u;});
             }
         } host;

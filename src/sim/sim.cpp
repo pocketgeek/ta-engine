@@ -1167,9 +1167,15 @@ void World::commitGroundStep(Unit& u,Fixed dx,Fixed dz,bool strictDiagonal) {
     else {
         // Legacy terrain-only harnesses have no feature plane. Loaded matches
         // use the authoritative rectangular map/body placement above.
-        const auto& grid=navFor(u.type);const int foot=std::clamp(std::max(fx,fz),1,15);
-        clear=(grid.empty() || grid.fits(footprintCell(px,foot),footprintCell(pz,foot),foot)) &&
-            cellFree(px,pz,u.id,foot);
+        // Terrain and bodies over the footprint rectangle at its origin cell
+        // (nx, nz, fx x fz), the rectangle the occupancy grid and the search
+        // plane use: 0x47db70 tests the footprint rectangle, and a bounding
+        // square refused cells the search had routed a 1x4 hover through.
+        const auto& grid=navFor(u.type);
+        clear=rectFree(nx,nz,fx,fz,u.id);
+        if (clear && !grid.empty())
+            for (int z=nz;clear && z<nz+fz;++z) for (int x=nx;x<nx+fx;++x)
+                if (!grid.walkable(x,z)) { clear=false;break; }
     }
     if(clear&&strictDiagonal&&nx!=ox&&nz!=oz) {
         // A corner's destination alone is insufficient for a rectangular body.
@@ -4142,8 +4148,6 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 // while the approach still stands alone (unloadAt).
                 const size_t leg=currentLeg(u.orders);
                 const bool nextOrder=leg+(goal.unload ? 1u : 2u)<u.orders.size();
-                const bool routing=goal.controller && !goal.navigationExhausted && u.speed>Fixed() &&
-                    u.bodyBlockStreak<2;
                 // A scripted carrier's call is TransportDrop(the first
                 // passenger, the point) (0x40698c..0x4069bf): BoomCalc decides,
                 // and a drop under way holds BUSY.
@@ -4161,8 +4165,8 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                     return true;
                 };
                 const int result=retailTransportUnloadApproach(m,goal.transportApproachAttempts,
-                    w.tickCounter_,events,call,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
-                    routing,[&] {
+                    w.tickCounter_,call,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
+                    [&] {
                         // TotalA.exe GROUND_UNLOAD installs its drop-point circle
                         // once per failed TransportDrop (0x406a5e, 0x438930: the
                         // old controller goes, a new one is made) and then waits
@@ -5705,11 +5709,6 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
             Order& goal=*order();
             Unit* p=w.unit(goal.targetId);
             const bool live=p && p->alive();
-            // The stand-in timer's test: the hull has made headway since the
-            // last wake (transportX/Z hold where it stood then).
-            const bool routing=goal.controller && !goal.navigationExhausted &&
-                (std::abs(int64_t((u.x-goal.transportX).v))>65536 || std::abs(int64_t((u.z-goal.transportZ).v))>65536);
-            goal.transportX=u.x;goal.transportZ=u.z;
             struct Ops {
                 World& w; Unit& u; Order& goal; Unit* p; Host& host;
                 bool canLoad() const { return u.type->canTransport; }
@@ -5756,7 +5755,7 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                     host.request=false;
                 }
             } ops{w,u,goal,p,*this,w.scriptedTransport(u,false)};
-            return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,routing,ops);
+            return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,ops);
         }
     } host{*this,u};
     retailDispatchMissions(tickCounter_,u.missionEvents,host);
@@ -19813,7 +19812,7 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
             }
         }
         const bool routeable = !u.orders.empty() &&
-            !u.orders.front().unload &&
+            (!u.orders.front().unload || u.orders.front().transportUnloadApproach) &&
             ((!u.orders[currentLeg(u.orders)].load && !u.orders[currentLeg(u.orders)].groundMission && !u.orders[currentLeg(u.orders)].buildRectangle) ||
              u.orders[currentLeg(u.orders)].controller);
         if (u.routeStamp < 0 && routeable && !pathPending(u.id)) {
@@ -19925,7 +19924,7 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
         // (accepted above): the ring is 48 px deep, and stopping a footprint
         // short of its middle left a 4x4 guard (3x3 at sea) just outside the
         // band, held there walking in place.
-        if (!groundMissionOrder(u,true) && !legHasRectangle && (u.type->canFly || o.goal) && dist < arrive &&
+        if (!navigationMissionOrder(u) && !legHasRectangle && (u.type->canFly || o.goal) && dist < arrive &&
             !(o.guard && !u.type->canFly)) {
             if (o.buildType || o.reclaimFeat || o.repairTarget)
                 return;   // the job is claimed above; its order blocks the queue
