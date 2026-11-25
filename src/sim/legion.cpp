@@ -12360,7 +12360,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     std::pair<int,bool> reachPx(const Unit& u,const Unit* t,bool guard) const {
         if(guard)return {70,false};
         if(!t||!t->type||!u.type||u.type->weapons.empty())return {0,false};
-        const int slot=std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
+        const int slot=0;
         const bool all=u.type->weapons.size()>1;
         const Weapon& sel=u.type->weapons[size_t(slot)];
         // A walker chases on its order slot (World::approachSlot, Attack_Chase 0x4034a0).
@@ -12379,7 +12379,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // 0 with no weapon.
     float reachFloat(const Unit& u,const Unit* t) const {
         if(!t||!t->type||!u.type||u.type->weapons.empty())return 0.0f;
-        const int slot=std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
+        const int slot=0;
         const bool all=u.type->weapons.size()>1;
         const Weapon& sel=u.type->weapons[size_t(slot)];
         const float best=World::chasesOnOrderSlot(u)?float(u.type->weapons[size_t(w.approachSlot(u))].range)

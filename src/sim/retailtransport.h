@@ -16,8 +16,8 @@ namespace ta::sim {
 // returns as zero for a negative or out-of-range piece) -- Kingdoms' layout.
 // In TotalA.exe the surface carriers' TransportPickup scripts attach to the
 // boom's link and then to piece -1 (ATTACH_UNIT, 0x481340), and VTOL_PICKUP
-// attaches at QueryTransport's piece (0x4114a6); the engine still keeps cargo
-// on its carrier's own point (the piece offsets are not applied).
+// attaches at QueryTransport's piece (0x4114a6), where an air carrier's
+// passenger rides.
 inline std::array<int32_t,3> retailAttachPoint(const std::array<int32_t,3>& host,
         std::span<const RetailModelPiece> model,std::span<const cob::RetailPiece> poses,
         int piece,uint16_t heading,uint16_t pitch=0,uint16_t roll=0) {

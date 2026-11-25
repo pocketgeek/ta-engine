@@ -204,8 +204,9 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
         if(const auto* u=w.unit(o.id);u && u->alive() && (intersects(footprint(*u),yard) || !u->orders.empty())) {
             // Out of the yard on its PARK, in the ring's acceptance gap: the
             // octile distance (0x44d840) is 0 on a cell the squared inner test
-            // (0x44d3b0) refuses, so the ship circles there as retail's would
-            // (an Open item of docs/ta-port-plan.md), the door long clear.
+            // (0x44d800) refuses, so the ship circles there as retail's would
+            // (docs/ta-port-plan.md "Ring goal acceptance": retail has the same
+            // gap), the door long clear.
             const auto& leg=u->orders[sim::World::currentLeg(u->orders)];
             if(!intersects(footprint(*u),yard) && leg.park && leg.park->ring) {
                 const Rect f=footprint(*u);

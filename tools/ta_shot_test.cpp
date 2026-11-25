@@ -197,6 +197,15 @@ int main(int argc, char** argv) {
             check(b.unitId != id, std::string(id == thin ? "the tower" : "the solar") +
                                       ": a point at its top passes over (0x49b20d jge)", d);
             check(own.unitId != id, "its owner's shot passes it (0x49b1f4)");
+            // 0x49b106..0x49b1ae: an interceptor near the shot it chases
+            // bursts, and the body tests still run: under the top it strikes
+            // the body as well; over it, only the interception.
+            const auto ia = w.projectileCollision(under, vy, 0, 0, {}, under, 8);
+            const auto ib = w.projectileCollision(at, vy, 0, 0, {}, std::array<int32_t,3>{at[0] + F(7), at[1], at[2]}, 8);
+            const auto ic = w.projectileCollision(at, vy, 0, 0, {}, std::array<int32_t,3>{at[0] + F(9), at[1], at[2]}, 8);
+            check(ia.intercepted && ia.code == 2 && ia.unitId == id && ib.intercepted && ib.unitId != id &&
+                      !ic.intercepted && !a.intercepted,
+                  "an interceptor bursts within its reach and the body tests go on (0x49b1a9 -> 0x49b1ae)", d);
         }
         const sim::Unit& lo = *w.unit(wide);
         const sim::Unit& hi = *w.unit(thin);

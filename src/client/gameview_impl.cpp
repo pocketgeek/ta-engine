@@ -3,7 +3,6 @@
 #include "util/virtualpath.h"
 #include "client/retailaim.h"
 #include "client/tabeamdraw.h"
-#include "gaf/nimbus.h"
 #include "client/gameview.h"
 #include "client/buildline.h"
 #include "client/reclaimpick.h"
@@ -830,7 +829,7 @@
         shakeTime_ = 0;
         anims_.clear();unitType_.clear();birthFx_.clear();
         beams_.clear();effects_.clear();explosionGlows_.clear();rings_.clear();particles_.clear();
-        detachedPieces_.clear();bloodStains_.clear();nimbusEffects_.clear();
+        detachedPieces_.clear();bloodStains_.clear();
         pointParticles_.clear();damageFlames_.clear();smokeSprites_.clear();featureSmokeSprites_.clear();
         smokeOwners_.clear();featureSmokeOwners_.clear();
         effectVisibility_.reset();
@@ -1186,7 +1185,6 @@
         s.deadFor = u.deadFor < 0 ? -1.0f : float(u.deadFor) / 30.0f;   // ticks -> seconds
         s.inTransport = u.inTransport; s.padPiece = u.padPiece; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
         s.standingOrder = u.standingOrder;
-        s.weaponSlot = u.weaponSlot;
         for(size_t w=0;w<s.weaponReloads.size();++w)
             s.weaponReloads[w]=u.reloads[w];
         s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
@@ -1438,7 +1436,6 @@
             r.emoteSequence = pl.emoteSequence;
             r.emoteDisco = pl.emoteDisco;
         }
-        fb.flames=world_.flames();
         fb.projectiles = world_.projectiles();   // sim push_back/erase each tick -> must copy
         fb.hits = world_.hits();                  // weapon impacts this tick (cleared next tick)
         // ...and queue them for the render as well, so impacts survive a skipped
@@ -1503,23 +1500,41 @@
         // attached branch (0x43d6d0) copies the piece's position (0x43e060, the
         // sim's unitPiecePoint) and sets its own orientation to the pad's plus
         // that piece's own turn angles (0x43d78e -> 0x43e180: unit +0x64/+0x66/
-        // +0x68 = the carrier's + the piece's). The heading is the visible part
-        // (a building has no pitch or roll; pad pieces turn about y).
-        if (s.padPiece >= 0 && s.inTransport) {
-            const UnitR* pad = frameUnitP(s.inTransport);
-            if (pad && pad->padPiece < 0) {
-                float px, pz, ph;
-                interpPose(*pad, px, pz, ph);
-                float turn = 0;
-                if (const auto at = anims_.find(pad->id); at != anims_.end() && at->second.vm) {
-                    const auto& pieces = at->second.vm->pieces();
-                    if (size_t(s.padPiece) < pieces.size()) turn = pieces[size_t(s.padPiece)].rot[1];
-                }
-                // The piece turn enters the model as -rot (scriptRot) under the
-                // body's -heading, so the rider's heading is the pad's plus rot.
-                heading = ph + turn;
-            }
+        // +0x68 = the carrier's + the piece's). Heading here; the x and z turns
+        // in bodyAttitude.
+        const UnitR* pad = nullptr;
+        const auto* piece = padPiecePose(s, pad);
+        if (pad) {
+            float px, pz, ph;
+            interpPose(*pad, px, pz, ph);
+            // The piece turn enters the model as -rot (scriptRot) under the
+            // body's -heading, so the rider's heading is the pad's plus rot.
+            heading = ph + (piece ? piece->rot[1] : 0.0f);
         }
+    }
+
+    // The pad piece a repair-pad rider sits on, in the pad's script pose (null
+    // when `s` is not on a pad or the pad has no script; `pad` is set whenever
+    // the pad itself is in the frame).
+    const ta::cob::PieceState* GameView::padPiecePose(const UnitR& s, const UnitR*& pad) const {
+        pad = nullptr;
+        if (s.padPiece < 0 || !s.inTransport) return nullptr;
+        pad = frameUnitP(s.inTransport);
+        if (!pad || pad->padPiece >= 0) { pad = nullptr; return nullptr; }
+        const auto at = anims_.find(pad->id);
+        if (at == anims_.end() || !at->second.vm) return nullptr;
+        const auto& pieces = at->second.vm->pieces();
+        return size_t(s.padPiece) < pieces.size() ? &pieces[size_t(s.padPiece)] : nullptr;
+    }
+
+    // The body's x/z attitude words (modelBodyTransform's pitch, roll). On a
+    // repair pad they are the pad's plus the pad piece's x and z turns, the
+    // rider's own attitude replaced (0x43e180; client/padrider.h).
+    std::pair<uint16_t, uint16_t> GameView::bodyAttitude(const UnitR& s) const {
+        const UnitR* pad = nullptr;
+        const auto* piece = padPiecePose(s, pad);
+        if (!pad) return {s.bodyPitch, s.bodyRoll};
+        return ta::padrider::attitude(pad->bodyPitch, pad->bodyRoll, piece ? piece->rot : nullptr);
     }
 
     const UnitR& GameView::frameUnit(int id) const {
@@ -1803,24 +1818,32 @@
         // [unit+0x92]+0x20e, slot "underattack"; warning1 in every shipped class), with
         // no position, at speech priority, when UNIT SPEECH allows it -- which starts the
         // 20 s cooldown -- and "<unit>: Under Attack" goes into the message area when
-        // UNIT CHAT TEXT allows it (0x47ff69 -> 0x463ca0). The queue holds one request
-        // of an event at a time (0x47fb0a), so one hit list asks once.
+        // UNIT CHAT TEXT allows it (0x47ff69 -> 0x463ca0). Each request goes through
+        // the speech queue (client/speechqueue.h), which holds one entry of an event
+        // at a time (0x47fb0a) and plays one entry a frame, its speech at most once
+        // every 30 ticks (0x47f6bb) and its text line regardless.
+        const auto playSpeech = [&](const ta::SpeechQueue::Turn& turn, uint32_t now) {
+            const auto& entry = turn.entry;
+            if (turn.speak && ta::MonarchAlert::speaks(unitSpeech_)) {
+                const std::string* wav = entry.soundClass.empty()
+                                             ? nullptr : soundClasses_.pick(entry.soundClass, "underattack", salt_++);
+                if (wav) {   // 0x47fe03: a class with no variant for the slot says nothing
+                    sounds_.play(*wav, 1.f, 1.f, 7, false);
+                    monarchAlert_.spoken(now);
+                }
+            }
+            if (ta::MonarchAlert::shows(unitChatText_))
+                gameChat_.push_back({std::string(), ta::MonarchAlert::line(entry.unitName), 0, true});
+        };
         for (const auto& [tick, id] : hurt) {
             const UnitR* u = frameUnitP(id);
             if (!u || !u->type ||   // a fatal hit too: 0x406f80 runs before the death
                 !monarchAlert_.admit(u->player, localPlayer_, watchOnly(), onScreen(*u), tick)) continue;
-            if (ta::MonarchAlert::speaks(unitSpeech_)) {
-                const std::string* wav = u->type->soundClass.empty()
-                                             ? nullptr : soundClasses_.pick(u->type->soundClass, "underattack", salt_++);
-                if (wav) {   // 0x47fe03: a class with no variant for the slot says nothing
-                    sounds_.play(*wav, 1.f, 1.f, 7, false);
-                    monarchAlert_.spoken(tick);
-                }
-            }
-            if (ta::MonarchAlert::shows(unitChatText_))
-                gameChat_.push_back({std::string(), ta::MonarchAlert::line(u->type->name), 0, true});
-            break;
+            if (const auto evicted = speechQueue_.request({ta::MonarchAlert::kEvent, ta::MonarchAlert::kPriority,
+                                                           u->id, u->type->name, u->type->soundClass}))
+                playSpeech(*evicted, front().gameTick);
         }
+        if (const auto turn = speechQueue_.next(front().gameTick)) playSpeech(*turn, front().gameTick);
         // Total Annihilation firing sounds: each shot launched since the last frame
         // plays its weapon's soundstart (a WAV stem) where it left the barrel.
         {
@@ -1837,12 +1860,9 @@
             // A Line-of-Sight weapon with no weaponvelocity (none shipped) still
             // lands at once and spawns no projectile: draw a bolt struck from the
             // firer to the victim, in the weapon's own inner/middle/outer colours.
-            // Every shipped Line-of-Sight class flies a real shot instead (ordinary,
-            // lightning, flame, and the mind-control, stone and freeze balls), so
-            // the effect lands when that shot arrives. Fire breath draws its own
-            // emitter, not a bolt.
-            if (h.weapon && h.weapon->beam && h.weapon->projVel <= 0.0f && !h.weapon->straight &&
-                !h.weapon->lightning && h.weapon->flameKind<0 &&
+            // Every shipped TA Line-of-Sight weapon flies a real shot instead, so
+            // the effect lands when that shot arrives.
+            if (h.weapon && h.weapon->beam && h.weapon->projVel <= 0.0f &&
                 h.weapon->fx != ta::sim::WeaponFx::Fire &&
                 (noFog_ || cellVisibleR(h.x, h.z))) {
                 BeamFx b;
@@ -2102,24 +2122,6 @@
             for (const auto& shot:shots->second)
             for (int slot=0;slot<int(u.type->weapons.size()) && slot<32;++slot) {
                 if (!(shot.weapons & (uint32_t(1)<<slot))) continue;
-                const auto& w = u.type->weapons[size_t(slot)];
-                // These native initializers start one faction nimbus on the
-                // caster, restarting any prior instance (52c540 serves the
-                // ordinary and status Line-of-Sight classes, and lightning
-                // through 52cbf0).
-                if (w.nimbus && (w.straight || w.lightning ||
-                                 w.losStatus != ta::sim::Weapon::LosStatus::None) && w.projVel > 0) {
-                    if (!factionNimbusLoaded_) {
-                        factionNimbus_ = ta::gaf::factionNimbus(vfs_);
-                        factionNimbusLoaded_ = true;
-                    }
-                    std::string side = u.type->side;
-                    std::transform(side.begin(), side.end(), side.begin(), ::tolower);
-                    const auto name = factionNimbus_.find(side);
-                    if (name != factionNimbus_.end() && !name->second.empty())
-                        if (const auto* art = effectFor(name->second))
-                            nimbusEffects_[u.id] = {art, shot.tick};
-                }
                 // FireWeapon/Attack COB callbacks own firing audio, including
                 // deliberately silent branches. Native 530140 dispatches the
                 // callback; it does not infer sounds from the weapon's visual kind.
@@ -2638,49 +2640,11 @@
         float printed = 0;
         for (float t = 0; t < seconds; t += 1.0f / 30.0f) {
             update(1.0f / 30.0f);
-            if (ta::devFlag("TA_CONJURE_TEST") ||
-                ta::devFlag("TA_PROJECTILE_CAPTURE") || ta::devFlag("TA_NIMBUS_CAPTURE")) {
+            if (ta::devFlag("TA_CONJURE_TEST")) {
                 beginFrame();
                 cosmeticStep(1.0f / 30.0f);
                 animFrame(1.0f / 30.0f);
                 endFrame();
-            }
-            if (ta::devFlag("TA_NIMBUS_CAPTURE")) {
-                for (const auto& [id, effect] : nimbusEffects_)
-                    if (front().gameTick - effect.started >= uint32_t(std::max(1,
-                            std::atoi(ta::devEnv("TA_NIMBUS_CAPTURE"))))) {
-                        std::printf("nimbus capture: tick=%u caster=%d age=%u\n", front().gameTick,
-                            id, front().gameTick - effect.started);
-                        paused_ = true;
-                        return;
-                    }
-            }
-            if(ta::devFlag("TA_PROJECTILE_CAPTURE")) {
-                const uint32_t captureAge=uint32_t(std::max(1,std::atoi(ta::devEnv("TA_PROJECTILE_CAPTURE"))));
-                for (const auto& shot:world_.flames())
-                    if (int32_t(world_.tickCount()-shot.start)>=int32_t(captureAge) && !shot.particles.empty()) {
-                        std::printf("flame capture: tick=%u age=%u kind=%d particles=%zu\n",
-                            world_.tickCount(),world_.tickCount()-shot.start,
-                            shot.weapon ? int(shot.weapon->flameKind) : -1,shot.particles.size());
-                        paused_=true;return;
-                    }
-                for(const auto& shot:world_.projectiles())if(shot.lightningEffect &&
-                    shot.age>=std::max(1,std::atoi(ta::devEnv("TA_PROJECTILE_CAPTURE"))) &&
-                    !shot.lightningEffect->particles.empty()) {
-                    std::printf("projectile capture: tick=%u age=%d pixels=%zu nimbus=%zu\n",world_.tickCount(),shot.age,
-                        shot.lightningEffect->pixels.size(), nimbusEffects_.size());
-                    paused_=true; // Keep the selected tick while screenshot terrain uploads finish.
-                    return;
-                }
-                // A mind-control, stone or freeze ball in flight.
-                for(const auto& shot:world_.projectiles())
-                    if(shot.straight && shot.life>0 && shot.wsrc &&
-                       shot.wsrc->losStatus!=ta::sim::Weapon::LosStatus::None && shot.age>=int32_t(captureAge)) {
-                        std::printf("status shot capture: tick=%u age=%d at=%.1f,%.1f\n",world_.tickCount(),shot.age,
-                            ta::sim::Fixed::raw(shot.position[0]).toFloat(),ta::sim::Fixed::raw(shot.position[2]).toFloat());
-                        paused_=true;
-                        return;
-                    }
             }
             if (trace_ && t >= printed) {
                 printed += 0.5f;
@@ -3381,6 +3345,25 @@
                     }
                 }
             } catch (const std::exception&) {}
+        }
+        // A flat swatch per palette index for the untextured (and unresolved)
+        // primitives, which retail fills with the raw index, unshaded (0x4c06e0):
+        // they go through the atlas like any texture, never through the shaded
+        // palette sheets (client/primitivedraw.h).
+        for (int index = 0; index < 256; ++index) {
+            const std::string name = ta::primitivedraw::flatTextureName(index);
+            if (textures_.count(name)) continue;
+            constexpr int side = 8;
+            const auto* e = pals.at("ta").rgba[index];
+            std::array<uint8_t, side * side * 4> pixels;
+            for (size_t at = 0; at < pixels.size(); at += 4) {
+                pixels[at] = e[0]; pixels[at + 1] = e[1]; pixels[at + 2] = e[2]; pixels[at + 3] = 255;
+            }
+            SDL_Texture* t = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, side, side);
+            if (!t) continue;
+            SDL_UpdateTexture(t, nullptr, pixels.data(), side * 4);
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+            textures_[name] = {t};
         }
     }
 
@@ -4568,6 +4551,12 @@
             } else meta.animationFrameMasks[size_t(at-meta.animationFrames.begin())]|=uint8_t(masked);
         };
         pieceMetaFor(o, isRoot, m);
+        // A texture name found in no bank is drawn flat in colour 0xd1 (0x42a204),
+        // once the table is loaded (the swatches are its last entries).
+        if (textures_.count(ta::primitivedraw::flatTextureName(0)))
+            for (auto& name : m.primTex)
+                if (ta::primitivedraw::flatColourOf(name) < 0 && !textures_.count(name))
+                    name = ta::primitivedraw::flatTextureName(ta::primitivedraw::kMissingTextureColour);
         m.primAtlas.reserve(m.primTex.size());
         for (const auto& name : m.primTex) {
             auto it = atlasRect_.find(name);
@@ -4625,7 +4614,7 @@
         auto vt = visuals_.find(u.type ? u.type->id : std::string());
         if (vt == visuals_.end() || !u.type) return false;
         float m[3];
-        if (!pieceModelOrigin(vt->second.model.root, &a, modelBodyTransform(u.bodyPitch,u.bodyRoll), pieceName, m)) return false;
+        if (!pieceModelOrigin(vt->second.model.root, &a, bodyTransform(u), pieceName, m)) return false;
         // Match the body rotation, including a building's birth heading.
         float facing = -u.heading;
         float cy = std::cos(facing), sy = std::sin(facing);

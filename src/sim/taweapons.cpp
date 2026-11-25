@@ -109,7 +109,6 @@ Weapon parseTaWeapon(const tdf::Node& w, const std::string& sectionName) {
     wp.subSteps = wp.projVel > 0.0f ? int((wp.projVel + 479.0f) / 480.0f) : 1;
     wp.ballistic = wp.hasTaFlag(kWBallistic);
     wp.beam = wp.hasTaFlag(kWBeamWeapon);
-    wp.straight = wp.hasTaFlag(kWLineOfSight) && !wp.beam;
     wp.groundBounce = wp.hasTaFlag(kWGroundBounce);
     wp.waterWeapon = wp.hasTaFlag(kWWaterWeapon);
     wp.unitsOnly = wp.hasTaFlag(kWUnitsOnly);

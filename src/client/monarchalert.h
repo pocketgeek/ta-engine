@@ -23,6 +23,7 @@ namespace ta {
 // 0x47ff26). With speech off nothing starts the cooldown.
 struct MonarchAlert {
     static constexpr uint32_t kCooldownTicks = 20 * 30;
+    static constexpr int kEvent = 2;      // row 2 of 0x5086dc
     static constexpr int kPriority = 9;
     static constexpr const char* kText = "Under Attack";   // event row +0xc (0x508a64)
     uint32_t nextTick = 0;

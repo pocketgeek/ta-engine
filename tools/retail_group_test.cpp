@@ -54,7 +54,6 @@ void unpaced() {
             fastest=fxMax(fastest,world.unit(b)->speed);
             for (int id:{a,b}) {
                 require(!formationMission(*world.unit(id)),"a group member re-formed (TA has no formation mission)");
-                require(!world.retailGroupRecord(id),"TA has no group record");
             }
         }
         require(fastest>slow.maxVel+Fixed::fromFloat(0.5f),"a group was paced at its slowest member");
@@ -131,61 +130,11 @@ void replayReset() {
     std::puts("scenario=replayReset");
 }
 
-// Native slot geometry spot checks (51c700/51ce40/51d1e0).
+// The octagonal distance Legion's standby check measures with (535e90).
 void geometry() {
-    RetailGroupRecord g;g.active=true;
-    auto& all=g.all[0];all.count=4;all.area=16;all.centre={100,0,200};
-    auto& moving=g.moving[0];moving.count=3;moving.area=12;moving.centre={120,0,200};
-    RetailGroupMember u;u.area=4;u.position={300,0,200};
     require(retailOctDistance(-30,40)==47,"octagonal distance");
-    const auto c=retailGroupCentre(g,u,true,true);
-    require(c.x==(3*120+300)/4 && c.y==c.x && c.z==200,"self-inclusive ground centre");
-    require(retailGroupRadius(g,u,true,true)==16 && retailGroupRadius(g,u,false,false)==16,"radius");
-    // distance 180 px -> 11 cells; 121/4=30 > 12*2 at level 4 (moving, not self).
-    require(retailGroupOutOfSlot(g,u,true,4,false),"level-4 straggler test");
-    u.position={150,0,200};
-    require(!retailGroupOutOfSlot(g,u,true,4,false),"member inside its slot");
-    g.moving[0].count=0;   // empty moving subset relaxes the level by one
-    require(!retailGroupOutOfSlot(g,u,true,5,false),"level 5 relaxed to 6 is never out of slot");
 }
 
-// The attacks' group check (retailAttackGroupCheck: SUPPRESS 404e12, the
-// flyer attacks 41c19a / 41b7a4 / 41dafa): its three outcomes.
-void attackHead() {
-    struct Calls { std::vector<int> bounds; int leaves=0,formations=0; };
-    const auto run=[](uint32_t& flags,bool out,uint32_t next,int draw,Calls& c) {
-        return retailAttackGroupCheck(flags,out,next,3,15,[&](int n){c.bounds.push_back(n);return draw;},
-            [&]{++c.leaves;},[&]{++c.formations;return true;});
-    };
-    // Out of its slot, not yet flagged: no draw, the flag set, the formation
-    // pushed, 0 (the attack starts again at stage 0).
-    {uint32_t f=0x1000410u;Calls c;
-     require(run(f,true,0,0,c)==0 && f==0x9000410u && c.formations==1 && c.bounds.empty() && !c.leaves,
-             "out of slot unflagged: formation, flag, 0");}
-    // Flagged and out again: rand(3) == 0 leaves (8); 50c480 unless the next
-    // mission moves with the group.
-    for (const uint32_t next:{0u,0x5012000u,0x15000400u,0x3000400u,0x11000000u}) {
-        uint32_t f=0x9000410u;Calls c;
-        const bool mover=(next&0x1000000u) && !(next&0x4000000u);
-        require(run(f,true,next,0,c)==8 && c.bounds==std::vector<int>{3} && c.leaves==int(!mover) && !c.formations,
-                "flagged out of slot, rand(3) == 0: leave (50c480 by the next mission), 8");
-    }
-    {uint32_t f=0x9000410u;Calls c;
-     require(run(f,true,0,2,c)==0 && c.formations==1 && c.bounds==std::vector<int>{3} && !c.leaves,
-             "flagged out of slot, rand(3) != 0: formation again");}
-    // In its slot: the stages run (-1); a flagged mission clears on rand(15) == 0.
-    {uint32_t f=0x9000410u;Calls c;
-     require(run(f,false,0,0,c)==-1 && f==0x1000410u && c.bounds==std::vector<int>{15},
-             "in slot flagged, rand(15) == 0: cleared");}
-    {uint32_t f=0x9000410u;Calls c;
-     require(run(f,false,0,7,c)==-1 && f==0x9000410u,"in slot flagged, rand(15) != 0: kept");}
-    {uint32_t f=0x1000410u;Calls c;
-     require(run(f,false,0,0,c)==-1 && c.bounds.empty(),"in slot unflagged: no draw");}
-    // A formation that cannot be built ends the list (7), the flag already set.
-    {uint32_t f=0x1000410u;
-     require(retailAttackGroupCheck(f,true,0,2,25,[](int){return 0;},[]{},[]{return false;})==7 &&
-             (f&0x8000000u),"an unbuilt formation: 7");}
-}
 // The flyer missions' single group check, at their head (tools/re:
 // check_air_traffic.py): VTOL_SeekGuard (4199b2) as VTOL_Follow's (51d1e0(unit, 1, 4), level -3).
 // Out of the slot, not yet flagged: the flag set, the formation pushed, 0.
@@ -245,7 +194,7 @@ void airHeads() {
 
 int main() {
     try {
-        geometry();attackHead();airHeads();unpaced();replayReset();outliers();
+        geometry();airHeads();unpaced();replayReset();outliers();
         straggler(PathfindingMode::Retail);straggler(PathfindingMode::Legion);
     } catch(const std::exception& error) {std::fprintf(stderr,"FAIL: %s\n",error.what());return 1;}
     std::puts("retail groups (none in TA): PASS");

@@ -6,9 +6,9 @@
 #include "sim/retailpiecepose.h"
 #include "sim/footprint.h"
 #include "tdo/tdo.h"
+#include "tdf/tdf.h"
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
-#include "sim/retailhweffectdata.h"
 #include "sim/retailanimationqueries.h"
 #include "sim/retaildeath.h"
 #include "sim/retailfeaturesink.h"
@@ -46,13 +46,6 @@ struct RetailReplayProbe {
     static void clearScriptEvents(World& world) {world.scriptEmissions_.clear();}
 
     static void shoot(World& world,int from,int target) {world.fire(*world.unit(from),*world.unit(target),0);}
-
-    static void flameTick(World& world,uint32_t tick) {
-        world.tickCounter_=tick;const auto aircraft=world.updateAirOccupancy();world.tickFlames(aircraft);
-    }
-    static void straightTick(World& world,uint32_t tick) {
-        world.tickCounter_=tick;const auto aircraft=world.updateAirOccupancy();world.tickStraightProjectiles(aircraft);
-    }
 
     static std::vector<uint32_t> movementQueries(World& world,int id) {
         world.notifyUnitScript(*world.unit(id),"ReadMovement");
@@ -629,32 +622,6 @@ int main(int argc,char** argv) {
     {
         using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
-        for (bool lightning : {false, true}) for (bool flag : {false, true})
-        for (bool available : {false, true}) {
-            ta::sim::UnitType type, victim;
-            type.maxHp=victim.maxHp=1000;type.hasNimbusArt=available;
-            ta::sim::Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
-            weapon.projVel=300;weapon.straight=!lightning;weapon.lightning=lightning;
-            weapon.nimbus=flag;weapon.nimbusTicks=7;
-            type.weapon=weapon;type.weapons={weapon};
-            ta::sim::World world;
-            world.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const int from=world.spawn(&type,200,200,0,0),target=world.spawn(&victim,350,200,0,1);
-            RetailReplayProbe::shoot(world,from,target);
-            require(!world.projectiles().empty(),"nimbus delay fixture creates a projectile");
-            if(world.projectiles().empty())continue;
-            const auto shot=world.projectiles().front();
-            require(shot.start==world.tickCount()+1+uint32_t(flag && available ? 7 : 0),
-                  "nimbustime delays launch, given both nimbus flag and faction art");
-            while(world.tickCount()<shot.start) {
-                RetailReplayProbe::straightTick(world,world.tickCount()+1);
-                require(!world.projectiles().empty() && world.projectiles().front().position==shot.position,
-                      "projectile remains at its muzzle through the nimbus delay and activation");
-            }
-            RetailReplayProbe::straightTick(world,world.tickCount()+1);
-            require(!world.projectiles().empty() && world.projectiles().front().position!=shot.position,
-                  "projectile begins motion after activation");
-        }
         {
             // Damageable is independent of reclaimable and flamable: authored
             // walls must enter the simulation even if builders cannot clear them.
@@ -990,149 +957,6 @@ int main(int argc,char** argv) {
                 "dropped ballistic reaches and damages its ground target once, with no expiry detonation");
             std::cout<<"PASS: gravity-driven dropped ballistic path, target impact and one-shot retirement\n";
         }
-        for(bool blocked:{false,true}) {
-            UnitType shooter;shooter.maxHp=100;
-            Weapon weapon;weapon.beam=true;weapon.straight=true;weapon.projVel=240;
-            weapon.range=240;weapon.damage=10;weapon.reload=100;weapon.shotSpin={65530,17,33};
-            shooter.weapons.push_back(weapon);shooter.weapon=weapon;
-            UnitType targetType;targetType.maxHp=100;targetType.footX=targetType.footZ=2;
-            targetType.modelTop=20*65536;
-            World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
-            if(blocked) {
-                RetailMapFeatureType tree;tree.name="tree";tree.projectileHeight=60;
-                std::vector<uint16_t> features(64*64,0xffff);features[25*64+28]=0;
-                world.setMapPlacementFeatures(features,{tree});
-            }
-            const int from=world.spawn(&shooter,400,400,0,0),target=world.spawn(&targetType,480,400,0,1);
-            world.unit(from)->groundY=Fixed::fromInt(50);world.unit(target)->groundY=Fixed::fromInt(50);
-            RetailReplayProbe::shoot(world,from,target);
-            require(world.projectiles().size()==1 && world.unit(target)->hp==Fixed::fromInt(100),"straight shot does not damage instantly");
-            const auto origin=world.projectiles()[0].position;
-            RetailReplayProbe::straightTick(world,1);
-            require(world.projectiles()[0].position==origin,"activation does not advance straight shot");
-            world.unit(from)->hp=Fixed();world.unit(from)->deadFor=0;
-            uint32_t tick=2;
-            for(;tick<40 && !world.projectiles()[0].spent;++tick)RetailReplayProbe::straightTick(world,tick);
-            const auto& shot=world.projectiles()[0];
-            require(shot.spent && tick>3,"released straight shot survives owner death and collides after flight");
-            const auto after=world.unit(target)->hp;
-            require(blocked ? after==Fixed::fromInt(100) : after<Fixed::fromInt(100),"tree blocks ordinary shot damage");
-            require(shot.angles[0]==uint16_t(uint32_t(65530)*(tick-2)),"model rotation advances each substep");
-            RetailReplayProbe::straightTick(world,tick);
-            require(world.projectiles()[0].life==0 && world.unit(target)->hp==after,"ordinary impact is dispatched once and shot expires next tick");
-        }
-        std::cout<<"PASS: ordinary straight shots fly in 3D, survive shooter death, collide and expire\n";
-        for(uint32_t activationTick:{0u,1u}) {
-            UnitType shooter;shooter.maxHp=100;
-            Weapon weapon;weapon.beam=true;weapon.straight=true;weapon.projVel=240;weapon.range=240;
-            shooter.weapons.push_back(weapon);UnitType victim;victim.maxHp=100;
-            World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
-            const int from=world.spawn(&shooter,400,400,0,0),target=world.spawn(&victim,480,400,0,1);
-            world.unit(from)->groundY=Fixed::fromInt(50);world.unit(target)->groundY=Fixed::fromInt(50);
-            RetailReplayProbe::shoot(world,from,target);world.unit(from)->hp=Fixed();
-            RetailReplayProbe::straightTick(world,activationTick);
-            require(world.projectiles().size()==1 && world.projectiles()[0].life==0,
-                "ordinary shot cancels for pending-death owner before or on activation");
-        }
-
-        for(bool killCaster:{false,true}) {
-            UnitType shooter;shooter.maxHp=100;
-            Weapon weapon;weapon.beam=true;weapon.lightning=true;weapon.projVel=240;
-            weapon.range=240;weapon.damage=10;weapon.reload=100;
-            auto definition=std::make_shared<ta::RetailLightningDefinition>();
-            auto& effect=definition->initial;
-            effect.width=16;effect.height=8;effect.capacity=16;
-            effect.intensity=4*256;effect.decay=-256;effect.pixels.resize(128);
-            effect.sources.push_back({{256,3*256},{14*256,3*256},1,0,false});
-            weapon.lightningEffect=definition;shooter.weapons.push_back(weapon);shooter.weapon=weapon;
-            UnitType victim;victim.maxHp=100;victim.footX=victim.footZ=2;victim.modelTop=20*65536;
-            World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
-            const int from=world.spawn(&shooter,400,400,0,0),target=world.spawn(&victim,480,400,0,1);
-            world.unit(from)->groundY=Fixed::fromInt(50);world.unit(target)->groundY=Fixed::fromInt(50);
-            RetailReplayProbe::shoot(world,from,target);
-            require(world.projectiles().size()==1 && world.unit(target)->hp==Fixed::fromInt(100),
-                "lightning does not damage before its advancing head reaches the target");
-            RetailReplayProbe::straightTick(world,1);RetailReplayProbe::straightTick(world,2);
-            require(!world.projectiles()[0].lightningEffect->particles.empty(),"live lightning emits named particles");
-            if(killCaster) {
-                world.unit(from)->hp=Fixed();RetailReplayProbe::straightTick(world,3);
-                require(world.projectiles()[0].life==0 && world.unit(target)->hp==Fixed::fromInt(100),
-                    "lightning cancels on caster death even after activation");
-            } else {
-                uint32_t tick=3;
-                for(;tick<40 && !world.projectiles()[0].spent;++tick)RetailReplayProbe::straightTick(world,tick);
-                require(world.projectiles()[0].spent && world.unit(target)->hp<Fixed::fromInt(100),"lightning collides after travel");
-                const auto hp=world.unit(target)->hp;
-                RetailReplayProbe::straightTick(world,tick++);
-                require(world.projectiles()[0].life>0,"lightning remains while its particles drain");
-                for(;tick<50 && world.projectiles()[0].life>0;++tick)RetailReplayProbe::straightTick(world,tick);
-                require(world.projectiles()[0].life==0 && world.unit(target)->hp==hp,"lightning fades without repeating damage");
-            }
-        }
-
-        for(bool blocked:{false,true}) {
-            UnitType shooter;shooter.maxHp=100;
-            Weapon weapon;weapon.beam=true;weapon.flameKind=0;weapon.projVel=240;
-            weapon.range=240;weapon.emitTime=30;weapon.damage=10;weapon.reload=100;
-            shooter.weapons.push_back(weapon);shooter.weapon=weapon;
-            UnitType targetType;targetType.maxHp=100;targetType.footX=targetType.footZ=2;
-            targetType.modelTop=20*65536;
-            World world;world.setTerrain(std::vector<uint8_t>(64*64,20),64,64,0);
-            if(blocked) {
-                RetailMapFeatureType tree;tree.name="tree";tree.projectileHeight=60;
-                std::vector<uint16_t> features(64*64,0xffff);features[25*64+28]=0;
-                world.setMapPlacementFeatures(features,{tree});
-            }
-            const int from=world.spawn(&shooter,400,400,0,0),target=world.spawn(&targetType,480,400,0,1);
-            world.unit(from)->groundY=Fixed::fromInt(50);world.unit(target)->groundY=Fixed::fromInt(50);
-            RetailReplayProbe::shoot(world,from,target);
-            require(world.flames().size()==1 && world.unit(target)->hp==Fixed::fromInt(100),"flame launch does not apply instant damage");
-            const auto retainedAim=world.flames()[0].aimPoint;
-            require(retainedAim[0]==480*65536 && world.flames()[0].muzzle[0]==400*65536,
-                "flame retains independent launch aim and muzzle geometry");
-            RetailReplayProbe::flameTick(world,1);
-            const auto duration=world.flames()[0].lifetime;
-            require(duration>1 && world.flames()[0].particles.empty(),"flame initial scan emits and damages nothing");
-            for(uint32_t tick=2;tick<=1+duration;++tick) {
-                if(tick==3)world.unit(from)->x=Fixed::fromInt(404);
-                RetailReplayProbe::flameTick(world,tick);
-                require(!world.flames().empty() && !world.flames()[0].particles.empty(),"active flame emits particles");
-                require(world.flames()[0].particles.back().position[0]==world.unit(from)->x.v,
-                    "new particle follows the current muzzle, not the launch point");
-                require(world.flames()[0].muzzle==world.flames()[0].particles.back().position &&
-                        world.flames()[0].aimPoint==retainedAim,
-                    "stream admission follows the current muzzle but retains its captured aim");
-                if(tick<1+duration)require(world.unit(target)->hp==Fixed::fromInt(100),"flame cannot damage before front arrival");
-            }
-            require(world.flames()[0].impacted,"flame front records a collision");
-            const auto after=world.unit(target)->hp;
-            require(blocked ? after==Fixed::fromInt(100) : after<Fixed::fromInt(100),"tree blocks flame damage; unobstructed unit takes the hit");
-            for(uint32_t tick=2+duration;tick<12+duration;++tick)RetailReplayProbe::flameTick(world,tick);
-            require(world.unit(target)->hp==after,"flame applies only one impact during continued emission");
-            // An already released flame is not cancelled by boarding a carrier.
-            world.unit(from)->inTransport=target;world.unit(from)->x=Fixed::fromInt(410);
-            RetailReplayProbe::flameTick(world,12+duration);
-            require(world.flames()[0].particles.back().position[0]==410*65536,
-                "embarkation does not cancel an already released flame");
-            world.unit(from)->hp=Fixed();
-            const auto retainedMuzzle=world.flames()[0].muzzle;
-            world.unit(from)->x=Fixed::fromInt(420);
-            auto expectedParticles=world.flames()[0].particles;
-            std::erase_if(expectedParticles,[](auto& particle){return !particle.tick();});
-            RetailReplayProbe::flameTick(world,13+duration);
-            require(!world.flames().empty() && world.flames()[0].particles.size()==expectedParticles.size(),
-                "pending-death flame only drains existing particles");
-            require(world.flames()[0].muzzle==retainedMuzzle && world.flames()[0].aimPoint==retainedAim,
-                "draining stream keeps its last muzzle and original aim after owner death");
-            for(size_t i=0;i<expectedParticles.size();++i) {
-                const auto& actual=world.flames()[0].particles[i];const auto& expected=expectedParticles[i];
-                require(actual.remaining==expected.remaining && actual.position==expected.position &&
-                    actual.velocity==expected.velocity,"pending-death flame cannot replace an expiring particle with a fresh one");
-            }
-            for(uint32_t tick=14+duration;tick<50+duration;++tick)RetailReplayProbe::flameTick(world,tick);
-            require(world.flames().empty(),"particles drain and flame disappears after owner death");
-        }
-        std::cout<<"PASS: live flame delays one impact, stops at trees, follows muzzle and drains after death\n";
         World terrain;
         std::vector<uint8_t> heights(32*32,10);heights[11*32+11]=30;
         terrain.setTerrain(heights,32,32,20);

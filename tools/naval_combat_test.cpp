@@ -133,7 +133,7 @@ int main(int argc,char**argv) {
             // line test since 0.9.3 (its arc decides): make its weapons
             // line-of-sight shots, the kind the test still applies to.
             auto type=*registry.find("armroy");type.weapon.lobPreferred=false;
-            for (auto& wp:type.weapons) { wp.lobPreferred=false;wp.ballistic=false;wp.beam=wp.straight=true; }
+            for (auto& wp:type.weapons) { wp.lobPreferred=false;wp.ballistic=false;wp.beam=true; }
             type.weapon=type.weapons.front();
             auto victim=*registry.find("armtship");victim.maxHp=30000;
             victim.weapon.damage=0;victim.weapons.clear();victim.maxVel={};

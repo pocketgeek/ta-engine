@@ -6,6 +6,7 @@
 #include "client/areadrag.h"
 #include "client/emotetiming.h"
 #include "client/retailmodellighting.h"
+#include "client/primitivedraw.h"
 
 // GameView -- the in-world game client: rendering, input, the retail HUD, fog,
 // minimap, the COB animation VM host, benchmark, lobby, and the
@@ -100,6 +101,8 @@
 #include "client/retailfog.h"     // the local display fog (plane, overlay, radar)
 #include "client/replayfile.h"   // .tarep parser (extracted leaf)
 #include "client/monarchalert.h"
+#include "client/speechqueue.h"
+#include "client/padrider.h"
 #include "client/sound.h"     // WAV mixer + music + soundclasses (extracted leaf)
 #include "client/threadpool.h"   // data-parallel worker pool (extracted leaf)
 #include "client/workschedule.h"   // estimated-cost plans for the pool passes (workstream I)
@@ -753,12 +756,10 @@ public:
     int debugSmokeDrawCount_ = 0;
     int debugPointDrawCount_ = 0;
     int debugGlowDrawCount_ = 0;
-    int debugNimbusDrawCount_ = 0;
     int debugDamageFlameDrawCount_ = 0;
     int debugFeatureFlameDrawCount_ = 0;
     int debugFeatureFlameExpected_ = 2;
     int debugFeatureSmokeDrawCount_ = 0;
-    int debugFlameDrawCount_ = 0; // render-thread screenshot admission only
 #endif
     const std::string& netError() const { return netError_; }
 
@@ -826,6 +827,12 @@ public:
     // the last two ticks by interpAlpha_ (0..1 through the current tick interval). Falls
     // back to live state when the option is off or there's no history. Viewer-only.
     void interpPose(const UnitR& s, float& x, float& z, float& heading) const;
+    const ta::cob::PieceState* padPiecePose(const UnitR& s, const UnitR*& pad) const;
+    std::pair<uint16_t, uint16_t> bodyAttitude(const UnitR& s) const;
+    Xform bodyTransform(const UnitR& s) const {
+        const auto [pitch, roll] = bodyAttitude(s);
+        return modelBodyTransform(pitch, roll);
+    }
     // Lookup helper: the render snapshot record for a unit id (empty default if absent).
     const UnitR& frameUnit(int id) const;
     // Pointer form matching world_.unit()'s semantics: nullptr unless the id is a unit that
@@ -900,6 +907,7 @@ public:
     // the under-attack alert's input. Guarded by hitQueueMutex_; survives queue overflow.
     std::vector<std::pair<uint32_t, int>> pendingHurt_;
     ta::MonarchAlert monarchAlert_;
+    ta::SpeechQueue speechQueue_;   // the unit speech queue (client/speechqueue.h)
     // TotalA.exe's unit speech / unit chat text levels (game +0x37f17 / +0x37f18,
     // 0|5|10; Settings::unitSpeech / unitChatText).
     int unitSpeech_ = 10, unitChatText_ = 5;
@@ -1235,7 +1243,12 @@ private:
         // only recolours the body (ta::render::shadowInputsEqual).
         std::vector<uint8_t> animationFrameMasks;
         bool skip = false;                  // ground plate / *off duplicate: draws nothing
-        std::vector<std::string> primTex;   // lowercased per primitive ("" = untextured)
+        // Lowercased per primitive; an untextured one names its flat palette
+        // swatch (client/primitivedraw.h: "#pal<index>").
+        std::vector<std::string> primTex;
+        // The primitives drawn, in TotalA.exe's order (0x4cb370 at load, the
+        // draw loops from 1: client/primitivedraw.h).
+        std::vector<uint16_t> drawOrder;
         std::vector<const SDL_Rect*> primAtlas; // immutable atlas layout; shared by all colour slots
         std::vector<const std::vector<ShadowMaskFrame>*> primShadowMasks;
         std::vector<bool> primAnimated;
@@ -1257,8 +1270,12 @@ private:
         for (const auto& p : o.primitives) {
             std::string n = p.texture;
             std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+            // No name: a flat polygon in the primitive's palette index (0x42a140
+            // keeps the file's flag bit 0; 0x4c1000 / 0x4c0310 fill it).
+            if (n.empty()) n = ta::primitivedraw::flatTextureName(int(p.colorIndex & 0xff));
             m.primTex.push_back(std::move(n));
         }
+        m.drawOrder = ta::primitivedraw::drawOrder(o);
     }
     // Precompute the whole tree for a model (once, at registration).
     void buildPieceMeta(const ta::tdo::Object& o, PieceMeta& m, bool isRoot = true);
@@ -1715,15 +1732,15 @@ private:
     struct PaintItem { float z; const UnitR* u; const FeatureInst* f; int layer = 0; int32_t fx = -1; };
     std::vector<PaintItem> paintItems_;   // per-frame painter list (capacity reused)
     // World effects in the painter list (collectWorldFx). One entry per drawable:
-    // a projectile, a beam, a flame-stream particle, a ring sprite, an explosion, a
-    // glow, a nimbus, a debris piece (with its shadow), a blood point, a particle,
+    // a projectile, a beam, a ring sprite, an explosion, a
+    // glow, a debris piece (with its shadow), a blood point, a particle,
     // or one of a unit's attached smoke / damage-flame / point sprites. `p`, `a` and
     // `b` locate it in its family's container (valid for this frame only: nothing
     // mutates them between collection and the draw). `queued`: it went into the
     // painter list; the rest (far outside the view) draw in the late pass, in the
     // old family order, so nothing is ever dropped.
-    enum class FxKind : uint8_t { Flame, Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
-                                  Debris, Glow, Nimbus, Effect, Point, Smoke, DamageFlame, UnitFx };
+    enum class FxKind : uint8_t { Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
+                                  Debris, Glow, Effect, Point, Smoke, DamageFlame, UnitFx };
     struct FxItem { const void* p; uint32_t a, b; FxKind kind; bool queued; };
     std::vector<FxItem> fxItems_;
     std::vector<uint32_t> fxOrder_;   // fxItems_ indices in painter order (DrawOp::fxFirst)
@@ -2437,7 +2454,6 @@ private:
     std::unordered_map<int, float> birthFx_;
     static constexpr float kBirthFxDur = 0.9f;
     float birthProgress(int id) const;
-    std::map<std::pair<int,int>,SDL_Texture*> lightningTextures_;
     std::map<std::string, std::vector<SDL_Texture*>> textures_;
     std::map<std::string, std::vector<ShadowMaskFrame>> shadowMasks_;
     struct ShadowMaskPage { SDL_Texture* texture;int width,height,x=0,y=0,rowHeight=0;
@@ -4847,10 +4863,6 @@ private:
     std::vector<std::string> explosionClassOrder_; // numeric COB classes follow authored order
     std::map<std::string, std::vector<std::string>> explosionClasses_;  // class -> anim names
     std::map<std::string, EffectAnim> effectAnims_;                     // anim name -> frames
-    struct NimbusEffect { const EffectAnim* anim = nullptr; uint32_t started = 0; };
-    std::unordered_map<int, NimbusEffect> nimbusEffects_;
-    std::map<std::string, std::string> factionNimbus_;
-    bool factionNimbusLoaded_ = false;
     bool explosionsLoaded_ = false;
     struct EffectInst {
         const EffectAnim* anim = nullptr;
@@ -4961,10 +4973,6 @@ private:
                    float dur, int sprites, float maxR);
     void updateRings(float dt);
 
-    // Frame a nimbus shows at the current tick (frames.size() once it has played out),
-    // and the lifetime rule of the effect draws, run once a frame by collectWorldFx.
-    size_t nimbusFrame(const NimbusEffect& effect) const;
-    void pruneNimbusEffects();
     // Per-family draws of single world effects (drawFxItem).
     void drawFxBeam(const BeamFx& b);
     void drawFxProjectile(const ta::sim::Projectile& p);
