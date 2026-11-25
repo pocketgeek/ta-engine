@@ -6880,6 +6880,14 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // dying test is the sweep's own. A retail construction site at zero
         // is not dying and keeps taking damage.
         if (e.hp <= Fixed() && !(e.retailSite && e.underConstruction)) return;
+        // The hitter player and damage kind of the record before this one
+        // (victim +0xf4 / +0xf5): TotalA.exe's handler 0x489ce0 runs the hit
+        // response 0x406f80 (0x489da2) first, before it writes them
+        // (0x489dac..0x489dc0) and before it lowers the hit points
+        // (0x489eb5).
+        const int previousHitPlayer = e.lastHitPlayer;
+        const uint8_t previousHitKind = e.lastHitKind;
+        retailHitResponse(e,attacker,w.dmgType);
         // Native HP is a 16-bit word that wraps; ours is 16.16 and saturates,
         // and `dealt` may exceed the whole-number range of fromInt (armour
         // and veterancy reach 33619). Subtract in 64 bits, clamped so that
@@ -6897,11 +6905,6 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             progress.hp=uint16_t(e.hp.floorInt());
             progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,e.maximumHp()));
         }
-        // The hitter player and damage kind of the record before this one
-        // (victim +0xf4 / +0xf5): TotalA.exe's handler 0x489ce0 runs the hit
-        // response 0x406f80 (0x489da2) before it writes them (0x489dac..0x489dc0).
-        const int previousHitPlayer = e.lastHitPlayer;
-        const uint8_t previousHitKind = e.lastHitKind;
         // 52a40a forms the hit bearing from the impact position, relative to
         // the victim's current native heading. 51a140 retains its high byte;
         // 51a4d2 notifies each normal/fire/explosion recipient, including splash.
@@ -6935,7 +6938,6 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             if (fromPlayer != e.player && fromPlayer >= 0 && fromPlayer < numPlayers())
                 ++players_[size_t(fromPlayer)].combatEvents;
         }
-        retailHitResponse(e,attacker,w.dmgType);
         // The under-attack request that ends 0x406f80 (0x4071b0..0x4071d8), after
         // the response above may have given the unit an attack: none while its
         // current mission carries flag 0x80 (0x438be0: a ground attack or the
@@ -8547,24 +8549,63 @@ void World::tickSlotWeapons(Unit& u) {
     }
 }
 
-// 409a50 part (b): a unit that returns fire hands the attacker to every auto
-// slot that reaches it, unless the slot's current target is still a good
-// one. No RNG. Part (a), the retaliation mission (4d7de0), is
-// retailHitResponse's, which calls this when it issues none.
+// TotalA.exe 0x49abb0(unit, target, slot), the hit response's reach test
+// (and AirToGroundHover's, Attack_Chase's): slot's weapon (unit +0x10 +
+// slot x 0x1c).
+//  - a waterweapon (weapon +0x111 bit 16, 0x49abd7): a target that is no
+//    floater (type +0x241 0x80000) standing above the sea (+0x70, the high
+//    word of its height) is out of reach (0x49abf9..0x49ac19); so is a
+//    canhover one (0x1000) whose middle, height + half its model height
+//    (type +0x170, 0x49ac2b), is above the sea (0x49ac1b..0x49ac44).
+//  - any other: the shooter's top (height + model height) at or under the
+//    sea (0x49acaf..0x49acdd), likewise the target's (0x49ace0..0x49ad04);
+//    a toairweapon (0x20000) against a target that is not flying (mover
+//    +0x110 & 3 != 2, 0x49ad07..0x49ad25); a ballistic one (bit 1) with no
+//    arc to the target (0x49a890 = 0x8000, 0x49ad28..0x49ad7b).
+//  - then the horizontal deltas' squares, high dwords summed, against the
+//    range squared, inclusive (0x49ac47..0x49acac, 0x49ad7e..0x49ade5).
+bool World::taWeaponReach(const Unit& e,const Unit& t,int slot) const {
+    if (!e.type || !t.type || slot<0 || slot>=int(e.type->weapons.size())) return false;
+    const Weapon& w=e.type->weapons[size_t(slot)];
+    const int sea=int(uint8_t(seaLevel_));
+    const auto y=[](const Unit& v) { return (v.type->canFly ? v.flightY : v.groundY).v; };
+    const auto height=[&](const Unit& v) { return int32_t(int16_t(uint32_t(y(v))>>16)); };
+    const auto model=[](const Unit& v) { return int32_t(int16_t(uint32_t(v.type->modelTop)>>16)); };
+    const auto sub=[](int32_t a,int32_t b) { return std::bit_cast<int32_t>(uint32_t(a)-uint32_t(b)); };
+    if (w.waterWeapon) {
+        if (!t.type->floater && height(t)>sea) return false;
+        if (t.type->canHover && height(t)+(model(t)>>1)>sea) return false;
+    } else {
+        if (height(e)+model(e)<=sea) return false;
+        if (height(t)+model(t)<=sea) return false;
+        if (w.toAir && t.flightGroundMode!=2) return false;
+        if (w.hasTaFlag(1) && ta::taBallisticPitch(sub(e.x.v,t.x.v),sub(y(e),y(t)),sub(e.z.v,t.z.v),
+                                                    w.velocityFx,w.minBarrelAngle,ballisticGravityRaw_)==0x8000)
+            return false;
+    }
+    const int64_t dx=sub(t.x.v,e.x.v),dz=sub(t.z.v,e.z.v);
+    return int32_t(uint32_t((dx*dx)>>32)+uint32_t((dz*dz)>>32))<=int32_t(uint32_t(w.range)*uint32_t(w.range));
+}
+
+// TotalA.exe 0x4070f2..0x4071aa, the hit response's part (b): on fire orders
+// other than Hold Fire (+0x110 & 0x300000), each of slots 0..2 that holds a
+// weapon and is automatic (slot byte +0x1f bits 2 and 0x10) and reaches the
+// attacker (0x49abb0), its weapon no commandfire (+0x111 bit 26), takes the
+// attacker (0x48a060) unless its own target (0x48a190) still is in its reach
+// and not in the slot's badtargetcategory (type +0x231 + slot x 4). The
+// engine's clear-line test (slotClearShot, a documented deviation shared with
+// the sweep and the weapon update) is kept on the attacker. No RNG.
 void World::slotHitResponse(Unit& victim,const Unit& attacker) {
-    if (!victim.alive() || victim.hp<=Fixed() || !victim.type || victim.type->weapons.empty() ||
-        victim.fireState==0 || victim.incapacitated() || isNeutralPlayer(victim.player) ||
-        !attacker.alive() || !attacker.type || allied(victim.player,attacker.player)) return;
+    if (!victim.type || victim.type->weapons.empty() || victim.fireState==0 || !attacker.type) return;
     syncSlotMode(victim);
     if (!victim.slotAuto) return;
     for (int s=0;s<int(std::min<size_t>(3,victim.type->weapons.size()));++s) {
         if (!(victim.slotAuto>>s&1)) continue;
+        if (!taWeaponReach(victim,attacker,s)) continue;
         if (victim.type->weapons[size_t(s)].commandFire) continue;
-        if (slotInsideMinRange(victim,attacker,s) || !slotInRange(victim,attacker,s) ||
-            !slotClearShot(victim,attacker,s)) continue;
+        if (!slotClearShot(victim,attacker,s)) continue;
         if (const Unit* t=unit(victim.slotTarget[size_t(s)]);
-            t && t->alive() && t->hp>Fixed() && slotInRange(victim,*t,s) && slotClearShot(victim,*t,s) &&
-            !slotInsideMinRange(victim,*t,s) && !slotBadTarget(victim,s,*t)) continue;
+            t && t->alive() && t->type && taWeaponReach(victim,*t,s) && !slotBadTarget(victim,s,*t)) continue;
         if (victim.slotTarget[size_t(s)]!=attacker.id) setSlotTarget(victim,s,attacker.id);
     }
 }
@@ -8638,11 +8679,11 @@ void World::retailHitResponse(Unit& e,const Unit* a,int dmgType) {
 //    kamikaze (flagsA 0x10010000), finished (+0x104 == 0) and not allied to
 //    the attacker's player (owner +0x108[attacker's]): (a) with no mission or
 //    a Standby (descriptor flag 0x20000 -- not a patrol, unlike Kingdoms'
-//    409a50), an attacker its categories admit and in slot 0's reach
-//    (0x49abb0), the retaliation attack (0x43b1f0); else (b), on fire orders
-//    other than Hold Fire (+0x110 & 0x300000), each auto slot that reaches the
-//    attacker and whose own target is gone or no longer good takes it
-//    (0x48a060). No paralysis gate: a paralysed unit is a Paralyze mission.
+//    409a50), an attacker in neither the nochasecategory (type +0x23d,
+//    0x40707d..0x4070a4) nor slot 0's badtargetcategory (+0x231,
+//    0x4070a6..0x4070c6) and in slot 0's reach (0x49abb0, taWeaponReach),
+//    the retaliation attack (0x43b1f0); else (b) (slotHitResponse). No
+//    paralysis gate: a paralysed unit is a Paralyze mission.
 void World::taHitResponse(Unit& e,const Unit* a) {
     e.attackedTick=tickCounter_+1;
     if (!e.alive() || !e.type) return;
@@ -8655,10 +8696,10 @@ void World::taHitResponse(Unit& e,const Unit* a) {
     if (e.type->weapons.empty() && !e.type->kamikaze) return;
     if (e.underConstruction) return;
     if (allied(e.player,a->player)) return;
-    const bool mobile=e.type->canMove && !e.type->isStructure();
     const bool idle=e.orders.empty() && !e.retailBuild && e.buildQueue.empty();
     bool mission=false;
-    if (!e.type->weapons.empty() && idle && retailAnswersAttacker(e,*a,0,mobile)) {
+    if (!e.type->weapons.empty() && idle && !categoryMatch(e.type->noChaseCats,*a->type) &&
+        !slotBadTarget(e,0,*a) && taWeaponReach(e,*a,0)) {
         mission=retailIssueAutoAttack(e,a->id,false);
         // An idle flyer's answer goes in ahead of its default mission.
         if (mission && e.type->canFly) e.orders.front().aheadOfDefault=true;

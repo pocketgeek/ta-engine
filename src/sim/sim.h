@@ -4280,6 +4280,7 @@ private:
     void tickFireSweep(int player);
     void tickSlotWeapons(Unit& u);
     void slotHitResponse(Unit& victim,const Unit& attacker);
+    bool taWeaponReach(const Unit& e,const Unit& t,int slot) const;
     // A guard's slot retarget at its guarded unit's attacker (Follow_Ground
     // 0x4081fa, VTOL_Follow 0x418c60): 409a50 part (b) without the attacker's
     // reach test; a flyer's keeps a current target inside its minimum range.
