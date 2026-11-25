@@ -1513,7 +1513,7 @@ int main(int argc,char** argv) {
         world.setTerrain(std::vector<uint8_t>(32*32,100),32,32,20);
         const int id=world.spawn(&type,200,200);auto* u=world.unit(id);
         u->baseSpeed=Fixed::fromInt(4);u->speed=Fixed::fromInt(2);u->heading=Bam(0x2000);
-        u->animationTurnBam=1200;u->veteran=2;
+        u->animationTurnBam=1200;u->kills=10;
         const std::vector<uint32_t> none{100,0,0,0,0,0,0,0};
         require(RetailReplayProbe::movementQueries(world,id)==none,
             "a moving, turning veteran: HEALTH answers, GET 27..34 answer 0");

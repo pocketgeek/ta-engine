@@ -23,7 +23,7 @@ struct PlacedUnit {
     int health = 100;      // %  0..100
     int armor = 100;       // %  0..1000
     int weapon = 100;      // %  0..1000
-    int veteran = 0;       //    0..9
+    int kills = 0;         //    starting kill count, 0..65535 (TA veterancy; an old rank N loads as N x 5)
     float angle = 0;       // degrees 0..359
     std::string name;      // optional display name
     int vertical = 200;    // retained CRT field; native placement ignores it

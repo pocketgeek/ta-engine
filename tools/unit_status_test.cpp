@@ -54,11 +54,6 @@ int main() try {
         UnitR a; a.type = &archer;
         check(panelName(a, true, "Kirenna") == "archer", "a multiplayer archer is shown by its player's name");
     }
-    // 4b26c0..4b26ef: no mark below rank 4, then one frame per three ranks.
-    using ta::client::experienceFrame;
-    const int marks[11]={-1,-1,-1,-1,0,0,0,1,1,1,2};
-    for (int rank=0;rank<=10;++rank)
-        check(experienceFrame(rank)==marks[rank],"rank "+std::to_string(rank)+" shows the wrong veteran mark");
     // Ctrl+D (48e2b1..48e309): any selected unit counting down -> the press
     // removes every countdown and arms none; otherwise it arms them all.
     using ta::client::selfDestructPress;

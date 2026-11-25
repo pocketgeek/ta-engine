@@ -135,7 +135,7 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
         mLabel[1] = "HEALTH %";      mf[1] = std::to_string(u.health);      mfNumeric[1] = true;
         mLabel[2] = "ARMOR %";       mf[2] = std::to_string(u.armor);       mfNumeric[2] = true;
         mLabel[3] = "WEAPON %";      mf[3] = std::to_string(u.weapon);      mfNumeric[3] = true;
-        mLabel[4] = "VETERAN (0-9)"; mf[4] = std::to_string(u.veteran);     mfNumeric[4] = true;
+        mLabel[4] = "VETERAN KILLS"; mf[4] = std::to_string(u.kills);       mfNumeric[4] = true;
         mLabel[5] = "ANGLE (DEG)";   mf[5] = std::to_string(int(u.angle));  mfNumeric[5] = true;
         mLabel[6] = selectedUnits.indices.size()>1?"NAME (SINGLE UNIT ONLY)":"DISPLAY NAME";mf[6]=u.name;mfNumeric[6]=false;
         mLabel[7] = "X (CELL)";mf[7]=std::to_string(int((u.x-u.footX*8)/16));mfNumeric[7]=true;
@@ -342,7 +342,7 @@ void cart::Editor::applyModal() {
         if(!targets.count(editUnit))targets={editUnit};
         std::array<int,9> values{};
         const std::array<int,9> minimum={0,0,0,0,0,std::numeric_limits<int>::min(),0,0,0};
-        const std::array<int,9> maximum={8,100,1000,1000,9,std::numeric_limits<int>::max(),0,mapView.map().width-1,mapView.map().height-1};
+        const std::array<int,9> maximum={8,100,1000,1000,65535,std::numeric_limits<int>::max(),0,mapView.map().width-1,mapView.map().height-1};
         for(int i=0;i<9;++i)if(i!=6 && mf[i]!=mfOriginal[i]) {
             const auto parsed=std::from_chars(mf[i].data(),mf[i].data()+mf[i].size(),values[i]);
             if(parsed.ec!=std::errc{} || parsed.ptr!=mf[i].data()+mf[i].size() || values[i]<minimum[i] || values[i]>maximum[i]) {
@@ -365,7 +365,7 @@ void cart::Editor::applyModal() {
             if(mf[1]!=mfOriginal[1])u.health=values[1];
             if(mf[2]!=mfOriginal[2])u.armor=values[2];
             if(mf[3]!=mfOriginal[3])u.weapon=values[3];
-            if(mf[4]!=mfOriginal[4])u.veteran=values[4];
+            if(mf[4]!=mfOriginal[4])u.kills=values[4];
             if(mf[5]!=mfOriginal[5]) {int angle=values[5]%360;u.angle=float(angle<0?angle+360:angle);}
             if(targets.size()==1)u.name=mf[6];
             u.x+=dx;u.z+=dz;

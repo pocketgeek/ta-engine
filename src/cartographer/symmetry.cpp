@@ -23,7 +23,7 @@ bool overlaps(const PlacedUnit& a,const PlacedUnit& b) {
 bool samePlace(const PlacedUnit& a,float x,float z) {return std::abs(a.x-x)<.01f && std::abs(a.z-z)<.01f;}
 bool sameUnit(const PlacedUnit& a,const PlacedUnit& b) {
     return a.type==b.type && a.player==b.player && a.x==b.x && a.z==b.z && a.angle==b.angle && a.name==b.name &&
-           a.health==b.health && a.armor==b.armor && a.weapon==b.weapon && a.veteran==b.veteran;
+           a.health==b.health && a.armor==b.armor && a.weapon==b.weapon && a.kills==b.kills;
 }
 // Direction letters and the lft/rgt/top/btm words as compass vectors.
 std::pair<int,int> letterDirection(char c) {return c=='n'?std::pair{0,-1}:c=='s'?std::pair{0,1}:c=='e'?std::pair{1,0}:std::pair{-1,0};}

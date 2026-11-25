@@ -51,7 +51,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
     crt::Scenario scenario;scenario.players.resize(9);
     crt::Unit monarch;monarch.objectName="armcom";monarch.player=0;
     monarch.x=int(starts[0].first/16);monarch.z=int(starts[0].second/16);
-    monarch.health=75;monarch.armor=150;monarch.weapon=175;monarch.veteran=3;
+    monarch.health=75;monarch.armor=150;monarch.weapon=175;monarch.kills=15;
     monarch.uniqueName="Network commander with a deliberately long display name";
     monarch.y=999;
     scenario.units.push_back(monarch);

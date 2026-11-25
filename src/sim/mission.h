@@ -85,6 +85,12 @@ public:
     // new unit's pool is otherwise empty (511990); ManaPercentage defaults to 0
     // and HealthPercentage to 100 (4c8dc5..4c8dec).
     static int32_t percentHp(const UnitType& type, int32_t pct);
+    // The engine's `v F` clause (no TA mission has one; TotalA.exe's grammar
+    // 0x487bf0 ignores the letter): F was the Kingdoms veterancy multiplier
+    // 1 + rank/10, so it now names the rank round((F - 1) x 10), which becomes
+    // TA's kill count rank x 5 (crt::killsForRank) -- v 1.2 is 10 kills, v 2
+    // 50; F under about 1.05 (v 0 included) is 0 kills.
+    static int missionVeteranKills(float multiplier);
     // Create X Z (4d35c0): the type's footprint corner at the cell,
     // (X*2 + footprint) << 19, for mobiles and buildings alike.
     static Point createPoint(const UnitType& type, int x, int z);

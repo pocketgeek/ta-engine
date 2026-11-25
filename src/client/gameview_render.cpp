@@ -4970,7 +4970,7 @@
             }
         }
         // MATERIAL: veterancy, ghost, conjuring progress (+ clock), emote/statue tint.
-        const MaterialKey materialKey{uint64_t(u.veteran),ghost,conjuring,disco,
+        const MaterialKey materialKey{uint64_t(u.studyTint),ghost,conjuring,disco,
             uint64_t(discoCol.r)|(uint64_t(discoCol.g)<<8)|(uint64_t(discoCol.b)<<16),
             floatBits(discoMix),floatBits(p),conjuring ? floatBits(animClock_) : 0u,
             uint64_t(255-u.corpseFade())};
@@ -5041,8 +5041,8 @@
         in.body={zm,ax,ay,discoBob};
         // The shadow leans by the flyer's altitude from the same anchor.
         in.shadow={zm,ax + kShadowLX * altitude * zm,ay + (kProjY - kShadowLZ) * altitude * zm};
-        in.material.vetGold=(!conjuring && u.veteran >= 4)
-            ? float(std::min(u.veteran, 10) - 3) / 7.0f * 0.5f : 0.0f;
+        in.material.vetGold=(!conjuring && u.studyTint >= 4)
+            ? float(std::min(u.studyTint, 10) - 3) / 7.0f * 0.5f : 0.0f;
         in.material.conjuring=conjuring;in.material.progress=p;in.material.clock=animClock_;
         in.material.emote=disco;in.material.emoteColour=discoCol;in.material.emoteMix=discoMix;
         // FBI ghost: a spectral body is see-through. Retail switches the renderer
@@ -7825,8 +7825,7 @@
                 SDL_RenderCopyF(ren_,f.tex,nullptr,&dst);
             };
             if(lightning)sprite(w.weaponArt,float(z-(y>>1)),false);
-            const std::string& projectileModel = p.projectileUsesVeteranModel &&
-                !w.veteranShotModel.empty() ? w.veteranShotModel : w.shotModel;
+            const std::string& projectileModel = w.shotModel;
             if(lightning && p.lightningEffect && w.lightningEffect) {
                 const auto& effect=*p.lightningEffect;
                 const int tw=int(std::bit_ceil(unsigned(effect.width)));
@@ -7934,9 +7933,7 @@
         // mesh, yawed along its flight so an arrow actually points where it is
         // going. Projectile models point along +z (the arrowhead is at
         // +z and the fletching at -z), opposite the unit-model forward axis.
-        const std::string* projectileModel = p.wsrc ?
-            &(p.projectileUsesVeteranModel && !p.wsrc->veteranShotModel.empty()
-                ? p.wsrc->veteranShotModel : p.wsrc->shotModel) : nullptr;
+        const std::string* projectileModel = p.wsrc ? &p.wsrc->shotModel : nullptr;
         if (projectileModel && !projectileModel->empty()) {
             if(native3d) {
                 drawShotModel(*projectileModel,p.fromPlayer,renderX,renderZ,0,

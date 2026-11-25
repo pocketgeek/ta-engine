@@ -1179,7 +1179,10 @@
         s.gen = fb.gen;
         s.id = u.id; s.type = u.type; s.player = u.player;
         if (s.scenarioName != u.scenarioName) s.scenarioName = u.scenarioName;
-        s.hp = u.hp.toFloat(); s.mana = 0; s.veteran = u.veteran; s.kills = u.kills;
+        s.hp = u.hp.toFloat(); s.mana = 0; s.kills = u.kills;
+#ifndef NDEBUG
+        s.studyTint = renderStudyTint_.empty() ? 0 : renderStudyTint(u.id);
+#endif
         s.deadFor = u.deadFor < 0 ? -1.0f : float(u.deadFor) / 30.0f;   // ticks -> seconds
         s.inTransport = u.inTransport; s.padPiece = u.padPiece; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
         s.standingOrder = u.standingOrder;
@@ -2093,8 +2096,7 @@
         }
         for (const UnitR* _up : front().live) {
             const UnitR& u = *_up;
-            if (u.alive()) maybeSwapVeteranModel(u);
-            else if (u.corpsePhase) maybeSwapCorpseModel(u);
+            if (!u.alive() && u.corpsePhase) maybeSwapCorpseModel(u);
             auto it = anims_.find(u.id);
             if (const auto shots=weaponShots.find(u.id);u.type && shots!=weaponShots.end())
             for (const auto& shot:shots->second)
@@ -2870,8 +2872,7 @@
             // An immediate corpse handoff may already have swapped the body
             // model. EXPLODE still detaches pieces from the original live model.
             const auto visual=u.corpsePhase && u.type
-                ? visuals_.find(u.veteran>=10 && !u.type->veteranModel.empty()
-                    ? u.type->veteranModel : u.type->id)
+                ? visuals_.find(u.type->id)
                 : (visualName==unitType_.end()?visuals_.end():visuals_.find(visualName->second));
             if(visual!=visuals_.end()) {
                 const auto& wanted=(*a.pieceNames)[size_t(piece)];
@@ -2944,21 +2945,6 @@
             } catch (const std::exception&) { return; }   // no corpse mesh: keep pose
         }
         unitType_.set(u.id, obj);   // the corpse mesh from now on (registration unchanged)
-    }
-
-    void GameView::maybeSwapVeteranModel(const UnitR& u) {
-        if (!u.type || u.veteran < 10 || u.type->veteranModel.empty()) return;
-        const std::string& vm = u.type->veteranModel;
-        auto it = unitType_.find(u.id);
-        if (it == unitType_.end() || it->second == vm) return;   // not drawn yet / done
-        if (!visuals_.count(vm)) {
-            try {
-                loadVisual(vm);   // with its PieceMeta tree -- see loadVisual
-            } catch (const std::exception&) { return; }   // no promoted mesh: keep base
-        }
-        unitType_.set(u.id, vm);   // draw the promoted mesh from now on
-        if(auto anim=anims_.find(u.id);anim!=anims_.end())
-            configureExplosionHierarchy(anim->second,visuals_.at(vm).model.root);
     }
 
     void GameView::configureExplosionHierarchy(Anim& a,const ta::tdo::Object& root) {

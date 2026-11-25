@@ -87,8 +87,8 @@ int main(int argc,char** argv) try {
         w.tick(1.f/30);
         check(!w.unit(v)->alive() && !w.unit(v)->deathPending,"the prize did not retire");
         check(w.player(0).kills==1 && w.unit(k)->kills==1 && w.player(1).losses==1,"the kill was not counted");
-        check(w.player(0).mana-before<0.1 && w.player(0).score==0 && w.unit(k)->veteran==0,
-              "a TA kill paid a bounty, a score or experience");
+        check(w.player(0).mana-before<0.1 && w.player(0).score==0,
+              "a TA kill paid a bounty or a score");
     }
     {
         // 51a35a: a hit names its hitter only while the hitter's object lives
@@ -110,21 +110,23 @@ int main(int argc,char** argv) try {
         check(w.unit(v)->lastHitBy==old && w.unit(v)->lastHitPlayer==2,"a hit with no shooter took the credit");
     }
     {
-        // 52a35c: the shooter's attack multiplier only while it lives and is
-        // not dying. A level 10 veteran doubles; its shot after death does not.
-        auto hit=[&](bool dead) {
+        // 52a35c: the shooter's attack multiplier (a scenario's authored weapon
+        // percentage) only while it lives and is not dying: 200% doubles, its
+        // shot after death does not. Its own kills never scale what it deals
+        // (TA's veterancy scales the damage the VICTIM takes, 0x489bf3).
+        auto hit=[&](bool dead,uint16_t kills) {
             World w;terrain(w);
             const int s=w.spawn(&t,400,400,0,0),v=w.spawn(&t,440,400,0,1);
-            w.unit(s)->rank=10;w.unit(s)->veteran=w.unit(s)->veteranLevel();
-            check(w.unit(s)->vetMul()==2.0f,"synthetic veteran is not level 10");
+            w.unit(s)->scenarioWeapon=2.0f;w.unit(s)->kills=kills;
             if (dead) killNow(w,s);
             const int before=w.unit(v)->hp.floorInt();
             RetailReplayProbe::hit(w,t.weapon,440,400,0,s,w.unit(v));
             return before-w.unit(v)->hp.floorInt();
         };
-        const int live=hit(false),dead=hit(true);
-        check(live>=170 && live<=230,"a live veteran's hit was not doubled");
-        check(dead>=85 && dead<=115,"a dead veteran's shot kept its multiplier");
+        const int live=hit(false,0),dead=hit(true,0),veteran=hit(false,50);
+        check(live>=170 && live<=230,"a live shooter's 200% weapon did not double its hit");
+        check(dead>=85 && dead<=115,"a dead shooter's shot kept its multiplier");
+        check(veteran==live,"a shooter's kills scaled the damage it dealt");
     }
     {
         // 512b71/512bd5: the F4 kill count and the score sit in the credit
@@ -173,7 +175,7 @@ int main(int argc,char** argv) try {
         for (bool unfinished:{false,true}) {
             World w;terrain(w);
             const int b=w.spawn(&bomb,400,400,0,0),old=w.spawn(&t,400,900,0,2),v=w.spawn(&t,420,400,0,1);
-            w.unit(b)->rank=10;w.unit(b)->veteran=w.unit(b)->veteranLevel();
+            w.unit(b)->kills=50;
             w.unit(b)->underConstruction=unfinished;
             w.unit(v)->lastHitBy=old;w.unit(v)->lastHitPlayer=2;
             w.unit(b)->hp=Fixed();w.unit(b)->deathType=1;
@@ -400,7 +402,6 @@ int main(int argc,char** argv) try {
             // as kind 1 (0x4868b3): a kill for the carrier's hitter.
             check(w.player(1).kills==3 && w.player(1).score==0,"the carrier's killer was not credited for its passengers");
             check(w.player(0).losses==2 && w.player(2).losses==1,"the carrier and its passengers were not losses");
-            if (shooterLives) check(w.unit(s)->veteran==0,"a TA kill earned a rank");
             // 512ccd: its own kill count (+0xfe) counts each under the same gate.
             if (shooterLives) check(w.unit(s)->kills==3,"the carrier's killer did not count its kills");
             if (shooterLives) {

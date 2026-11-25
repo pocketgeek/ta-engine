@@ -49,7 +49,7 @@ int main() {
     Unit* u = world.unit(id);
     // A moving, turning veteran on a road, standing order set.
     u->baseSpeed = Fixed::fromInt(4); u->speed = Fixed::fromInt(2); u->heading = Bam(0x2000);
-    u->animationTurnBam = 1200; u->veteran = 2; u->groundTerrainFlags = 0x800; u->hp = Fixed::fromInt(50);
+    u->animationTurnBam = 1200; u->kills = 10; u->groundTerrainFlags = 0x800; u->hp = Fixed::fromInt(50);
     const auto got = RetailReplayProbe::run(world, id, "Read");
     std::string row;
     bool zero = true;
@@ -61,7 +61,7 @@ int main() {
     std::printf("display VM (client/displayget.h):\n");
     UnitR r;
     r.scriptHealthPercent = 50; r.yardOpen = true; r.constructionPercentLeft = 7;
-    r.veteran = 2; r.standingOrder = 1; r.movementTerrainFlags = 0x1800; r.heading = 1.0f;
+    r.kills = 10; r.standingOrder = 1; r.movementTerrainFlags = 0x1800; r.heading = 1.0f;
     r.turnSpeedPercent = 40; r.verticalSpeedPercent = -50; r.horizontalSpeedPercent = 75;
     check(ta::client::displayScriptGet(r, 4) == 50 && ta::client::displayScriptGet(r, 18) == 1 &&
           ta::client::displayScriptGet(r, 17) == 7, "HEALTH, YARD_OPEN, BUILD_PERCENT_LEFT answer");

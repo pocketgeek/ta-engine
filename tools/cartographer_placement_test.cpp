@@ -649,7 +649,7 @@ bool unitSession(const std::string& data,const std::string& world,Tally& tally) 
         auto unitPoint=[&](const cart::PlacedUnit& u) {return focus(e,u.x,u.z);};
         auto same=[](const cart::PlacedUnit& a,const cart::PlacedUnit& b) {
             return a.type==b.type && a.player==b.player && a.x==b.x && a.z==b.z && a.footX==b.footX && a.footZ==b.footZ &&
-                   a.health==b.health && a.armor==b.armor && a.weapon==b.weapon && a.veteran==b.veteran && a.angle==b.angle;
+                   a.health==b.health && a.armor==b.armor && a.weapon==b.weapon && a.kills==b.kills && a.angle==b.angle;
         };
         auto unitsMatch=[&] {
             if(e.units.size()!=expected.size())return false;

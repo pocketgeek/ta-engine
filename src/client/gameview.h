@@ -1068,6 +1068,12 @@ public:
                            panSnapBase_->second+std::round(160*std::cos(phase))+fraction);
     }
     void renderStudyVeteran(unsigned frame, unsigned period);
+    // The study's tint level per unit id (renderStudyVeteran); empty in a game.
+    std::unordered_map<int, int> renderStudyTint_;
+    int renderStudyTint(int id) const {
+        const auto it=renderStudyTint_.find(id);
+        return it==renderStudyTint_.end() ? 0 : it->second;
+    }
     // Render-optimization harness. Each
     // is presentation-side or local-harness only and runs in the standalone
     // render study, never in a networked game.
@@ -1438,9 +1444,6 @@ private:
         }
         return (low == 0 || low == 1) ? "flames:flame large" : nullptr;
     }
-    // At max veterancy, a unit with a `veteranmodel` swaps its mesh for the
-    // fancier promoted 3DO (same piece structure, so the COB/anim carries over).
-    void maybeSwapVeteranModel(const UnitR& u);
     void configureExplosionHierarchy(Anim& a,const ta::tdo::Object& root);
     void maybeSwapCorpseModel(const UnitR& u);
 

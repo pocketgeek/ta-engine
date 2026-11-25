@@ -949,7 +949,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             const auto crtPath = ta::vpath::replaceExtension(cfg.mapPath, ".crt");
             if (!vfs.has(crtPath)) throw std::runtime_error("Scenario map is missing its CRT file");
             auto scenario = ta::crt::parse(vfs.read(crtPath));
-            if (scenario.version != 1) throw std::runtime_error("Scenario CRT file is damaged");
+            if (scenario.version == 0) throw std::runtime_error("Scenario CRT file is damaged");
             auto requirePlayer = [&](int player) {
                 if (player == 8) { world.enableScenarioNeutralPlayer(); return; }
                 if (player < 0 || player >= kMaxPlayers)
@@ -964,8 +964,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 // (0x4cd243) stores the lookup's 0 for an unknown name with no test and no
                 // message, and 0x4cd590 then matches no unit (type ids start at 1).
                 if (!reg.find(name)) continue;
+                // stat[3]: the type's starting kill count (an old rank file's rank x 5, crt::parse).
                 world.setScenarioTypeStats(name, std::clamp(type.stat[1],0,1000),
-                    std::clamp(type.stat[2],0,1000), std::clamp(type.stat[3],0,10));
+                    std::clamp(type.stat[2],0,1000), std::clamp(type.stat[3],0,65535));
             }
             // Banks 1..8 belong to owners 0..7. A bank whose groups are all empty does
             // nothing, so it needs no seat (259; it used to demand one). A bank past the
@@ -997,15 +998,15 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     unit->scenarioName = placed.uniqueName.substr(0,31);
                     // The CRT vertical field is not read by native 4cc8e6..4cc953.
                     // Terrain/flight initialization supplies height, not placed.y.
-                    // Native 4cd32d..4cd3e2: placement veteran replaces the type default;
+                    // Native 4cd32d..4cd3e2: the placement's kills replace the type default;
                     // placement armor/weapon multiply the type defaults. Health is current
                     // HP percentage, truncated and clamped to [0, type maximum], not max HP.
                     const float health = float(double(std::clamp(placed.health,0,100)) * double(0.01f) * double(unit->hp.floorInt()));
                     unit->hp = Fixed::fromInt(std::clamp(int(health),0,std::max(0,type->maxHp)));
                     unit->scenarioArmor = float(double(unit->scenarioArmor) * double(std::clamp(placed.armor,0,1000)) * double(0.01f));
                     unit->scenarioWeapon = float(double(unit->scenarioWeapon) * double(std::clamp(placed.weapon,0,1000)) * double(0.01f));
-                    unit->rank = std::clamp(placed.veteran, 0, 9);   // the placement's rank (4cd335)
-                    unit->veteran = unit->veteranLevel();
+                    // TA's veterancy: its kill count (an old rank file's rank x 5, crt::parse).
+                    world.setKills(*unit, placed.kills);
                     if (type->isStructure()) world.blockFoot(*type, x, z, true);
                     world.finishAsFeature(id);   // 51230c: a placed wall becomes its feature
                 } else throw std::runtime_error("Could not place scenario unit: " + placed.objectName);
@@ -1782,9 +1783,11 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                         // gave it (usually 0 -- it must recharge before casting).
                         const int16_t health = int16_t(std::atoi(u.valueOr("healthpercentage", "100").c_str()));
                         su->hp = Fixed::fromInt(MissionScript::percentHp(*t, health));
-                        // Kills (default 0; 4c8ea6 into the record's word +0x1e,
-                        // 514cfb): the unit's own kill count. Every shipped record says 0.
-                        su->kills = uint16_t(integer("kills"));
+                        // Kills is not read: TotalA.exe's [units] parse (0x436c30)
+                        // has no such key (the "Kills" strings' xrefs are the score
+                        // and stats screens, 0x41e6de / 0x42003e / 0x4661f3), though
+                        // 1100-odd shipped records say 1..66. A placed unit starts
+                        // with 0 kills (docs/retail-campaign.md section 2.4).
                         world.finishAsFeature(id);   // 51230c: a placed wall becomes its feature
                     }
                     // InitialMission: the per-unit order queue in the SAME mini-language
