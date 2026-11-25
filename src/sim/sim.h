@@ -3084,6 +3084,7 @@ public:
     void stampAirOccupant(Unit& u);
     void retireAirOccupant(Unit& u);
     void ensureAirGrid();
+    struct AirGridHost;
 #ifndef NDEBUG
     void verifyAirOccupant(const Unit& u) const;
 #endif

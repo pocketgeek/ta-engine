@@ -17726,6 +17726,37 @@ void World::ensureAirGrid() {
     for (auto& u:units_) u.airOccupant={};
 }
 
+// The grid's host (retailairgrid.h): live flyers by id; the walk over the
+// flyers touching a rectangle goes by 8-cell sector column, then row (as
+// 0x47e5c0 walks its buckets), then id (retail's in-bucket order is the
+// bucket's link order, not kept).
+struct World::AirGridHost {
+    World& w;
+    RetailAirOccupant* state(int id) {
+        Unit* u=w.unit(id);
+        return u && u->type && u->type->canFly && u->alive() ? &u->airOccupant : nullptr;
+    }
+    bool footprint(int id,int& x,int& z,int& fx,int& fz) {
+        const Unit* u=w.unit(id);
+        if (!u || !u->type) return false;
+        x=u->airOccupant.recordedX;z=u->airOccupant.recordedZ;fx=u->type->footX;fz=u->type->footZ;
+        return true;
+    }
+    template<class F> void forEachTouching(int x,int z,int fx,int fz,F f) {
+        std::vector<std::tuple<int,int,int>> touching;
+        w.syncUnitLists();
+        for (const int id:w.unitLists_.flyers) {
+            const Unit* u=w.unit(id);
+            if (!u || !u->alive() || !u->type || u->airOccupant.recordedX<0) continue;
+            const int ux=u->airOccupant.recordedX,uz=u->airOccupant.recordedZ;
+            if (x<ux+u->type->footX && ux<x+fx && z<uz+u->type->footZ && uz<z+fz)
+                touching.emplace_back(ux>>3,uz>>3,id);
+        }
+        std::sort(touching.begin(),touching.end());
+        for (const auto& [sx,sz,id]:touching) f(id);
+    }
+};
+
 void World::stampAirOccupant(Unit& u) {
     if (!u.type || !u.type->canFly) return;
     ensureAirGrid();
@@ -17735,9 +17766,12 @@ void World::stampAirOccupant(Unit& u) {
     const int x=air ? footprintOrigin(u.x,fx) : -9999,z=air ? footprintOrigin(u.z,fz) : -9999;
     auto& at=u.airOccupant;
     if (at.recordedX==x && at.recordedZ==z) return;
-    if (at.recordedX>=0 && at.recordedZ>=0) airOccupancy_.taUnstamp(u.id,at.recordedX,at.recordedZ,fx,fz);
-    at.recordedX=at.recordedZ=-9999;
-    if (air && airOccupancy_.taStamp(u.id,x,z,fx,fz)) { at.recordedX=int16_t(x);at.recordedZ=int16_t(z); }
+    AirGridHost host{*this};
+    const bool stamped=at.recordedX>=0 && at.recordedZ>=0;
+    const int oldX=at.recordedX,oldZ=at.recordedZ;
+    at.recordedX=at.recordedZ=-9999;   // out of the touching walk while it leaves
+    airOccupancy_.taUnstamp(u.id,at,stamped,oldX,oldZ,fx,fz,host);
+    if (air && airOccupancy_.taStamp(u.id,at,x,z,fx,fz,host)) { at.recordedX=int16_t(x);at.recordedZ=int16_t(z); }
 }
 
 #ifndef NDEBUG
@@ -17755,12 +17789,14 @@ void World::verifyAirOccupant(const Unit& u) const {
 }
 #endif
 
-// 0x48682d -> 0x47cbd0 -> 0x47d0e0: a dying flyer leaves its cells; a cell
-// it shared with another flyer is left empty (no hand-over).
+// 0x48682d -> 0x47cbd0 -> 0x47d0e0: a dying flyer leaves its cells; a
+// flyer waiting on one of them takes it (taUnstamp's restamp).
 void World::retireAirOccupant(Unit& u) {
     if (!u.type || !u.type->canFly || u.airOccupant.recordedX<0 || airOccupancy_.empty()) return;
-    airOccupancy_.taUnstamp(u.id,u.airOccupant.recordedX,u.airOccupant.recordedZ,u.type->footX,u.type->footZ);
-    u.airOccupant.recordedX=u.airOccupant.recordedZ=-9999;
+    const int x=u.airOccupant.recordedX,z=u.airOccupant.recordedZ;
+    u.airOccupant.recordedX=u.airOccupant.recordedZ=-9999;   // out of the touching walk
+    AirGridHost host{*this};
+    airOccupancy_.taUnstamp(u.id,u.airOccupant,true,x,z,u.type->footX,u.type->footZ,host);
 }
 
 void World::syncUnitLists() {

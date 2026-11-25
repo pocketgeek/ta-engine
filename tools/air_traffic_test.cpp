@@ -121,7 +121,7 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
             }
             if(!counts) continue;
             ++counted;
-            stacked+=u->airOccupant.count!=0;
+            stacked+=u->airOccupant.waiting;   // in a cell another flyer holds (0x47cc30)
         }
     }
     const char* what=c.count==Count::Near ? (target ? "near the fight" : "near the point")
