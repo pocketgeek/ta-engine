@@ -83,6 +83,45 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   Kingdoms' RECLAIMAREA (KINGDOMS.icd 406670 and its cell walk 509cc0); each
   child is TA's own feature reclaim. Not dead code; Cmd::BuildManaArea stays
   refused.
+- Per-unit destinations (owner's requirement, kept 2026-11-25, both pathfinding
+  modes): a player's group move, fight-move or patrol gives every unit its OWN
+  spot, and the client outlines each unit's footprint there in player colour
+  (the "blue box" markers, GameView::drawUnitSpots / UnitR::hasSpot), flashed
+  after the order and held under Shift. sim/groupspots.h: a unit within TA's
+  reach (the selection order 0x48cf30: the click plus its offset from the
+  centre when within sqrt(3000 n) px) keeps TA's goal when that footprint is
+  free and on the map; every other unit -- where retail sends it to the click
+  itself, so several share the point and no marker shows -- takes the free
+  footprint spot nearest the click (16 px grid, nearest units first). Ground
+  units and flyers alike, and fight-move ground units too (retail: the click).
+  Legion keeps its own slots for the surface movers it plans
+  (legionSharedClick: the click, slotted on the shared point; the marker is
+  the slot); its flyers and oversize bodies take groupSpots, keeping out of a
+  room round the click held for the planned ground (was: TA's spread for the
+  flyers, +-60 px per axis for the oversize). Network-safe: in a Retail net
+  game the client's per-unit commands carry the spots; an explicit order
+  (OrderShape::Offsets / FlyerOffsets) is re-spread by the sim
+  (applySelectionOrder) from the members' positions at activation, integer
+  16.16 only. The AI's group orders (0x480460) still give every member the
+  same point. Evidence: group_spots_retail / group_spots_legion (every unit of
+  a move, fight-move and patrol has its own destination; groupSpots' own
+  rules), unit_spot_markers / unit_spot_markers_retail (debug harness: 22
+  units incl. far stragglers and flyers, 22 distinct spots, 22 outlined).
+- Alt+N formations (owner's requirement, kept 2026-11-25, both pathfinding
+  modes): Alt+N puts the selection in formation N (Cmd::SetSquad, Unit::squad
+  -N); its members walk at the slowest member's speed (a member behind the
+  centre catches up at its own), its flyers fly at it too (World::flyerPace_
+  in tickFlightBody; in Legion only a formation without ground members, the
+  mixed ones keep Legion's flight stations), and an idle straggler of a
+  resting formation rejoins the centre. TotalA.exe has no formations (no
+  formation mission or group record, see "Groups and air traffic" below);
+  Retail mode used to leave Alt+N inert after the Kingdoms group records went.
+  Legion additionally keeps its formation slots (legionFormationGroup,
+  legionStandbyCheck). Evidence: group_spots_retail / group_spots_legion (six
+  walkers at 70 and 35 px/s, or flyers at 240 and 120: loose they arrive
+  1047..2164 / 341..687 ticks, as an Alt+1 formation within 1 to 30 ticks of
+  each other at the slow units' time; an idle straggler 900 px out walks
+  back), movement_orders formation gait.
 
 ## Out of scope (by decision)
 
@@ -191,16 +230,19 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   VTOL_Standby 0x40f7d0, VTOL_LandIfCan 0x40f2a0, VTOL_Follow 0x40fbe0,
   AirToAir 0x412d40, VTOL_SeekAttack 0x4103e0, VTOL_SeekGuard 0x410850,
   VTOL_Pickup 0x4111b0, VTOL_Unload 0x411560), and there are no group records:
-  World::retailGroupOf is always null, so Kingdoms' group checks, formations,
-  standby re-forms and pacing never run (Legion keeps its own formations).
+  World::retailGroupOf is always null, so Kingdoms' group checks, formation
+  legs, standby re-forms and group-record pacing never run. The engine's own
+  Alt+N formations (pacing to the slowest member, the rejoin) run in both
+  modes: "Known deviations".
   A multi-unit order spreads its goals once, at issue (the selection order
   0x48cf30): every selected unit but the target counts in the centre; a unit
   whose mission row has flag 0x2 (Move_Ground, VTOL_Move 0x402; Patrol,
   VTOL_Patrol, the repair patrols 0x412) takes the click plus its offset from
   the centre when within sqrt(3000 n) px, else the click -- ground units too.
-  Retail mode now does that for every unit on a move or patrol (client and
-  sim); Legion keeps its own ground spread. The AI's group orders (0x480460)
-  give every member the same point.
+  The engine keeps that offset for the units within reach and gives every
+  other unit its own free spot instead of the click (sim/groupspots.h, both
+  modes; "Known deviations"). The AI's group orders (0x480460) give every
+  member the same point.
 - Flying builders' hover: VTOL_MobileBuild (0x413d80) and VTOL_HelpBuild
   (0x414380) approach the site with radius builddistance (0x413f60, 0x4144ed),
   then on every 150th game tick re-pick a point builddistance from the site at
@@ -595,7 +637,9 @@ data (cleanup, no gameplay).
   - Formation legs (Order::formationLevel / attackFormation,
     retailGroundFormation / retailFlightFormation): nothing builds one any
     more (the group checks that pushed them are gone); a leg retires at
-    once. Legion's standby uses its own check (legionStandbyCheck).
+    once. Legion's standby uses its own check (legionStandbyCheck). Alt+N
+    formations do not need them: World::tick's formation aggregates pace and
+    gather them in both modes ("Known deviations").
   - Unbuilt tools/ sources (not in CMakeLists.txt): production_test,
     site_decay_test, helpbuild_test, owner_change_test, factory_death_test,
     duration_test, retail_visual_test and others still reference the pool

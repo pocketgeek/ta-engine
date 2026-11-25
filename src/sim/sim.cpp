@@ -2675,6 +2675,8 @@ void World::tickFlightBody(Unit& u) {
     // Legion formation flyer: the ground's pace (see planLegionFlightStations).
     const auto* station=legionFlightStation(u);
     if (station && station->capped) maximum=fxMin(maximum,station->cap);
+    // An Alt+N formation's flyer: its formation's pace (the mover's loop).
+    if (flyerPace_.id==u.id && u.id) maximum=fxMin(maximum,flyerPace_.cap);
     const uint16_t heading=portHeadingToRetail(u.heading);
     const auto previousVelocity=u.flightVelocity;
     u.flightVelocity=retailFlightVelocity(u.flightVelocity,position,
@@ -20078,24 +20080,27 @@ void World::tick(float dt) {
     // below as an Alt+N formation does, but is never paced (formOf).
     std::vector<std::array<FormAgg, 100>> forms(kMaxPlayers);
     const bool legionRejoin = isLegionPathfinding(pathfindingMode_) && legion_;
+    // Alt+N formations are an engine feature in both pathfinding modes (docs/
+    // ta-port-plan.md "Known deviations": TotalA.exe has no formations or group
+    // records), so Retail mode paces and gathers them here as Legion does, only
+    // without Legion's slots.
     auto groupOf = [&](const Unit& u) -> int {
-        if (u.player < 0 || u.player >= kMaxPlayers || pathfindingMode_==PathfindingMode::Retail) return 0;
+        if (u.player < 0 || u.player >= kMaxPlayers) return 0;
         if (u.squad < 0) return -u.squad;
         return legionRejoin ? legionFormationGroup(u) : 0;
     };
     auto formOf = [&](const Unit& u) -> FormAgg* {
-        // Retail paces through the native group records instead.
-        if (u.squad >= 0 || u.player < 0 || u.player >= kMaxPlayers ||
-            pathfindingMode_==PathfindingMode::Retail) return nullptr;
+        if (u.squad >= 0 || u.player < 0 || u.player >= kMaxPlayers) return nullptr;
         return &forms[u.player][-u.squad];
     };
     auto rejoinOf = [&](const Unit& u) -> FormAgg* {
         const int g = groupOf(u);
         return g ? &forms[u.player][g] : nullptr;
     };
-    // Retail has no formation aggregates (formOf is null for every unit), so it
-    // skips this walk and the rejoin walk below: neither can do anything there.
-    const bool formations = pathfindingMode_!=PathfindingMode::Retail;
+    // Only a tick with a formation (or, in Legion, an AI squad flagged one) walks
+    // the units for the aggregates and the rejoin.
+    const bool formations = legionRejoin || std::any_of(units_.begin(), units_.end(),
+        [](const Unit& u) { return u.squad < 0 && u.alive(); });
     if (formations) TA_PASS();
     if (formations) for (auto& u : units_)
         if (u.alive() && u.type && !u.type->isStructure() &&
@@ -20746,8 +20751,16 @@ void World::tick(float dt) {
 
         Fixed target = u.baseSpeed;
         // Formation pacing uses the slowest member, except for a member
-        // catching up from behind the group's centre.
-        if (u.squad < 0 && !u.orders.empty() && u.orders.front().targetId == 0) {
+        // catching up from behind the group's centre. A flyer is paced too
+        // (tickFlightBody reads flyerPace_), unless Legion keeps it on a station
+        // over its formation's ground (planLegionFlightStations) or, in Legion,
+        // its formation has ground members at all (the stations' rules hold
+        // there); Retail paces a mixed formation's flyers to its slowest member.
+        const bool pacedFlyer = u.type->canFly &&
+            (!isLegionPathfinding(pathfindingMode_) || [&] { const FormAgg* f = formOf(u); return f && f->gn == 0; }()) &&
+            !legionFlightStation(u);
+        if (u.squad < 0 && !u.orders.empty() && u.orders.front().targetId == 0 &&
+            (!u.type->canFly || pacedFlyer)) {
             if (FormAgg* f = formOf(u); f && f->n > 1) {
                 const float cx = f->cx(), cz = f->cz();
                 // "Behind the centre" is measured against the leg the group is
@@ -20764,10 +20777,12 @@ void World::tick(float dt) {
         // The pace it may walk at this tick, for its headway window (updateLegionStill).
         if (size_t(u.id)>=legionPace_.size()) legionPace_.resize(size_t(u.id)+1);
         legionPace_[size_t(u.id)]={tickCounter_,target.v};
+        flyerPace_ = u.type->canFly && target < u.baseSpeed ? FlyerPace{u.id, target} : FlyerPace{};
         if (g_phase) {
             PhaseSpan span(g_moveMs,probe::kMovement);
             tickNavigationMovement(u,target);
         } else tickNavigationMovement(u,target);
+        flyerPace_ = {};
 
     }
     // The projectile pass. TotalA.exe's game tick 0x495490 runs the units

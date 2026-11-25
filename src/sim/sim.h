@@ -4779,6 +4779,11 @@ private:
     // the move runs), -1 otherwise.
     int legionStandbyCheck(Unit& u);
     const LegionFlightStation* legionFlightStation(const Unit& u) const;
+    // The formation pace (Alt+N, Unit::squad < 0) of the flyer the unit loop is
+    // moving now, for tickFlightBody; set and cleared around its move, derived
+    // from hashed state each tick, never hashed itself.
+    struct FlyerPace { int id = 0; Fixed cap; };
+    FlyerPace flyerPace_;
     static int retailGroupIndex(const Unit& u);
     RetailGroupMember retailGroupMember(const Unit& u) const;
     uint32_t retailMissionFlags(Unit& u);

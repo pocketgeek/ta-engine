@@ -8125,9 +8125,12 @@
     }
 
     // ---- destination markers (ours, not retail) ----------------------------------
-    // Legion hands each member of a move click its own spot round the click (formation,
-    // arrival-layout and packed slots), so the click marker alone does not say where a
-    // given body will stand. When the player gives a move, fight-move or patrol order,
+    // A group order gives each member its own spot round the click -- Legion's
+    // formation, arrival-layout and packed slots for the surface movers it plans, and
+    // for every other unit (all of them in Retail mode) its own point from the click
+    // (sim/groupspots.h; TotalA.exe sends far members to the click itself) -- so the
+    // click marker alone does not say where a given body will stand. When the player
+    // gives a move, fight-move or patrol order,
     // each of those units' own spot gets a thin outline of the unit's footprint in the
     // player's colour, held for a moment and faded out over kSpotFlashMs; a spot handed
     // out a few ticks later (a big click is handed out over several) appears when it is
@@ -8142,8 +8145,8 @@
     //
     // Display only: the spot is captured with the unit's orders (UnitR::hasSpot), so it
     // exists only for units whose orders this client reads, and only the viewed player's
-    // are drawn. A unit with no spot of its own (Retail pathfinding, flyers, a member
-    // still queued for its slot, attack/guard/work legs) keeps the click marker alone.
+    // are drawn. A unit with no spot of its own (a Legion member still queued for its
+    // slot, attack/guard/work legs) keeps the click marker alone.
     bool GameView::spotLeg(const UnitR& u, uint32_t minIssued) {
         if (!u.hasSpot || u.holdsRally()) return false;
         for (const auto& o : u.orders) {

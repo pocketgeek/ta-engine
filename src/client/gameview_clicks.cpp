@@ -2,8 +2,10 @@
 #include "client/clickrules.h"
 #include "client/cursorrange.h"
 #include "client/friendlyorder.h"
-#include "sim/retailflyerspread.h"
+#include "sim/groupspots.h"
 #include "sim/retailheight.h"
+
+#include <unordered_map>
 
 // What a click orders (client/clickrules.h, PLAN 2.1-2.11): the per-unit facts the
 // pure rules read, the commands they become, the boxes, and the minimap's orders.
@@ -15,18 +17,6 @@ namespace {
 
     // A frame position as the sim's raw 16.16 (the frame holds Fixed::toFloat).
     int32_t flyerRaw(float v) { return ta::sim::Fixed::fromFloat(v).v; }
-
-    // Retail's flyer spread (sim/retailflyerspread.h): the goal of a flyer at its
-    // frame position for a click at (wx, wz), the same integer 16.16 arithmetic the
-    // sim gives an explicit order's flyers.
-    template<class Unit>
-    void flyerSpreadGoal(const ta::sim::FlyerGroupCentre& air, const Unit& u, float wx, float wz,
-                         float& gx, float& gz) {
-        int32_t x = 0, z = 0;
-        air.goal(flyerRaw(u.x), flyerRaw(u.z), flyerRaw(wx), flyerRaw(wz), x, z);
-        gx = ta::sim::Fixed::raw(x).toFloat();
-        gz = ta::sim::Fixed::raw(z).toFloat();
-    }
 
     int32_t unloadDestinationHeight(const ta::tnt::Map& map,float x,float z) {
         const int height=map.heights.empty() ? 0 : ta::sim::retailTerrainHeight(
@@ -228,53 +218,49 @@ namespace {
                 case ClickOrder::AttackMove: case ClickOrder::Patrol: case ClickOrder::Move: {
                     const auto cmd = kind == ClickOrder::AttackMove ? ta::net::Cmd::AttackMove
                                    : kind == ClickOrder::Patrol ? ta::net::Cmd::Patrol : ta::net::Cmd::Move;
-                    ta::sim::FlyerGroupCentre air;
-                    float cx = 0, cz = 0;
-                    int n = 0;
-                    for (int id : ids)
-                        if (const auto* u = frameUnitP(id)) { cx += u->x; cz += u->z; ++n; air.add(flyerRaw(u->x), flyerRaw(u->z)); }
-                    if (n) { cx /= float(n); cz /= float(n); }
-                    if (mode == 0 && kind == ClickOrder::Move) {
-                        // The right-click move. In a Legion net game the run goes as ONE
-                        // explicit order, OrderShape::Offsets at the click: the sim gives
-                        // the members the same goals as below, from their positions at
-                        // activation.
-                        setClickMove(plan.wx, plan.wz);
-                    } else {
-                        // An armed MOVE, PATROL or fight-move gives flyers TA's spread
-                        // (VTOL_Move and VTOL_Patrol carry the offset flag;
-                        // sim/retailflyerspread.h), and in Retail mode the ground units of
-                        // a MOVE or PATROL too (Move_Ground / Patrol carry it as well);
-                        // every other unit the point itself.
-                        setFlyerSpread(plan.wx, plan.wz);
-                    }
+                    // In a Legion net game the run goes as ONE explicit order with the
+                    // click in its template (OrderShape::Offsets for the right-click
+                    // move, FlyerOffsets for an armed move, patrol or fight-move); the
+                    // sim gives the members the same goals as below, from their
+                    // positions at activation (sim/matchsetup.cpp).
+                    if (mode == 0 && kind == ClickOrder::Move) setClickMove(plan.wx, plan.wz);
+                    else setFlyerSpread(plan.wx, plan.wz);
+                    // Every unit gets its OWN spot (sim/groupspots.h; an engine feature
+                    // in both modes, docs/ta-port-plan.md "Known deviations"): within
+                    // TotalA.exe's reach (0x48cf30, sqrt(3000 n) px of the centre) the
+                    // click plus its offset, else the nearest free footprint spot to
+                    // the click -- where retail sends the stragglers to the click
+                    // itself. Legion places its own surface movers on the shared
+                    // point (legionSharedClick), so they keep the click. Members in
+                    // increasing id order, as the sim applies an explicit order's.
                     const bool legion = ta::sim::isLegionPathfinding(worldTables().pathfindingMode());
-                    for (int id : ids) {
+                    std::vector<int> members;
+                    for (int id : ids) if (frameUnitP(id)) members.push_back(id);
+                    std::sort(members.begin(), members.end());
+                    std::vector<ta::sim::GroupSpotMember> spotMembers;
+                    for (int id : members) {
                         const auto* u = frameUnitP(id);
-                        if (!u) continue;
+                        const bool legionPlans = legion && u->type &&
+                            ta::sim::legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ);
+                        spotMembers.push_back({flyerRaw(u->x), flyerRaw(u->z), u->type ? u->type->footX : 1,
+                                               u->type ? u->type->footZ : 1,
+                                               u->type && !legionPlans && !u->type->isStructure(), legionPlans});
+                    }
+                    const auto& map = mapView_.map();
+                    const auto spots = ta::sim::groupSpots(spotMembers, flyerRaw(plan.wx), flyerRaw(plan.wz),
+                                                           map.width * 16, map.height * 16);
+                    std::unordered_map<int, size_t> slot;
+                    for (size_t i = 0; i < members.size(); ++i) slot[members[i]] = i;
+                    for (int id : ids) {
+                        const auto it = slot.find(id);
+                        if (it == slot.end()) continue;
                         ta::net::Command c;
                         c.kind = cmd;
                         c.unitId = id;
                         c.x = plan.wx; c.z = plan.wz;
-                        // TA's spread (TotalA.exe 0x48cf30, sim/retailflyerspread.h): the
-                        // click plus the unit's unclamped offset from the group's centre
-                        // within sqrt(3000 n) px, else the click. Flyers always; in Retail
-                        // mode every unit on a move or patrol (Move_Ground and Patrol carry
-                        // the offset flag as VTOL_Move and VTOL_Patrol do), Shift-queued or
-                        // not. Legion mode keeps OUR rule for ground units on the
-                        // right-click move: +-60 px per axis, except that Legion owns
-                        // footprint-aware group spreading on the shared point for the
-                        // surface movers it plans; a Shift-queued leg shares the point too.
-                        const bool taSpread = u->type && (u->type->canFly ||
-                            (!legion && kind != ClickOrder::AttackMove));
-                        if (taSpread) flyerSpreadGoal(air, *u, plan.wx, plan.wz, c.x, c.z);
-                        else if (mode == 0 && kind == ClickOrder::Move) {
-                            const bool shared = u->type && legion &&
-                                ta::sim::legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ);
-                            if (!shared) {
-                                c.x = plan.wx + std::clamp(u->x - cx, -60.0f, 60.0f);
-                                c.z = plan.wz + std::clamp(u->z - cz, -60.0f, 60.0f);
-                            }
+                        if (spotMembers[it->second].place) {
+                            c.x = ta::sim::Fixed::raw(spots[it->second][0]).toFloat();
+                            c.z = ta::sim::Fixed::raw(spots[it->second][1]).toFloat();
                         }
                         c.queue = queue;
                         issue(c);

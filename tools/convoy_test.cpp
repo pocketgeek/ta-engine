@@ -184,8 +184,11 @@ struct Field {
             for (const auto& c : b.cmds) applyCommand(world, reg, c);
         }
     }
-    // perUnit: the per-unit command stream (hudCommands through the uplink),
-    // else the client's explicit order (issueSelection, serials from 1 up).
+    // perUnit: the per-unit command stream (the AI's and scripts' path: their
+    // group orders give every member the same point, 0x480460, so hudCommands'
+    // own spots go back to the click; through the uplink), else the client's
+    // explicit order (issueSelection, serials from 1 up: every unit Legion does
+    // not plan its own spot, sim/groupspots.h).
     bool perUnit = false;
     uint32_t serial = 1;
     std::vector<CmdBatch> click(const std::vector<int>& sel, Verb verb, float x, float z, int roundTrip = -1) {
@@ -194,7 +197,9 @@ struct Field {
         std::vector<CmdBatch> b;
         if (perUnit) {
             ta::scn::Uplink link(roundTrip);
-            link.issue(ta::scn::hudCommands(world, sel, o));
+            auto cmds = ta::scn::hudCommands(world, sel, o);
+            for (auto& c : cmds) { c.x = x; c.z = z; }
+            link.issue(cmds);
             for (uint32_t t = world.tickCount(); !link.idle(); ++t) b.push_back({t, link.land(t)});
         } else {
             b = ta::scn::issueSelection(world, sel, o, world.tickCount(), 0, roundTrip, serial);
@@ -268,7 +273,8 @@ void selections(bool perUnit) {
         return c.size() == 1 && explicitArea(c.begin()->first) == !perUnit;
     };
     // Flyers listed first, far from the centre on both axes (past retail's
-    // flyer reach, sqrt(3000 n) = 949 px): every flyer's point is the click.
+    // flyer reach, sqrt(3000 n) = 949 px): the click per unit (the AI's shape);
+    // an explicit order gives every flyer its own spot instead.
     {
         Field f;
         f.perUnit = perUnit;
@@ -276,8 +282,11 @@ void selections(bool perUnit) {
         const auto sel = join(fly, f.block(kGround, 276, 20, 20, 23, 3));
         const auto b = f.click(sel, Verb::Move, kX, kZ);
         bool saturated = true;
-        for (int id : fly) saturated &= f.goalOf(id) == std::pair<float, float>{kX, kZ};
-        check(saturated && ticksSpanned(b) == (perUnit ? 5 : 1), "flyers first: out of reach at the click, over 5 ticks (explicit: 1)");
+        std::set<std::pair<float, float>> own;
+        for (int id : fly) { saturated &= f.goalOf(id) == std::pair<float, float>{kX, kZ}; own.insert(f.goalOf(id)); }
+        if (!perUnit) saturated = own.size() == fly.size() && !own.count({kX, kZ});
+        check(saturated && ticksSpanned(b) == (perUnit ? 5 : 1),
+              "flyers first: out of reach at the click (explicit: each its own spot), over 5 ticks (explicit: 1)");
         check(oneConvoy(f.convoysOf(sel), sel.size(), "flyers first") && keyed(f.convoysOf(sel)),
               "flyers first (saturated): one convoy");
     }
@@ -292,8 +301,9 @@ void selections(bool perUnit) {
         f.click(sel, Verb::Move, kX, kZ);
         std::set<std::pair<float, float>> offsets;
         for (int id : join(a, c)) offsets.insert({f.goalOf(id).first - kX, f.goalOf(id).second - kZ});
-        check(offsets == std::set<std::pair<float, float>>{{0.f, 0.f}},
-              "opposite corners: flyers out of reach at the click");
+        check(perUnit ? offsets == std::set<std::pair<float, float>>{{0.f, 0.f}}
+                      : offsets.size() == join(a, c).size() && !offsets.count({0.f, 0.f}),
+              "opposite corners: flyers out of reach at the click (explicit: each its own spot)");
         check(oneConvoy(f.convoysOf(sel), sel.size(), "opposite corners"), "opposite corners: one convoy");
     }
     // An all-air selection over 64 (no anchor ever per unit; an explicit order anchors on its click).

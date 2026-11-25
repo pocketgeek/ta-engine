@@ -1286,6 +1286,12 @@ add_executable(queue_modifiers_test tools/queue_modifiers_test.cpp)
 add_executable(queued_target_test tools/queued_target_test.cpp)
 add_executable(replay_test tools/replay_test.cpp)
 add_executable(pathblock_test tools/pathblock_test.cpp)
+# Group orders give every unit its own spot, and Alt+N formations move together, in
+# both pathfinding modes (sim/groupspots.h; docs/ta-port-plan.md "Known deviations").
+add_executable(group_spots_test tools/group_spots_test.cpp)
+target_link_libraries(group_spots_test PRIVATE ta-formats)
+add_test(NAME group_spots_retail COMMAND group_spots_test retail)
+add_test(NAME group_spots_legion COMMAND group_spots_test legion)
 add_executable(movement_orders_test tools/movement_orders_test.cpp)
 target_link_libraries(movement_orders_test PRIVATE ta-formats)
 add_executable(retail_script_test tools/retail_script_test.cpp)
@@ -2287,8 +2293,9 @@ if(TA_BUILD_CLIENT)
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/click-input.png")
       set_tests_properties(click_input PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: clicks all")
-      # Destination markers: every unit of a mixed-speed Legion move shows its own spot,
-      # flashed after the order and held under Shift (GameView::drawUnitSpots).
+      # Destination markers: every unit of a mixed-speed group move (ground units, far
+      # stragglers and flyers) gets its own spot and shows it, flashed after the order and
+      # held under Shift (GameView::drawUnitSpots), in Legion and in Retail mode.
       add_test(NAME unit_spot_markers COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_UNIT_SPOTS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-profile
@@ -2297,6 +2304,14 @@ if(TA_BUILD_CLIENT)
           --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/unit-spots.png")
       set_tests_properties(unit_spot_markers PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: every unit of a mixed Legion move shows its own spot")
+      add_test(NAME unit_spot_markers_retail COMMAND ${CMAKE_COMMAND} -E env
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_UNIT_SPOTS_TEST=1 TA_UNIT_SPOTS_MODE=retail
+          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-retail-profile
+          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-retail-profile
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
+          --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/unit-spots-retail.png")
+      set_tests_properties(unit_spot_markers_retail PROPERTIES TIMEOUT 90
+          PASS_REGULAR_EXPRESSION "PASS: every unit of a mixed Retail move shows its own spot")
       add_test(NAME area_drag_input COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AREA_DRAG_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-drag-profile

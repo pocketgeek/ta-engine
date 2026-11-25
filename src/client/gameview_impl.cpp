@@ -1220,9 +1220,27 @@
             s.captureOrders(u);
             // The unit's own spot (destination markers, drawUnitSpots): one navigator
             // lookup, and only for a unit with orders, read like legionSwapTick below.
+            // A unit Legion does not plan (Retail pathfinding, flyers, oversize
+            // bodies) holds its own spot in its order: a group order gives each
+            // member its own point (sim/groupspots.h), so its current move-like
+            // leg's goal is the spot.
             ta::sim::Fixed spotX, spotZ;
             s.hasSpot = !s.orders.empty() && u.alive() && world_.legionDestination(u.id, spotX, spotZ);
             if (s.hasSpot) { s.spotX = spotX.toFloat(); s.spotZ = spotZ.toFloat(); }
+            else if (!s.orders.empty() && u.alive() && u.type &&
+                     !(ta::sim::isLegionPathfinding(world_.pathfindingMode()) &&
+                       ta::sim::legionSharedClick(u.type->canFly, u.type->footX, u.type->footZ))) {
+                for (const auto& o : u.orders) {
+                    if (!o.goal) continue;
+                    if (!o.targetId && !o.buildType && !o.reclaimFeat && !o.repairTarget && !o.load &&
+                        !o.unload && !o.guard && !o.reclaimArea && !o.landing && !o.park) {
+                        s.hasSpot = true;
+                        s.spotX = o.x.toFloat();
+                        s.spotZ = o.z.toFloat();
+                    }
+                    break;
+                }
+            }
         }
         else s.clearOrders();
         if (u.player==localPlayer_ || alliedToLocal(u.player) || spectating_ || replayMode_) s.buildQueue = u.buildQueue;
