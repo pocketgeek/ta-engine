@@ -187,31 +187,42 @@ std::string upperStr(std::string s) {
         const bool mouse = e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP;
         if (mouse && !page->at(float(e.button.x), float(e.button.y), taHudLayout_)) return false;
         if (watchOnly()) return mouse;
-        // The stockpile button (MAKENUKE / MAKEANTI, TotalA.exe 0x41abd9..0x41ac3c ->
-        // 0x419b00): a left click asks for one more stock, a right click for one
-        // fewer, Shift five; every selected unit gets it.
-        if (e.type == SDL_MOUSEBUTTONDOWN && taBuildTab_ &&
+        // A build page picture (TotalA.exe's build-menu handler 0x41aa00). The
+        // gadget's name is the unit (0x41aa39 -> 0x488b10). A unit that is placed
+        // on the map -- its type's bmcode byte (+0x22f, stored at 0x42c422) is 0 --
+        // arms the placement (0x41ab7f..0x41ab9c; either button). Anything else, a
+        // mobile unit or the stockpile button (MAKENUKE / MAKEANTI, no unit), is
+        // queued in the unit whose menu this is (0x41abd9..0x41ac3c -> 0x419b00:
+        // MOBILEBUILD / BUILDINGBUILD, or BUILDWEAPON): a left click +1, a right
+        // click -1, Shift five.
+        if (e.type == SDL_MOUSEBUTTONDOWN && taBuildTab_ && !selection_.empty() &&
             (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT)) {
             if (const auto* g = page->at(float(e.button.x), float(e.button.y), taHudLayout_);
-                g && g->type == ta::tagui::Type::Button) {
+                g && g->type == ta::tagui::Type::Button && !g->grayedOut) {
                 const std::string name = upperStr(g->name);
                 const size_t at = name.size() >= 8 ? name.size() - 8 : 0;
                 const std::string tail = name.substr(at);
-                if (tail == "MAKENUKE" || tail == "MAKEANTI") {
+                const bool stock = tail == "MAKENUKE" || tail == "MAKEANTI";
+                const ta::sim::UnitType* t = stock ? nullptr : registry_.find(g->name);
+                if (t && t->buildMovementCode == 0) {
                     playClickTone();
-                    const bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
-                    for (int id : selection_) {
-                        ta::net::Command c;
-                        c.kind = e.button.button == SDL_BUTTON_LEFT ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
-                        c.unitId = id;
-                        c.targetId = shift ? 5 : 1;
-                        std::snprintf(c.type, sizeof c.type, "%s", tail.c_str());
-                        issue(c);
-                    }
+                    placing_ = t;
+                    shiftBuildPlaced_ = false;
+                    return true;
+                }
+                if (stock || t) {
+                    playClickTone();
+                    ta::net::Command c;
+                    c.kind = e.button.button == SDL_BUTTON_LEFT ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
+                    c.unitId = selection_.front();
+                    c.targetId = (SDL_GetModState() & KMOD_SHIFT) ? 5 : 1;
+                    std::snprintf(c.type, sizeof c.type, "%s", stock ? tail.c_str() : t->id.c_str());
+                    issue(c);
                     return true;
                 }
             }
         }
+        if (mouse && e.button.button != SDL_BUTTON_LEFT) return true;   // any other press on the page
         const std::string hit = page->handle(e, taHudLayout_);
         if (hit.empty()) return mouse;
         playClickTone();
@@ -223,11 +234,7 @@ std::string upperStr(std::string s) {
         if (n == "ORDERS") { taBuildTab_ = false; return true; }
         if (n == "NEXT") { ++taBuildPage_; return true; }
         if (n == "PREV") { taBuildPage_ = std::max(1, taBuildPage_ - 1); return true; }
-        if (const auto* t = registry_.find(hit); t && taBuildTab_) {   // a build picture
-            placing_ = t;
-            shiftBuildPlaced_ = false;
-            return true;
-        }
+        if (registry_.find(hit) && taBuildTab_) return true;   // a build picture: taken on the press
         auto stopAll = [&] {
             for (int id : selection_) {
                 ta::net::Command c;

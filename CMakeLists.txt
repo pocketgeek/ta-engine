@@ -1760,6 +1760,13 @@ if(TA_TEST_DATA)
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_IDLE_BUILDERS_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: idle builders strip"
             TIMEOUT 60)
+        add_test(NAME factory_build_menu COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/factory-menu-test.png")
+        set_tests_properties(factory_build_menu PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_FACTORY_MENU_TEST=1"
+            PASS_REGULAR_EXPRESSION "PASS: factory build menu"
+            TIMEOUT 120)
         add_test(NAME diplomacy_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/diplomacy-test.png")

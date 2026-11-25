@@ -2958,6 +2958,88 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: self-destruct notice follows the countdown\n");
             return;
         }
+        if (ta::devFlag("TA_FACTORY_MENU_TEST")) {
+            // A factory's build page queues production (TotalA.exe 0x41aa00 ->
+            // 0x419b00): a click on a mobile unit's picture is a Train order to the
+            // factory, not a placement; left +1, right -1, Shift five. A building's
+            // picture (bmcode 0, 0x41ab7f) still arms the placement. Through the real
+            // input path, then the lab builds the Peewee and it rolls out.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("factory menu: "+what);
+                std::fprintf(stderr,"PASS: factory menu: %s\n",what.c_str());
+            };
+            noFog_=true;edgeScrollOn_=false;
+            constexpr int W=640,H=480;
+            const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
+            const int me=localPlayer_;
+            const int lab=spawn("armlab",cx,cz,0,me);
+            const int com=spawn("armcom",cx-200,cz+150,0,me);
+            check(lab>=0 && com>=0,"fixture spawned");
+            for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
+            const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
+            const auto mouse=[&](Uint32 type,float x,float y,Uint8 button) {
+                SDL_Event e{};e.type=type;
+                if (type==SDL_MOUSEMOTION) {e.motion.x=int(x);e.motion.y=int(y);}
+                else {e.button.button=button;e.button.x=int(x);e.button.y=int(y);e.button.clicks=1;}
+                input(e,W,H);
+            };
+            const auto clickAt=[&](float x,float y,Uint8 button) {
+                mouse(SDL_MOUSEMOTION,x,y,0);mouse(SDL_MOUSEBUTTONDOWN,x,y,button);mouse(SDL_MOUSEBUTTONUP,x,y,button);frame();
+            };
+            // The page's gadget `name` on screen: scanned through the page's own hit test.
+            const auto buttonAt=[&](const std::string& name) -> std::optional<SDL_FPoint> {
+                ta::TaGuiView* page=taHudPage_.empty() ? nullptr : taPage(taHudPage_);
+                if (!page) return std::nullopt;
+                for (float y=0;y<float(H);y+=2)
+                    for (float x=0;x<float(W);x+=2)
+                        if (const auto* g=page->at(x,y,taHudLayout_); g && SDL_strcasecmp(g->name.c_str(),name.c_str())==0)
+                            return SDL_FPoint{x+3,y+3};
+                return std::nullopt;
+            };
+            const auto queued=[&](const char* id) {
+                int n=0;
+                if (const auto* u=world_.unit(lab)) for (const auto* t:u->buildQueue) n+=t && t->id==id;
+                return n;
+            };
+            mapView_.setZoom(1.0f);
+            selection_={lab};taBuildTab_=true;taBuildPage_=1;
+            frame();frame();
+            check(SDL_strcasecmp(taHudPage_.c_str(),"ARMLAB1")==0,"the lab's first build page is on show: "+taHudPage_);
+            const auto pw=buttonAt("ARMPW");
+            check(pw.has_value(),"the page has the Peewee's picture");
+            clickAt(pw->x,pw->y,SDL_BUTTON_LEFT);
+            check(!placing_,"a left click on it arms no placement");
+            check(queued("armpw")==1,"it queues one Peewee in the lab: "+std::to_string(queued("armpw")));
+            SDL_SetModState(KMOD_SHIFT);
+            clickAt(pw->x,pw->y,SDL_BUTTON_LEFT);
+            SDL_SetModState(KMOD_NONE);
+            check(queued("armpw")==6,"Shift+click queues five more: "+std::to_string(queued("armpw")));
+            clickAt(pw->x,pw->y,SDL_BUTTON_RIGHT);
+            check(queued("armpw")==5,"a right click takes one off: "+std::to_string(queued("armpw")));
+            SDL_SetModState(KMOD_SHIFT);
+            clickAt(pw->x,pw->y,SDL_BUTTON_RIGHT);
+            SDL_SetModState(KMOD_NONE);
+            check(queued("armpw")==0,"Shift+right click takes five off");
+            check(selection_==std::vector<int>{lab},"the clicks leave the selection");
+            clickAt(pw->x,pw->y,SDL_BUTTON_LEFT);
+            int built=-1;
+            for (int t=0;t<30*120 && built<0;++t) {
+                writableWorld().tick(1.f/30);
+                for (const auto& u:world_.units())
+                    if (u.alive() && u.type && u.type->id=="armpw" && u.player==me && !u.underConstruction) {built=u.id;break;}
+            }
+            check(built>=0,"the lab builds the Peewee");
+            // A mobile builder's page: a building's picture arms the placement.
+            selection_={com};taBuildTab_=true;taBuildPage_=1;
+            frame();frame();
+            const auto solar=buttonAt("ARMSOLAR");
+            check(solar.has_value(),"the Commander's page has the solar collector");
+            clickAt(solar->x,solar->y,SDL_BUTTON_LEFT);
+            check(placing_ && placing_->id=="armsolar","a building's picture arms its placement");
+            placing_=nullptr;
+            std::fprintf(stderr,"PASS: factory build menu\n");
+            return;
+        }
         if (ta::devFlag("TA_IDLE_BUILDERS_TEST")) {
             // IDLE BUILDERS: one portrait per type of idle builder or factory of the local
             // player, a click selects the next one and goes to it, Shift selects them all,
