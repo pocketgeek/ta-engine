@@ -263,7 +263,7 @@ int32_t MissionScript::command(World& w, const std::string& name, const std::vec
         if (!a.empty()) if (Unit* u=w.unit(a[0])) {
             const int next=a.size()>=2 ? a[1] : human_;
             // Retail's Capture (0x4d3c30) changes the owner through 514da0, the
-            // CRT transfer's new object: orders, last hitter and experience go.
+            // CRT transfer's new object: orders, last hitter and kills go.
             if(u->player!=next) w.scenarioTransfer(u->id,next,this);
         }
         return 0;
@@ -332,7 +332,8 @@ int32_t MissionScript::doCreate(World& w, const std::string& type, const std::ve
 //   wa [NAME]        WaitForAttack: hold until NAME (else this unit) is hit
 //   o A [B]          move state A, fire state B (TotalA.exe 0x487c9d; a missing
 //                    value keeps the unit's own)
-//   v F              fixed veterancy multiplier F (rank shows 10)
+//   v F              the unit's kill count: rank round((F-1)x10) x 5 (engine
+//                    only, missionVeteranKills; TA's own grammar has no `v`)
 //   i NAME           start aboard the transport NAME
 //   g NAME           guard NAME
 //   u X Y            unload there
@@ -420,6 +421,14 @@ MissionScript::Point MissionScript::placedPoint(const UnitType& t, int xpos, int
 
 int32_t MissionScript::percentHp(const UnitType& t, int32_t pct) {
     return int32_t(uint16_t((uint32_t(t.maxHp) * uint32_t(pct)) / 100u));
+}
+
+int MissionScript::missionVeteranKills(float multiplier) {
+    // One float subtract and multiply, then a chop: the same bits on every peer.
+    const float steps = (multiplier - 1.0f) * 10.0f + 0.5f;
+    if (!(steps >= 1.0f)) return 0;   // NaN and F <= 1.05 included
+    if (steps >= 13107.0f) return 65535;   // the word's last whole rank (13107 x 5)
+    return int(steps) * 5;
 }
 
 
@@ -550,8 +559,8 @@ void MissionScript::applyOrders(World& w, int unitId, const std::string& orders,
             w.scriptStandingFields(unitId, move & 3, fire & 3);
             break;
         }
-        case 'v':                                         // 5148e1: v F -> unit +0xf4
-            if (scan.number(fx)) w.setVeterancyOverride(unitId, fx);
+        case 'v':                                         // engine: v F -> the kill count
+            if (scan.number(fx)) w.scriptKills(unitId, MissionScript::missionVeteranKills(fx));
             break;
         case 'i': {                                       // 514893: i NAME -> 51b4f0
             const int carrier = initial && scan.name(nm, true) ? resolvePlacement(nm) : 0;

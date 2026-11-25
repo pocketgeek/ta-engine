@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
                 sem = a.objectName == b.objectName && a.x == b.x && a.z == b.z &&
                       a.player == b.player && a.health == b.health &&
                       a.armor == b.armor && a.weapon == b.weapon &&
-                      a.angle == b.angle && a.veteran == b.veteran;
+                      a.angle == b.angle && a.kills == b.kills;
             }
             bool stable = (w == w2);
             size_t rules = 0;

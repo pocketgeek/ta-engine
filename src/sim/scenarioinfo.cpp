@@ -69,7 +69,7 @@ ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, co
         const auto crtBytes = vfs.tryRead(ta::vpath::replaceExtension(mapPath, ".crt"));
         crt::Scenario scenario;
         if (crtBytes) scenario = crt::parse(*crtBytes);
-        info.crtValid = crtBytes && scenario.version == 1;
+        info.crtValid = crtBytes && scenario.version != 0;
         bool badOwner = false;
         if (info.crtValid) {
             info.placed = int(scenario.units.size());

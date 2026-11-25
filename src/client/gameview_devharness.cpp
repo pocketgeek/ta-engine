@@ -281,7 +281,7 @@
                 if (ta::sim::Unit* su = writableWorld().unit(uid)) {   // apply the .crt stats
                     if (su->type)
                         su->hp = ta::sim::Fixed::fromFloat(su->type->maxHp * float(std::clamp(u.health, 0, 100)) / 100.0f);
-                    writableWorld().setVeteranLevel(*su, u.veteran);
+                    writableWorld().setKills(*su, u.kills);   // TA veterancy (an old rank file's rank x 5)
                 }
                 if (player == 0) { cx += wx; cz += wz; ++n; }
             }
@@ -4960,14 +4960,16 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
     }
 
     // Material-only invalidation for the render matrix (workstream E): every
-    // `period` frames every fifth living mobile unit moves to the next veteran
-    // level in 4..9 (gold body tint; level 10 would swap the model).
+    // `period` frames every fifth living mobile unit moves to the next study
+    // tint level in 4..9 (a gold body tint). Client-only: TA draws veterans
+    // as any other unit, so the old rank tint lives on only as this study's
+    // material change (renderStudyTint_), and the simulation is untouched.
     void GameView::renderStudyVeteran(unsigned frame, unsigned period) {
         if(!period || !frame || frame%period)return;
         size_t k=0;
         for(const auto& unit:world_.units()) {
             if(!unit.alive() || !unit.type || !unit.type->canMove || k++%5)continue;
-            if(auto* u=writableWorld().unit(unit.id))writableWorld().setVeteranLevel(*u,4+int((frame/period+k)%6));
+            renderStudyTint_[unit.id]=4+int((frame/period+k)%6);
         }
     }
 

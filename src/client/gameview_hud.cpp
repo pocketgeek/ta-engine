@@ -1337,16 +1337,8 @@ namespace {
                     SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
                     SDL_RenderDrawRectF(ren_, &pr);
                 }
-                // 4b26c0..4b26ef: frame _ftol(level / 10 * 3) - 1, none below 1:
-                // ranks 0-3 show nothing, 4-6 the first, 7-9 the second, 10 the third.
-                if (const int mark = ta::client::experienceFrame(u->veteran); mark >= 0) {
-                    int xi = guiIdxLeft("Experience");
-                    int tier = mark;
-                    if (xi >= 0 && tier < int(guiTex_[xi].size()) && guiTex_[xi][size_t(tier)]) {
-                        SDL_FRect cr{pr.x + 1, pr.y + pr.h - 22 * vs - 1, 11 * vs, 22 * vs};
-                        SDL_RenderCopyF(ren_, guiTex_[xi][size_t(tier)], nullptr, &cr);
-                    }
-                }
+                // No rank mark: TA's veterancy is the kill count, shown by
+                // the panel's KillCount.
             } else if (ii >= 0 && multi) {
                 // A multi-selection: one portrait per type, the front unit's anchoring
                 // the strip at this spot and the rest running LEFT over the chrome and

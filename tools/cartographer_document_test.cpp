@@ -528,7 +528,7 @@ int main() {
             try {(void)cart::loadScenario(vfs,"kmap/damaged.crt");}
             catch(const std::exception&) {rejected=true;}
             check(rejected,"damaged scenario must not silently become an empty editable map");
-            check(cart::loadScenario(vfs,"kmap/absent.crt").version==1,"optional absent scenario remains supported");
+            check(cart::loadScenario(vfs,"kmap/absent.crt").version!=0,"optional absent scenario remains supported");
         }
         ta::crt::Scenario scenario;scenario.players.resize(9);
         ta::crt::RuleGroup group;group.conditions.push_back({});group.actions.push_back({});

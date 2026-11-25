@@ -215,7 +215,7 @@ bool authoredScenario(const hpi::Vfs& vfs, const std::string& mapPath) {
         if (!marker || marker->numberOr("authoredscenario",0)==0 ||
             !tnt::Scenario::parse(text).hasScenario) return false;
         const auto crt=vfs.tryRead(vpath::replaceExtension(mapPath,".crt"));
-        return crt && ta::crt::parse(*crt).version==1;
+        return crt && ta::crt::parse(*crt).version!=0;
     } catch (const std::exception&) { return false; }
 }
 

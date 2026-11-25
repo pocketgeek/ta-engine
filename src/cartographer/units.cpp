@@ -37,7 +37,7 @@ std::vector<PlacedUnit> toPlaced(const ta::crt::Scenario& s, const ta::sim::Type
         p.health = u.health;
         p.armor = u.armor;
         p.weapon = u.weapon;
-        p.veteran = u.veteran;
+        p.kills = u.kills;   // a 1.0 (rank) file is already converted: rank x 5
         p.angle = float(u.angle);
         p.name = u.uniqueName;
         out.push_back(std::move(p));
@@ -47,7 +47,7 @@ std::vector<PlacedUnit> toPlaced(const ta::crt::Scenario& s, const ta::sim::Type
 
 std::vector<uint8_t> saveScenario(ta::crt::Scenario base,
                                   const std::vector<PlacedUnit>& units) {
-    base.version = 1.0f;
+    base.version = ta::crt::kVersionKills;   // saved with kill counts; an old rank file is upgraded
     if (base.players.empty()) base.players.resize(9);   // retail always writes 9
     base.units.clear();
     base.units.reserve(units.size());
@@ -62,7 +62,7 @@ std::vector<uint8_t> saveScenario(ta::crt::Scenario base,
         u.health = std::clamp(p.health, 0, 100);
         u.armor = std::clamp(p.armor, 0, 1000);
         u.weapon = std::clamp(p.weapon, 0, 1000);
-        u.veteran = std::clamp(p.veteran, 0, 9);
+        u.kills = std::clamp(p.kills, 0, 65535);
         long a = std::lround(p.angle) % 360; if (a < 0) a += 360;
         u.angle = int32_t(a);
         base.units.push_back(std::move(u));

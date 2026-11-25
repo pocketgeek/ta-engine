@@ -313,7 +313,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.canHover = info->numberOr("canhover", 0) != 0;
             t.ghost = info->numberOr("ghost", 0) != 0;
             t.waterline = int(info->numberOr("waterline", 0));
-            t.veteranModel = lower(info->valueOr("veteranmodel", ""));
             t.bodyType = lower(info->valueOr("bodytype", "default"));
             // Extended stats.
             t.healTime = float(info->numberOr("healtime", 0));
@@ -6285,12 +6284,10 @@ void World::scriptStandingFields(int unitId, int move, int fire) {
     u->fireState = uint8_t(fire);
 }
 
-void World::setVeterancyOverride(int unitId, float multiplier) {
+void World::scriptKills(int unitId, int kills) {
     Unit* u = unit(unitId);
     if (!u || !u->alive() || !u->type) return;
-    u->vetOverride = multiplier;
-    // The rank reads 10 while it is set; cleared, the authored rank again.
-    u->veteran = u->veteranLevel();
+    setKills(*u, kills);
 }
 
 void World::tickScriptedOrder(Unit& u) {
@@ -6772,19 +6769,22 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
     // changed sides since it fired. A death weapon has no shooter at all
     // (52ac00 leaves the shot's +0x7c 0).
     const Unit* attacker = retailHitter(fromId, fromPlayer);
-    // Attack multiplier = veterancy × live aura buff (AdjustAttack). 52a35c
-    // reads the shooter's +0xe0 only while it lives and is not dying: a shot
-    // still in flight when its shooter fell lands unscaled.
+    // Attack multiplier = live aura buff x the scenario's authored weapon
+    // percentage. 52a35c reads the shooter's +0xe0 only while it lives and is
+    // not dying: a shot still in flight when its shooter fell lands unscaled.
+    // A shooter's veterancy does not scale its damage in TA: its kills steady
+    // its aim (0x48a324, 0x49d6bc), shorten its reload (0x49e468) and shrink
+    // the damage it takes (below).
     float atkMul = attacker && attacker->alive() && attacker->hp > Fixed()
-        ? attacker->vetMul() * attacker->atkBuff * attacker->scenarioWeapon : 1.0f;
-    // Damage + status one victim, honouring veterancy, auras and immunities.
+        ? attacker->atkBuff * attacker->scenarioWeapon : 1.0f;
+    // Damage + status one victim, honouring its kills, auras and immunities.
     auto hurt = [&](Unit& e, float scale) {
         if (benchmarkMode() && e.type && e.type->commander) return;   // benchmark: Monarchs are invincible
         // Base × attacker attack (↑) ÷ victim armour (↓) × splash falloff. Retail
         // 0x52a330 then consumes one CRT draw per recipient and applies its
         // asymmetric ±15% integer spread before the HP update. Keep this stream
         // separate from gameRng_: pathfinding shares the latter's exact sequence.
-        float armour = std::max(e.vetMul() * e.armBuff * e.scenarioArmor, 0.01f);
+        float armour = std::max(e.armBuff * e.scenarioArmor, 0.01f);
         float scaledDamage = w.damageVs(e.type) * atkMul / armour * scale;
         damageCrtUsed_ = true;
         const int answer = retailDamageWithSpread(scaledDamage, crtRand(0x52a3ba), uint8_t(damageMode_));
@@ -7085,12 +7085,9 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // Every shot keeps the shooter visible for 600 ticks (icd 0x52af41, set just
     // before the release 0x530220).
     blockCloak(u, 600);
-    // Ours: a shot with no script (none shipped; the synthetic test armies)
-    // divides its reload by the veteran multiplier. Retail's scripted start
-    // (530140) reads only the weapon's reload word, so a veteran's scripted
-    // shot keeps the nominal reload; changing this fallback moves the Legion
-    // battle scenarios' baselines and nothing retail can run.
-    const float rl = w.reload / std::max(u.vetMul(), 0.01f);
+    // A shot with no script (none shipped; the synthetic test armies) takes
+    // the weapon's reload as it is: TA's veterancy (kills) never shortens it.
+    const float rl = w.reload;
     if(!scriptTriggered) {u.reloads[slot] = int32_t(rl * kTick + 0.5f);u.fireAnimations|=uint32_t(1)<<slot;u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,slot);}   // seconds -> ticks, as retail stores it
     u.justFired = true;
     if (slot < 32) u.firedWeapons |= uint32_t(1) << slot;
@@ -7162,7 +7159,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         }
         Projectile p;p.wsrc=&w;p.fromId=u.id;p.fromPlayer=u.player;
         p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
-        p.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
         p.position=muzzle;p.muzzle=muzzle;p.velocity=velocity;
         // Both shots move in this tick's projectile pass (0x495513, after the
         // units' 0x4954ed fired them): +0x42 is this tick (0x49c7ac) and +0x46
@@ -7209,7 +7205,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
             tu ? taTargetPoint(u,t,w) : t.point;
         Projectile p;p.wsrc=&w;p.fromId=u.id;p.fromPlayer=u.player;
         p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
-        p.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
         p.position=muzzle;p.muzzle=muzzle;
         p.velocity=taBallisticVelocity(heading,pitch,w.velocityFx,u.taBarrel[size_t(slot)],ballisticGravityRaw_);
         p.taHeading=heading;p.taPitch=pitch;p.taSpeed=w.velocityFx;p.taTargetPoint=target;
@@ -7310,7 +7305,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         b.angles={0,uint16_t(u.heading.v),0xc000};
         b.x=Fixed::raw(b.position[0]);b.z=Fixed::raw(b.position[2]);
         b.targetId=tu ? tu->id : 0;b.slot=slot;b.fromPlayer=u.player;b.fromId=u.id;b.fx=w.fx;
-        b.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
         b.substeps=1;
         if(!b.taBallistic)b.start=tickCounter_+1;
         // The drawn arc's length only: the fall from the release height.
@@ -7358,9 +7352,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     p.vx = Fixed::fromFloat(dx / dist * vel / kTick);   // px per TICK, as retail stores it
     p.vz = Fixed::fromFloat(dz / dist * vel / kTick);
     p.wsrc = &w;
-    // Retail BallisticWeapon::initShot selects and stores a model pointer at
-    // launch, so later veterancy changes cannot change an in-flight bolt.
-    p.projectileUsesVeteranModel = w.usesVeteranShotModel(u.veteran);
     // Retail's BallisticWeapon class uses XYZ motion and collision whether its
     // authored projectile is a mesh or a sprite. Preserve that native trajectory
     // for every ordinary ballistic shot; the renderer draws a mesh when present
@@ -9678,7 +9669,7 @@ void World::captureUnit(Unit& t, int newPlayer) {
 // activatewhenbuilt type, 512301), no orders, rally, production or work, no
 // statuses (paralysis and cloaking are missions), the type's standing orders,
 // fresh weapon records (52aae0, 51a880, 519b10), an empty mana pool (+0xd8),
-// no experience, the scenario's stats for the type, no last hitter, no squad,
+// the scenario's stats (and kill count) for the type, no last hitter, no squad,
 // no scenario name (+4), HP samples, self-repair carry, cloak delay and
 // air-traffic count at 0 (511990), and the trigger latch (+0xd4) at 0, so the
 // mission's next sweep fires UnitCreated for the new owner and its regions
@@ -9723,10 +9714,9 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     u.variationPhase = uint16_t(gameRand(65536));     // 511cae: +0x82
     if (u.type->maxVel > Fixed()) gameRand(201);      // 512430: the speed, overwritten (+0x12b)
     startObjectOrders(u);
-    startObjectStats(u);
+    startObjectStats(u);   // its kills too (511c16)
     // The new object's +0xf4 / +0xf5 start at 10 / 0 (0x485c83).
     u.lastHitBy = 0; u.lastHitPlayer = -1; u.lastHitKind = 0;
-    u.kills = 0;   // 511c16
     u.squad = 0;
     u.aiGroup = 0;
     legionFormationSlots_.erase(unitId);   // no squad, so no Legion formation slot
@@ -9847,26 +9837,19 @@ void World::startObjectOrders(Unit& u) {
     }
 }
 
-// A new object's scenario stats (512060 -> the scenario's 4cd590): no
-// experience (511990), both authored multipliers back to 1.0, then the
-// scenario's armour/weapon percentages and veteran level for the type. A
-// change of owner (514da0) makes such an object, so a captured or given unit
-// drops its placement's own percentages (matchsetup) and takes the type's.
+// A new object's scenario stats (512060 -> the scenario's 4cd590): no kills
+// (511c16), both authored multipliers back to 1.0, then the scenario's
+// armour/weapon percentages and kill count for the type. A change of owner
+// (514da0) makes such an object, so a captured or given unit drops its
+// placement's own percentages and kills (matchsetup) and takes the type's.
 void World::startObjectStats(Unit& u) {
-    u.rank = 0;u.vetOverride = 0.0f;
+    u.kills = 0;
     u.scenarioArmor = 1.0f; u.scenarioWeapon = 1.0f;
     if (u.type) if (auto it = scenarioTypeStats_.find(u.type->id); it != scenarioTypeStats_.end()) {
         u.scenarioArmor = float(it->second[0]) * 0.01f;
         u.scenarioWeapon = float(it->second[1]) * 0.01f;
-        u.rank = std::clamp(it->second[2], 0, 10);
+        setKills(u, it->second[2]);
     }
-    u.veteran = u.veteranLevel();
-}
-
-void World::setVeteranLevel(Unit& u, int level) {
-    if (!u.type) return;
-    u.rank = std::clamp(level, 0, 10);
-    u.veteran = u.veteranLevel();
 }
 
 // TotalA.exe's death packet handler 0x4866d0 counts the death where it
@@ -21771,8 +21754,7 @@ void World::hashTrace() const {
                                uint64_t(uint32_t(o.x.v))), uint64_t(uint32_t(o.z.v)));
         }
         hUnitMisc = fnv(fnv(hUnitMisc, u.id), uint64_t(u.alive() ? 1 : 0));
-        hUnitMisc = fnv(hUnitMisc, uint64_t(u.veteran));
-        if (u.rank) hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(u.rank)));
+        hUnitMisc = fnv(hUnitMisc, uint64_t(0));   // was the Kingdoms rank in effect (0 on TA data)
         if (u.scenarioArmor != 1.0f || u.scenarioWeapon != 1.0f) {
             hUnitMisc = fnv(hUnitMisc, std::bit_cast<uint32_t>(u.scenarioArmor));
             hUnitMisc = fnv(hUnitMisc, std::bit_cast<uint32_t>(u.scenarioWeapon));
@@ -22348,9 +22330,7 @@ uint64_t World::stateHash() const {
         mix(uint32_t(u.viewSight.eyeHeight));mix(uint16_t(u.viewSight.distance));
         mix(u.viewSight.sightHeight);mix(u.viewSight.active);mix(uint8_t(u.viewPlayer));mix(u.viewPlanes);
         mix(u.groundGradeTick);
-        mix(uint64_t(u.veteran));
-        if (u.rank) { mix(0x5645545845504552ull); mix(uint32_t(u.rank)); }
-        if (u.vetOverride != 0.0f) { mix(0x5645544f56524445ull); mixf(u.vetOverride); }
+        mix(uint64_t(0));   // was the Kingdoms rank in effect (0 on TA data)
         if (!u.selectable) mix(0x554e53454c454354ull);
         if (u.lastHitKind) mix(0x4c41535448495400ull|u.lastHitKind);
         if (u.attachPiece>=0) mix(0x4154544143485000ull|uint8_t(u.attachPiece));

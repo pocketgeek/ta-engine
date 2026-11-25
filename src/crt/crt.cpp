@@ -66,7 +66,10 @@ Scenario parse(const std::vector<uint8_t>& d) {
     float version;
     const uint32_t versionBits = u32(d, 0);
     std::memcpy(&version, &versionBits, 4);
-    if (!std::isfinite(version) || std::abs(version - 1.0f) > 0.01f) return invalid();
+    if (!std::isfinite(version)) return invalid();
+    const bool rankFile = std::abs(version - kVersionRank) <= 0.01f;
+    if (!rankFile && std::abs(version - kVersionKills) > 0.01f) return invalid();
+    const auto kills = [&](int32_t v) { return rankFile ? killsForRank(v) : v; };
 
     size_t p = 4;
     auto need = [&](size_t n) { return p + n <= d.size(); };
@@ -79,6 +82,7 @@ Scenario parse(const std::vector<uint8_t>& d) {
         CustomType c;
         c.name = str(d, p, 256);
         for (int k = 0; k < 4; ++k) c.stat[k] = i32(d, p + 0x100 + size_t(k) * 4);
+        c.stat[3] = kills(c.stat[3]);
         s.customTypes.push_back(std::move(c));
         p += kTypeRec;
     }
@@ -100,7 +104,7 @@ Scenario parse(const std::vector<uint8_t>& d) {
         u.armor = i32(d, o + 0x214);
         u.weapon = i32(d, o + 0x218);
         u.angle = i32(d, o + 0x21c);
-        u.veteran = i32(d, o + 0x220);
+        u.kills = kills(i32(d, o + 0x220));
         s.units.push_back(std::move(u));
         p += kUnitRec;
     }
@@ -150,12 +154,16 @@ Scenario parse(const std::vector<uint8_t>& d) {
 
 std::vector<uint8_t> write(const Scenario& s) {
     Writer w;
-    w.f32v(s.version == 0.0f ? 1.0f : s.version);
+    const float version = s.version == 0.0f ? kVersionKills : s.version;
+    w.f32v(version);
+    const bool rankFile = std::abs(version - kVersionRank) <= 0.01f;
+    const auto kills = [&](int32_t v) { return rankFile ? rankForKills(v) : v; };
 
     w.i32v(int32_t(s.customTypes.size()));
     for (const auto& c : s.customTypes) {
         w.field(c.name, 256);                    // 0x000
-        for (int k = 0; k < 4; ++k) w.i32v(c.stat[k]);   // 0x100
+        for (int k = 0; k < 3; ++k) w.i32v(c.stat[k]);   // 0x100
+        w.i32v(kills(c.stat[3]));                         // 0x10c
     }
 
     w.i32v(int32_t(s.units.size()));
@@ -171,7 +179,7 @@ std::vector<uint8_t> write(const Scenario& s) {
         w.i32v(u.armor);                         // 0x214
         w.i32v(u.weapon);                        // 0x218
         w.i32v(u.angle);                         // 0x21c
-        w.i32v(u.veteran);                       // 0x220
+        w.i32v(kills(u.kills));                  // 0x220
         w.zero(kUnitRec - (w.b.size() - start)); // 0x224..0x238 residue -> zero
     }
 

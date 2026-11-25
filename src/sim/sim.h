@@ -191,11 +191,6 @@ struct Weapon {
     // the game is the same hand-drawn streak.
     std::string weaponArt;    // weaponart: anims/<name>_4444.taf sprite sequence
     std::string shotModel;    // model: objects3d/<name>.3do projectile mesh
-    std::string veteranShotModel; // veteranmodel: alternate projectile mesh at veteranlevel
-    int32_t veteranLevel = 0; // veteranlevel: source rank that selects veteranShotModel
-    bool usesVeteranShotModel(int sourceVeteran) const {
-        return !veteranShotModel.empty() && sourceVeteran >= veteranLevel;
-    }
     bool  nimbus = false;     // nimbus: faction caster effect and conditional launch delay
     // nimbustime (WeaponType+0x7c, seconds * 30 truncated): the launch delay a
     // nimbus caster with nimbus art adds to the shot's start tick.
@@ -397,7 +392,6 @@ struct UnitType {
     int  waterline = 0;       // FBI waterline: height units the model sits BELOW the
                               // water surface; upright hoverers clamp to terrain,
                               // floaters use the waterline without a terrain clamp.
-    std::string veteranModel; // veteranmodel: 3DO the unit swaps to at max veterancy
     // --- extended FBI stats -------------------------------------------------
     float healTime = 0;       // healtime: worker time the unit repairs ITSELF with (0 = none)
     int32_t leash = 0;        // maneuverleashlength (readInt): max auto-chase distance (0 = unlimited)
@@ -1306,12 +1300,12 @@ struct alignas(64) Unit {
     // floating point (the affordability check at 0x46e85f subtracts one with `fsubl`).
     double layoutPadMana_ = 0;   // was Kingdoms' per-unit mana; kept for the Unit layout asserts
     uint32_t missionEvents = 0; // read by every unit's mission dispatch each tick
-    // An authored veteran rank (a scenario placement or a type's scenario
-    // stats, World::setVeteranLevel): 0..10. TA credits no experience; its
-    // veterancy is `kills`. `veteran` is the rank in effect (veteranLevel).
-    int32_t rank = 0;
+    // Were the engine's authored veteran rank and the rank in effect (Kingdoms'
+    // experience levels); kept for the Unit layout asserts. TA's veterancy is
+    // `kills`, which an authored rank N now sets to N x 5 (crt::killsForRank).
+    int32_t padRank_ = 0;
     float scenarioArmor = 1.0f, scenarioWeapon = 1.0f; // permanent authored multipliers, separate from auras
-    int   veteran = 0;     // veteranLevel(): up to 10; scales attack/armor/mana per shot
+    int   padVeteran_ = 0;
     float atkBuff = 1;     // live attack multiplier from auras (decays to 1)
     float armBuff = 1;     // live armour multiplier from auras (decays to 1)
     // OFF until ordered. Retail treats cloaking as a MISSION, not a spawn state:
@@ -1586,18 +1580,19 @@ struct alignas(64) Unit {
     // 50b700); else 0, as the other squads' plain records pace nothing. Set by
     // Cmd::AiGroup (World::setAiGroup); hashed with a tag when set.
     int8_t aiGroup = 0;
-    // Its kill count (+0xfe, a word): 512ccd counts a kill under the same gate
-    // as the experience, a placement's Kills sets it (514cfb), and a new object
-    // starts at 0 (511c16). Shown on the panel's KillCount for the local
-    // player's unit (4b28e8..4b2909). Display only, so not hashed, like
-    // Player::kills.
+    // Its kill count, TA's only veterancy (TotalA.exe unit +0xb8, a word): the
+    // killer's count goes up at the death (0x4869ca, World::countTaDeath); it
+    // shrinks the damage the unit takes (0x489bf3: amount x (25 - min(kills/5,
+    // 5)) x 4 / 100, retailTaVeteranDamage), steadies its aim (the lead past
+    // 5 kills 0x48a324, the spread over kills/6 0x49d6bc) and shortens its
+    // reload (0x49e468). A new object starts with its type's authored kills
+    // (startObjectStats, else 0); a placement's authored kills or rank (rank
+    // N = N x 5 kills) or a mission's engine-only `v F` clause sets it (TA's
+    // own [units] Kills key is not read). Shown on the panel's KillCount. Not hashed: every change
+    // follows hashed state (a death, a placement, a mission clause), and what
+    // it changes (HP, aim, reload) is hashed.
     uint16_t kills = 0;
-    // A campaign mission's fixed veterancy multiplier (SetMission/InitialMission
-    // `v F`, unit +0xf4, set by icd 0x5148e1). Not 0: getMult (0x5193c0) answers
-    // it instead of 1 + level/10 and getLevel (0x519310) answers 10, so the unit
-    // shows full rank and kills no longer change either. A noveteran type
-    // ignores it, as both helpers test that bit first. Hashed when set.
-    float vetOverride = 0.0f;
+    float padVetOverride_ = 0.0f;   // was a mission's fixed Kingdoms veterancy multiplier; kept for the layout asserts
     // Retail's selectable bit (unit +0x130 & 0x20). Every new unit has it
     // (511990, 511b21), a change of owner included; only a mission's order
     // parse clears it (513fb0's end, 514a7d: when a clause pushed a mission,
@@ -1639,22 +1634,6 @@ struct alignas(64) Unit {
     bool embarked() const { return inTransport != 0; }
     // Paralyzed units can't move, turn, or fire.
     bool incapacitated() const { return paralyzedFor > 0; }
-    // The authored rank's stat multiplier (the engine's scenario rank: base
-    // 1.0, +10% per level, up to 2.0x at 10). Scales attack up and armor up
-    // (less damage taken); not the reload, except in World's script-less
-    // fallback (fire). 1.0 for every unit TA data makes. A mission's `v F`
-    // (vetOverride) replaces it.
-    float vetMul() const {
-        if (vetOverride != 0.0f && type) return vetOverride;
-        // getMult's fild/fmul 0.1f/fadd 1.0f run at the x87's 53 bits: one
-        // rounding to float, not two (tools/re/check_veterancy.py).
-        return float(1.0 + double(0.10f) * double(veteran));
-    }
-    // The rank in effect: 10 under a mission's `v F`, else the authored rank.
-    // World keeps `veteran` equal to it.
-    int veteranLevel() const {
-        return type ? (vetOverride != 0.0f ? 10 : std::clamp<int>(rank, 0, 10)) : 0;
-    }
     bool moving() const { return alive() && (speed > Fixed::fromFloat(1.0f / 30.0f) || !orders.empty()); }
     // Actually translating (for the walk animation), vs standing with an
     // attack/queued order.
@@ -1877,7 +1856,6 @@ struct Projectile {
     bool straight=false;
     bool guided3d=false;    // GuidedWeapon's simulation-owned XYZ state.
     bool ballistic3d=false; // BallisticWeapon XYZ motion and collision, also used to pose the authored shot.
-    bool projectileUsesVeteranModel=false; // model variant selected once at launch by source rank.
     // TotalA.exe selfprop/vlaunch motion (0x49b9c2..0x49bb5b, retailtashot.h):
     // also guided3d for drawing. `end` is the expiry tick (+0x46): powered
     // while end > now, then burnblow detonates or gravity takes over.
@@ -2316,9 +2294,9 @@ public:
     bool scenarioTransfer(int unitId, int newPlayer);
     // The same, telling `notify` (the running mission, or none) of the capture.
     bool scenarioTransfer(int unitId, int newPlayer, MissionScript* notify);
-    // Dev harness and tools: give a unit an authored veteran level as placement
-    // does (setLevel 519370: experience for the level, then the level from it).
-    void setVeteranLevel(Unit& u, int level);
+    // Dev harness, scenarios and tools: give a unit an authored kill count, as
+    // a placement does (clamped to the word, 0..65535).
+    void setKills(Unit& u, int kills) { u.kills = uint16_t(std::clamp(kills, 0, 65535)); }
     int scenarioCreate(const UnitType* type,int player,int lx,int lz,int hx,int hz);
     void scenarioDestroy(int unitId,uint8_t deathType=0);
     // The mission Kill verb (513130): every unit dies, its shots gone.
@@ -2775,8 +2753,9 @@ public:
         for (int p = scenarioParticipantCount_; p < 9; ++p) players_[size_t(p)].team = -1;
     }
     // Retail CRT type defaults apply to every subsequent spawn; health is not consumed.
-    void setScenarioTypeStats(std::string type, int armor, int weapon, int veteran) {
-        scenarioTypeStats_[std::move(type)] = {armor, weapon, veteran};
+    // `kills`: the kill count every new unit of the type starts with.
+    void setScenarioTypeStats(std::string type, int armor, int weapon, int kills) {
+        scenarioTypeStats_[std::move(type)] = {armor, weapon, kills};
     }
     // Retail mission SET40 replaces player0 score and disables all automatic scoring.
     void setScriptScore(int32_t value) { players_[0].score=value; scoreAutomaticDisabled_=true; }
@@ -3378,8 +3357,9 @@ public:
     // the shown order unchanged; only that the unit lives is checked.
     void scriptStandingOrder(int unitId, int order);
     void scriptStandingFields(int unitId, int move, int fire);
-    // SetMission "v F": the fixed veterancy multiplier (Unit::vetOverride); 0 ends it.
-    void setVeterancyOverride(int unitId, float multiplier);
+    // SetMission / InitialMission "v F": the unit's kill count becomes
+    // missionVeteranKills(F) (mission.cpp), TA's veterancy.
+    void scriptKills(int unitId, int kills);
     // The state of a mission order (Order::scripted), or nullptr.
     const ScriptedOrder* scriptedOrder(const Order& o) const {
         return o.scripted && o.scripted <= scriptedOrders_.size() ? &scriptedOrders_[o.scripted - 1u] : nullptr;
@@ -3664,8 +3644,8 @@ private:
     // A new object's standing orders: its type's (511990 +0x130 bits 30-31,
     // +0x134 cleared), or Defensive under a defensive AI.
     void startObjectOrders(Unit& u);
-    // The experience of the new object retail makes for a unit (512060): none
-    // (511990 zeroes +0xf0 and +0xf4), then its type's scenario level (4cd5f4).
+    // The new object's scenario stats: its type's authored armour / weapon
+    // percentages and kill count (scenarioTypeStats_), else none and 0 kills.
     void startObjectStats(Unit& u);
     // TotalA.exe's death accounting (the death packet's switch 0x486892, at the
     // death): the owner's loss, the hitter player's kill and the killer unit's

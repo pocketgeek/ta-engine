@@ -19,7 +19,7 @@ int main() try {
         source.players.resize(9);source.players[0].push_back({{{19,{}}},{{13,{"All Players","message"}}}});
         source.regions.push_back({"Region",1,2,3,4});source.customTypes.push_back({"soldier"});
         const auto bytes=crt::write(source);
-        check(crt::parse(bytes).version==1,"valid CRT rejected");
+        check(crt::parse(bytes).version!=0,"valid CRT rejected");
         for(size_t n=0;n<bytes.size();++n) {
             const auto truncated=crt::parse({bytes.begin(),bytes.begin()+n});
             check(truncated.version==0 && truncated.units.empty() && truncated.players.empty() &&
@@ -30,7 +30,7 @@ int main() try {
             check(crt::parse(invalid).version==0,"invalid CRT version accepted");
         }
         auto residue=bytes;residue[4+4+256-1]=0x80; // Retail raw records may retain bytes after a NUL.
-        check(crt::parse(residue).version==1,"retail record residue rejected");
+        check(crt::parse(residue).version!=0,"retail record residue rejected");
     }
     auto files=std::make_shared<hpi::Vfs::Files>();
     for(const char* name:{"soldier","builder","araking","tarnecro"}) {

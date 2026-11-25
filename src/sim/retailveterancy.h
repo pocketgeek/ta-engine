@@ -3,8 +3,10 @@
 #include <cstdint>
 
 // Retail veterancy and death accounting: TotalA.exe's rules (retailTa*).
-// (Kingdoms' experience routines -- experiencepoints, getLevel / setLevel and
-// its kill credit -- are gone: TA's veterancy is the kill count alone.)
+// (Kingdoms' experience routines -- experiencepoints, getLevel / setLevel, its
+// kill credit, the authored rank's multiplier vetMul and a mission's fixed
+// multiplier -- are gone: TA's veterancy is the kill count alone. An authored
+// rank N is N x 5 kills, crt::killsForRank.)
 namespace ta::sim {
 
 // ---- Total Annihilation (TotalA.exe) ----------------------------------------

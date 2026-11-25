@@ -73,7 +73,7 @@ struct UnitR {
     int turnSpeedPercent = 0;
     int turnReqBam = 0;                // tick's requested turn (BAM) for TurnDirection anim
     float hp = 0, mana = 0;
-    int veteran = 0;
+    int studyTint = 0;                 // render study only (TA_RENDER_VETERAN): the gold tint level 4..9; 0 in a game
     int kills = 0;                     // its own kill count (Unit::kills, the KillCount gadget)
     float deadFor = -1;
     int inTransport = 0;

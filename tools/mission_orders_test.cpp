@@ -10,7 +10,7 @@
 //   g NAME / wa NAME / a NAME  the placed unit NAME (Ident=, else Unitname)
 //   wa        hold until the watched unit is HIT (WaitForAttack 4017a0)
 //   w F N     a wait that a visible enemy within N cells ends (Wait 401480)
-//   v F       a fixed veterancy multiplier (unit +0xf4): rank 10, kills can't move it
+//   v F       (engine only) the kill count: rank round((F-1)x10) x 5, TA's veterancy
 //   a TYPE    AttackUType: every unit of TYPE, one after another, until none
 //   a X Y     the click's armed Attack on the ground at X*16,Y*16 (SUPPRESS)
 //   s / d     no owner change / a self-destruct queued in its place
@@ -512,16 +512,22 @@ static void veterancy(Fixture& f) {
     auto w = makeWorld();
     std::vector<Placed> p = {
         {"soldier", 20, 20, 0, "", "v 2.5"},
-        {"plain", 24, 20, 0, "", "v 3"},
+        {"plain", 24, 20, 0, "", "v 1.2"},
         {"target", 21, 20, 1, "", ""},
+        {"plain", 28, 20, 0, "", "v 0"},
     };
     auto m = startMission(f, *w, p);
     const Unit* v = w->unit(p[0].id);
-    check(std::fabs(v->vetMul() - 2.5f) < 1e-6f && v->veteran == 10, "v 2.5: multiplier 2.5, rank 10",
-          std::to_string(v->vetMul()) + ", rank " + std::to_string(v->veteran));
+    check(v->kills == 75, "v 2.5: the old multiplier's rank 15, so 75 kills", std::to_string(v->kills));
+    check(w->unit(p[1].id)->kills == 10, "v 1.2: rank 2, so 10 kills", std::to_string(w->unit(p[1].id)->kills));
+    check(w->unit(p[3].id)->kills == 0, "v 0: no kills", std::to_string(w->unit(p[3].id)->kills));
+    check(sim::MissionScript::missionVeteranKills(1.0f) == 0 && sim::MissionScript::missionVeteranKills(2.0f) == 50 &&
+          sim::MissionScript::missionVeteranKills(-3.0f) == 0 && sim::MissionScript::missionVeteranKills(1e9f) == 65535,
+          "v F's mapping");
     kill(*w, p[2].id, p[0].id);
     tickN(*w, 2);
-    check(w->unit(p[0].id)->veteran == 10 && w->unit(p[0].id)->vetMul() == 2.5f, "a kill moves neither");
+    check(w->unit(p[0].id)->kills == 76, "a kill counts on top of v F's kills (0x4869ca)",
+          std::to_string(w->unit(p[0].id)->kills));
 }
 
 // ---- 8. a TYPE / a NAME / a X Y ---------------------------------------------------------

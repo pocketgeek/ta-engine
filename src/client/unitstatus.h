@@ -26,15 +26,6 @@ inline const std::string& panelName(const UnitR& u, bool multiplayer, const std:
     return u.displayName();
 }
 
-// The panel's veteran mark (the .gui's Experience, UnitLevels frames) for a
-// rank (getLevel 519310): 4b26c0..4b26ef shows frame _ftol(rank / 10.0 * 3) - 1
-// and hides the gadget when that is 0, so ranks 0-3 show nothing, 4-6 frame 0,
-// 7-9 frame 1 and 10 frame 2. -1 for none. (rank * 3) / 10 chops alike for
-// every rank 0..10.
-inline int experienceFrame(int rank) {
-    return rank > 0 ? (rank * 3) / 10 - 1 : -1;
-}
-
 // Ctrl+D on a selection (48e2b1..48e309): when any selected unit already
 // counts down, the press removes every countdown and arms none; otherwise
 // it arms them all. Each Cmd::Destroy toggles one unit, so this answers the
