@@ -250,6 +250,11 @@
         featureDefs_.clear(); featurePals_.clear();
         for (auto& [name, art] : featureArt_) art.destroyTextures();
         featureArt_.clear();
+        // The referee builds the match in a fresh World, and so must we. This one was set
+        // up on the launch map by the constructor (a lobby game's is the menu's fallback,
+        // Great Divide), and setup rebuilds only what it knows to: whatever it missed
+        // carried that map into the match (World::resetForMatch).
+        writableWorld().resetForMatch();
         // Campaign mission: build the SAME world the referee did. setupMission is
         // deterministic (terrain + placed units + the in-sim god script), so our sim,
         // the referee, and every peer stay byte-identical -- the mission runs in

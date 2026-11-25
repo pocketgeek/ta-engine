@@ -473,6 +473,7 @@
         cfg.vfs = &vfs_;
         cfg.mapPath = mapPath_;
         std::vector<std::pair<float, float>> spots;
+        writableWorld().resetForMatch();   // a fresh World, as the recorded game's (startMpGame)
         if (!mission.empty()) {
             // A CAMPAIGN recording rebuilds the mission -- its placements and its
             // in-sim script -- exactly as the game did. Replaying it through

@@ -226,6 +226,16 @@ contract is stated, enforced, and narrow:
   also built on first use but are NOT memos in this sense -- the planes are
   hashed and their order matters, and the sectors' work is charged to Legion's
   per-tick budget -- so they stay where they are.
+- **Every peer builds the match in a fresh World.** The referee's is new; a
+  client's has already been set up on its launch map by `GameView`'s
+  constructor (a lobby game launches on the menu's fallback, Great Divide), and
+  `setupMatch` rebuilds only what it knows to. So `startMpGame` and
+  `startReplay` call `World::resetForMatch` first: a copy of a default World,
+  keeping only the thread setup. Without it the launch map's feature ore map
+  (`cellMetal_`, also cleared by `setTerrain` now) outlived setup; on Core Prime
+  Industrial Area, which stamps no ore, the client's extractors past Great
+  Divide's edge read 0 metal against the referee's 255 and a single-player game
+  desynced at its first hash after they came up (`match_rebuild_test`).
 - The fog the player sees is display, built locally from the per-player sight
   plane every sim keeps and hashes (`height-and-fog.md`), so per-client team
   fog cannot desync. The referee draws nothing.

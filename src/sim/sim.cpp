@@ -1266,6 +1266,10 @@ void World::setTerrain(const std::vector<uint8_t>& heights, int w, int h, int se
                        const std::vector<uint16_t>* features) {
     mapPlacementCells_.clear();mapPlacementTypes_.clear();corpseFootprints_.clear();corpseAnchors_.clear();
     installedMapFeatures_.clear();
+    // The ore map belongs to the terrain: a new one starts with none stamped (the
+    // features' scan restamps it). Kept, a match built in a world that had another
+    // map read that map's ore wherever its own stamped none.
+    cellMetal_.clear();cellMetalW_=cellMetalH_=0;
     ++placementEpoch_;
     paths_.clear();legion_.reset();
     searchGrades_.clear(); activeSearchGrade_=-1;
@@ -21734,6 +21738,18 @@ uint64_t World::copyOnWriteBytes() const {
     for(const auto& g:navClasses_)bytes+=g.copyOnWriteBytes();
     if(legion_)bytes+=legion_->copyOnWriteBytes();
     return bytes;
+}
+void World::resetForMatch() {
+    const World fresh;
+    auto pool=std::move(pool_);
+    auto cpus=std::move(simCpus_);
+    const int workers=simWorkers_,autoWorkers=autoWorkers_;
+    const bool pin=simPin_,serial=serialThreads_;
+    *this=fresh;
+    adoptCopy(fresh);
+    pool_=std::move(pool);
+    simCpus_=std::move(cpus);
+    simWorkers_=workers;autoWorkers_=autoWorkers;simPin_=pin;serialThreads_=serial;
 }
 void World::restoreFrom(const World& from) {
     auto pool=std::move(pool_);

@@ -2742,6 +2742,17 @@ public:
     void setCrtRngObserver(std::function<void(const RngObservation&)> observer) {
         crtRngObserver_=std::move(observer);
     }
+    // Make this a default-constructed World again, as the referee's is when it runs
+    // setupMatch / setupMission, keeping only how this process ticks it (setSimWorkers,
+    // setSimCpus, setSerialThreads and the pool). A client's World is not fresh when a
+    // match is built in it: GameView's constructor sets it up on the launch map first
+    // (the menu's "great divide" fallback for a lobby game), and setupMatch resets only
+    // what it rebuilds. What it did not -- the feature metal map -- outlived that into
+    // the match: extractors read the launch map's ore (0 past its edge) and the client
+    // desynced from the referee once its first extractor ran (tools/match_rebuild_test).
+    // Copied from a fresh World, so a member added later is reset without anyone
+    // remembering to, unlike the hand-kept list in resetForReplay below.
+    void resetForMatch();
     // Reset all simulation state so a match can be rebuilt (via setupMatch) and
     // replayed from tick 0 deterministically -- crucially nextId_ resets so the
     // replayed spawns get the SAME unit ids as the original run. setTerrain and
@@ -2772,6 +2783,7 @@ public:
         mapPlacementCells_.clear();mapPlacementTypes_.clear();corpseFootprints_.clear();corpseAnchors_.clear();
         corpseSinks_.clear();
         installedMapFeatures_.clear();
+        cellMetal_.clear();cellMetalW_=cellMetalH_=0;
         explorationHeights_.clear();navigationExplored_.clear();explorationBlocks_.clear();
         viewCounts_.clear();deathSights_.clear();
         restoredNavigationViewer_=-1;
