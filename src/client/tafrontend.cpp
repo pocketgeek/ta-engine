@@ -519,6 +519,13 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     art.setBackdrop("bitmaps/skirmsetup4x.pcx");   // the rows share the page palette
     TaFont rowFont;
     rowFont.loadGaf(ren_, vfs_, "hattfont12", gaf::Palette::fromBytes(vfs_.read("bitmaps/skirmsetup4x.pcx"), "skirmsetup4x.pcx"));
+    // The hidden motto (hold Ctrl on the title screen): TA's own button-label font,
+    // through the title backdrop's palette, drawn large in the 1997 pixel style.
+    TaFont mottoFont;
+    try { mottoFont.loadGaf(ren_, vfs_, "hattfont12", gaf::Palette::fromBytes(vfs_.read("bitmaps/frontendx.pcx"), "frontendx.pcx")); }
+    catch (...) {}
+    float mottoAlpha = 0;
+    Uint64 mottoLast = SDL_GetTicks64();
     static const char* kControllers[3] = {"Open", "Player", "Computer"};
     auto cycleValue = [](int v) {   // metal/energy start: 1000 .. 10000 [U: retail steps not traced]
         static const int steps[] = {1000, 2500, 5000, 10000};
@@ -805,6 +812,33 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                     briefFont->draw(ren_, L, x, float(285 + r * lh), run.text, run.color);
                     x += float(briefFont->width(run.text));
                 }
+            }
+        }
+        // Easter egg: hold Ctrl on the title screen and the motto fades in under the
+        // logo (the engine's own; Kingdoms' read "Medieval Bullshit Simulator").
+        {
+            const Uint64 now = SDL_GetTicks64();
+            const float dt = std::min(float(now - mottoLast) / 1000.0f, 0.1f);
+            mottoLast = now;
+            const bool held = page_ == Page::Main && view && message.empty() && !popup &&
+                              ((SDL_GetModState() & KMOD_CTRL)
+#ifndef NDEBUG
+                               || std::getenv("TA_FRONT_MOTTO")   // debug: shot the motto headless
+#endif
+                              );
+            mottoAlpha = std::clamp(mottoAlpha + (held ? 1.0f : -1.0f) * dt / 0.4f, 0.0f, 1.0f);
+            if (mottoAlpha > 0 && mottoFont.height() > 0) {
+                static constexpr const char* kMotto = "ROBOT BULLSHIT SIMULATOR";
+                const float k = 2.5f;   // the label font, scaled up crisp
+                const float w = float(mottoFont.width(kMotto)) * k;
+                GuiLayout S = L;
+                S.scale = L.scale * k;
+                S.ox = L.px((640.0f - w) / 2);
+                S.oy = L.py(336.0f);
+                const uint8_t a = uint8_t(mottoAlpha * 255);
+                GuiLayout Sh = S; Sh.ox += 2 * L.scale; Sh.oy += 2 * L.scale;
+                mottoFont.draw(ren_, Sh, 0, 0, kMotto, SDL_Color{0, 0, 0, 255}, uint8_t(a * 0.8f), true);
+                mottoFont.draw(ren_, S, 0, 0, kMotto, SDL_Color{255, 255, 255, 255}, a);
             }
         }
         if (page_ != Page::Skirmish && !message.empty() && (view || picker)) {

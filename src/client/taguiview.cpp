@@ -119,16 +119,21 @@ int TaFont::width(const std::string& s) const {
     return w;
 }
 
-void TaFont::draw(SDL_Renderer* ren, const GuiLayout& L, float x, float y, const std::string& s, SDL_Color tint) const {
+void TaFont::draw(SDL_Renderer* ren, const GuiLayout& L, float x, float y, const std::string& s, SDL_Color tint,
+                  uint8_t alpha, bool shadow) const {
     for (unsigned char c : s) {
         const Glyph& g = glyphs_[c];
         if (g.tex && c != ' ') {   // a space only advances
             // GAF glyphs carry their own colours; 1-bpp .FNT glyphs take the tint.
-            if (gafFont_) SDL_SetTextureColorMod(g.tex, 255, 255, 255);
+            // A shadow pass draws the glyph's shape in black.
+            if (shadow) SDL_SetTextureColorMod(g.tex, 0, 0, 0);
+            else if (gafFont_) SDL_SetTextureColorMod(g.tex, 255, 255, 255);
             else SDL_SetTextureColorMod(g.tex, tint.r, tint.g, tint.b);
+            SDL_SetTextureAlphaMod(g.tex, alpha);
             const float gy = gafFont_ ? y + float(height_ - g.yoff - 1) : y;
             SDL_FRect r = L.rect(x - (gafFont_ ? float(g.xoff) : 0), gy, float(g.w), float(g.h));
             SDL_RenderCopyF(ren, g.tex, nullptr, &r);
+            if (alpha != 255) SDL_SetTextureAlphaMod(g.tex, 255);
         }
         x += float(g.advance + (gafFont_ ? 0 : 1));
     }
