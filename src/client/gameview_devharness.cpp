@@ -4220,6 +4220,46 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"reclaim capture: no suitable feature/site\n");
             return;
         }
+        // TA_ANIM_TEST: unit animation captures (--testbuild --time N --shot, with
+        // TA_PIECELOG=<ids> for the display VM's poses; advance() runs the display VMs):
+        //   factory:<factory>:<unit>  a finished factory building three of <unit>
+        //                             (its output turns with the build pad)
+        //   move:<unit>               a mobile unit driven 320 px east and back
+        //   air:<flyer>               a landed flyer sent 320 px east; it lands there
+        if (const char* spec=ta::devEnv("TA_ANIM_TEST")) {
+            std::vector<std::string> part;
+            for (std::string s(spec);;) {
+                const size_t colon=s.find(':');
+                part.push_back(s.substr(0,colon));
+                if (colon==std::string::npos) break;
+                s=s.substr(colon+1);
+            }
+            const float px=1920,pz=1616;
+            float lookX=px,lookZ=pz;
+            writableWorld().setStartResources(localPlayer_,100000,100000);
+            if (ta::devFlag("TA_ANIM_LEGION")) {   // Legion pathfinding, as a match that picks it
+                writableWorld().setPathfindingMode(ta::sim::PathfindingMode::Legion);
+                writableWorld().setPathService(true);
+            }
+            if (part[0]=="factory" && part.size()==3 && registry_.find(part[1]) && registry_.find(part[2])) {
+                const int factory=spawn(part[1],px,pz,0,localPlayer_);
+                writableWorld().train(factory,registry_.find(part[2]),3);
+                animFollowId_=factory;
+                std::printf("anim test: factory #%d (%s) building %s\n",factory,part[1].c_str(),part[2].c_str());
+            } else if ((part[0]=="move" || part[0]=="air") && part.size()==2 && registry_.find(part[1])) {
+                const int id=spawn(part[1],px-160,pz,float(M_PI/2),localPlayer_);
+                writableWorld().order(id,px+160,pz,false);
+                if (part[0]=="move") writableWorld().order(id,px-160,pz,true);
+                animFollowId_=id;
+                std::printf("anim test: %s #%d\n",part[1].c_str(),id);
+            } else { std::fprintf(stderr,"anim test: bad spec %s\n",spec); return; }
+            float zoom=2.0f;
+            if (const char* value=ta::devEnv("TA_ANIM_ZOOM")) zoom=std::max(0.25f,float(std::atof(value)));
+            noFog_=true;edgeScrollOn_=false;
+            mapView_.setZoom(zoom);
+            mapView_.setOffset(lookX-640/zoom,lookZ-terrainLift(lookX,lookZ)-400/zoom);
+            return;
+        }
         // TA_AIRPAD_CAPTURE=<pad type>: a repair pad and a fighter at 40% health on
         // patrol past it; the fighter lands on the pad and is mended (SelfRepair):
         // the rider's pose and the pad's nano spray (--shot while it sits there).

@@ -305,6 +305,41 @@ What these entries describe is ported; what is left of each is under "Open".
   carrier's + the attach piece's y turn, pitch + x turn, roll + z turn
   (World::carriedOrientation; piece -1 takes no turn, retail reads the words
   in front of the piece list). A flyer leaves its pad on the pad's heading.
+- Factory output on the build piece (sim): BUILD attaches its new unit to
+  the QueryBuildInfo piece (0x402948: 0x48aac0(output, factory, piece, 1);
+  piece in unit +0xf9, factory in +0x86) and the mover's attached branch
+  (0x43d6d0) puts it on that piece's point every tick (0x43e060; a floater
+  held at sea less waterline, 0x43d712..0x43d75a) and turns it with the
+  piece (0x43d78e -> 0x43e180). World::followBuildPiece does it for an
+  output under construction (Unit::buildPiece, cleared at completion), so
+  a Flash on armvp's pad turns with StartBuilding's `spin pad` (182 BAM a
+  tick). The output used to sit unturned at its spawn point.
+- Aircraft activation (sim + client): 0x43d210 (the flight mode setter)
+  calls 0x48b090(1, 1) on any change to a mode other than landed and
+  0x48b090(1, 0) on landing (0x43d225..0x43d275), and VTOL_LandIfCan
+  deactivates as it starts down (0x40f4c7); the edge runs Activate /
+  Deactivate (0x48b0f7 / 0x48b11c). The landing mission's host now
+  switches the script on those edges (World::switchScriptEdge; it only set
+  Unit::active, so a flyer stayed activated after its first take-off).
+  The display VM mirrored activation only for onoffable / activatewhenbuilt
+  types, so no aircraft ever got Activate: TA flyers open their wings there
+  (armfig activatescr: wing1/wing2 slide out 6 px and tilt) and fold them in
+  Deactivate. A flyer now follows the script's bit (GET ACTIVATION word;
+  client/retailactivation.h).
+- Wheels: the shipped scripts that turn wheels are armyork, armmlv, cormlv
+  (StartMoving: `spin wheelN around x-axis speed <150>`, StopMoving:
+  stop-spin) and cormabm (StartMoving / StopMoving start its mobile /
+  imobile scripts), all on 0x43da70's movement call-ins, which the display
+  VM already got with the right tier (verified, unit_animation). armflash,
+  armfav, corfav, armstump and the other TA vehicles have no wheel pieces
+  (their wheels and treads are faces of `base`, textures `wheel`,
+  `Tredside1/2`) and those textures have one frame each in the shipped GAFs,
+  so TotalA.exe draws them still too: nothing to port.
+- Animation captures: `TA_ANIM_TEST=factory:<factory>:<unit> | move:<unit> |
+  air:<flyer>` with `--testbuild --time N --shot`, the camera on the unit,
+  the display VMs run by advance(); TA_PIECELOG takes a comma list of ids
+  and logs heading and position (TA_PIECELOG_PERIOD sets the interval).
+  Evidence: unit_animation (new).
 - Transports: 0x48ab70 calls 0x4384a0 only for a carrier without isairbase
   (0x48ad19, flagsA bit 9); 0x4384a0 keeps the descriptor-flag-4 missions
   (0x4384c3: ground rows BuildingBuild, Paralyze, GetBuilt, BeCarried,

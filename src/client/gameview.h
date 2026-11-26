@@ -787,6 +787,7 @@ public:
     void testBuild();
 
     std::string lodeUnit;
+    int animFollowId_ = 0;   // TA_ANIM_TEST: the camera stays on this unit through advance()
     void soundTest();
     void faceTest();
     void fireTest();

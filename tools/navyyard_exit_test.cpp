@@ -255,13 +255,20 @@ int main(int argc,char** argv) {
                     layoutName(layout)+" "+ship+": ";
                 if(!only.empty() && label.find(only)==std::string::npos)continue;
                 const Result clear=run(registry,mode,layout,ship,kShips,Crowd::None);
+                // A ship rides the slip while it is built (0x402948 attaches it,
+                // 0x43e180 turns it with the piece every tick), so it is finished
+                // on the yard's heading: armsy's birth spread (buildangle 16384)
+                // no longer turns some of them toward their PARK bearing first.
+                // The Retail mover's Crusader, the slowest turner here, takes up
+                // to 275 ticks to swing round to a PARK spot abeam the yard.
+                const int limit=mode==sim::PathfindingMode::Retail && std::string(ship)=="armroy" ? 300 : 180;
                 check(clear.produced==kShips && int(clear.clear.size())==kShips && clear.stuck==0 &&
-                      clear.median(clear.clear)<=180,
+                      clear.median(clear.clear)<=limit,
                       label+"every ship leaves the yard, median "+std::to_string(clear.median(clear.clear))+" ticks");
                 const Result door=run(registry,mode,layout,ship,kShips,Crowd::Door);
                 check(door.produced==kShips && int(door.clear.size())==kShips && door.stuck==0,
                       label+"eight idle Crusaders at the door hold no ship in");
-                check(door.produced==kShips && door.median(door.clear)<=180 &&
+                check(door.produced==kShips && door.median(door.clear)<=limit &&
                       door.lastDone<=clear.lastDone+clear.lastDone*15/100,
                       label+"with them the yard builds near its clear-door rate ("+std::to_string(door.lastDone)+
                       " vs "+std::to_string(clear.lastDone)+" ticks)");
