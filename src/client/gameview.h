@@ -778,6 +778,11 @@ public:
     int debugFeatureFlameExpected_ = 2;
     int debugFeatureSmokeDrawCount_ = 0;
 #endif
+    // TA_SHOT_FX_TEST: art drawTaShot issued per rendertype, and a switch
+    // that leaves the TA shots out of a frame (the harness's reference).
+    // Outside the NDEBUG block: drawTaShot reads them in every build.
+    std::array<int,8> debugTaShotDraws_{};
+    bool debugSkipTaShots_ = false;
     const std::string& netError() const { return netError_; }
 
     void setFollow(float zoom) { initialCamera_.reset(); follow_ = true; mapView_.setZoom(zoom); }
@@ -1523,8 +1528,24 @@ private:
     // daggers, boulders, harpoons, the egg bomb -- 39 weapons, every one of which
     // was a generic yellow streak before. Same projection as a ghost, but solid,
     // lifted by the shot's altitude and yawed along its flight.
+    // Which 3DO objects a shot model draws: the whole tree, or (TotalA.exe
+    // 0x46bae0 draws one object, client/tashotdraw.h) the root alone, or the
+    // root's first child at the shot's point with no offset from the root.
+    enum class ShotPart : uint8_t { Whole, Root, Child };
     void drawShotModel(const std::string& name, int player, float x, float z,
-                       float altPx, float facing, const ta::sim::Projectile* native=nullptr);
+                       float altPx, float facing, const ta::sim::Projectile* native=nullptr,
+                       ShotPart part=ShotPart::Whole);
+    // The root-only and first-child copies of a shot model, per model name;
+    // rebuilt when ghostModel hands back a different model.
+    struct ShotPieces {
+        const ta::tdo::Model* model = nullptr;
+        ta::tdo::Object root;
+        std::optional<ta::tdo::Object> child;
+    };
+    std::unordered_map<std::string, ShotPieces> shotPieces_;
+    // TotalA.exe 0x49be60's rendertypes 1..6 for a TA shot (client/tashotdraw.h).
+    void drawTaShot(const ta::sim::Projectile& p);
+    void drawTaShotShadow(const ta::sim::Projectile& p);
 
     void drawGhostAt(const ta::sim::UnitType* type, float x, float z,
                      bool invalid = false);
@@ -4932,7 +4953,9 @@ private:
     void spawnWeaponImpact(const ta::sim::Weapon& weapon, float x, float z, float alt = 0,
                            std::optional<std::array<int32_t,3>> position = {}, bool struckUnit = false);
     // Load a named effect animation from its TAF/GAF (truecolor _4444 preferred).
-    const EffectAnim* effectFor(const std::string& animName);
+    // `palettePath` replaces fx.pcx: shot art blits through the game palette
+    // (palettes/palette.pal; TotalA.exe 0x49be60's 0x4b7f90 / 0x4b8500).
+    const EffectAnim* effectFor(const std::string& animName, const char* palettePath = nullptr);
     // Play the named explosion class (a random variant) at (x,z). Returns false
     // if the class/art is unavailable; absence does not request substitute art.
     bool spawnEffect(const std::string& cls, float x, float z, float alt = 0);

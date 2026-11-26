@@ -279,6 +279,22 @@ Scales use the doubles 0x4fd240 = 65536/30, 0x4fd248 = 65536/900, 0x4fd250 = 30,
   lower end (y-major), drawn first (0x49bf3a..0x49c097); 3 = the model at the
   head; 7 = lightning, two strands of floor(L/5) 5 px steps from the tail, each
   point jittered by rand()·11/32768 − 5 px per axis (0x49c48c..0x49c727).
+  The sprite and model types (client/tashotdraw.h) [S]:
+  - shadow (1, 3, 4, 6): anims/fx.gaf `shadow` frame 0 (G+0x1480f) at (x, z − g/2),
+    g = +0x5e = (max + min)/2 of the shot's cell corners (0x49b1ae..0x49b1c3).
+  - 1 = the model's root object posed (+0x34, +0x36 + 0x8000, +0x38 + 0x8000),
+    then while +0x46 > now its first child (3DO +0x30: a missile's flare, a
+    torpedo's prop), rolled by +0x64 (+0x400 a tick) for `propeller` (+0x111 bit 21).
+  - 2 = a 22×22 refraction lens, strength 8, over the screen at the head
+    (0x420620 → 0x4b91b0, 0x4b9360); only MINDGUN, which no shipped unit carries.
+  - 3 = the root object (pose: uninitialised stack). 6 = the root posed by +0x34.
+  - 4 = `color` 0..4 → fx.gaf cannonshell, plasmasm, plasmamd, ultrashell,
+    plasmasm (0x429983..0x429a0b), frame (now − +0x42) mod count; 5..254 only the
+    shadow; ≥ 255 nothing (0x49c270).
+  - 5 = fx.gaf flamestream at the head, frame count − (+0x46 − now)·count/weapontimer,
+    drawn while that is in [0, count); no shadow.
+  - 0x46bae0 draws ONE 3DO object at the shot's point (no offset from its parent,
+    no children); the sprites blit through palette.pal, not fx.pcx.
   map = game +0xdcb, each guipal.pal entry's nearest palette.pal entry by summed
   |dR|+|dG|+|dB| (0x4ac7d0). Points project as (x, z − (y >> 1)).
   3. else `ballistic`: position += velocity, then += the wind vector G+0x37ecc

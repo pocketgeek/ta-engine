@@ -15,6 +15,8 @@
 #include "client/reclaimfade.h"
 #include "client/featuredie.h"
 #include "client/tabeamdraw.h"
+#include "client/tashotdraw.h"
+#include "sim/taweapons.h"
 #include "client/retaileffectframe.h"
 #include "client/retailviewport.h"
 #include "client/texturefilter.h"
@@ -6761,15 +6763,17 @@
         blockText(placing_->name, cxp - tw / 2, czp - hh - 20, px, {230, 230, 200, 255});
     }
 
-    const GameView::EffectAnim* GameView::effectFor(const std::string& animName) {
-        auto it = effectAnims_.find(animName);
+    const GameView::EffectAnim* GameView::effectFor(const std::string& animName, const char* palettePath) {
+        const std::string cacheKey = palettePath ? animName + "@" + palettePath : animName;
+        auto it = effectAnims_.find(cacheKey);
         if (it != effectAnims_.end())
             return it->second.frames.empty() ? nullptr : &it->second;
         EffectAnim ea;
         // Retail 4bd980 loads fx.pcx into game+17410, passed to effect banks
         // including smoke and damage flames. Feature palettes are different.
         ta::gaf::Palette effectPalette;
-        try { effectPalette=ta::gaf::Palette::fromBytes(vread("palettes/fx.pcx"),"palettes/fx.pcx"); }
+        const char* const paletteFile = palettePath ? palettePath : "palettes/fx.pcx";
+        try { effectPalette=ta::gaf::Palette::fromBytes(vread(paletteFile),paletteFile); }
         catch(const std::exception&) {} // retain the decoder's missing-palette fallback
         // "file:sequence" targets a specific GAF sequence (e.g. "flames:flame large");
         // A bare name uses the file of that name and its like-named sequence.
@@ -6818,7 +6822,7 @@
                 }
             } catch (const std::exception&) {}
         }
-        auto& stored = effectAnims_[animName];
+        auto& stored = effectAnims_[cacheKey];
         stored = std::move(ea);
         return stored.frames.empty() ? nullptr : &stored;
     }
@@ -7493,6 +7497,100 @@
     }
 
     // One projectile, drawn per weapon family.
+    // Shot art blits through the game palette, not fx.pcx (TotalA.exe 0x4b7f90).
+    static constexpr const char* kGamePalette = "palettes/palette.pal";
+    // fx.gaf "shadow" frame 0 on the ground under the shot (client/tashotdraw.h).
+    void GameView::drawTaShotShadow(const ta::sim::Projectile& p) {
+        const EffectAnim* art = effectFor("fx:shadow", kGamePalette);
+        if (!art || art->frames.empty()) return;
+        const auto whole = [](int32_t v) { return int(std::bit_cast<int16_t>(uint16_t(uint32_t(v) >> 16))); };
+        const int x = whole(p.position[0]), z = whole(p.position[2]);
+        const auto& terrain = mapView_.map();
+        const int ground = terrain.heights.empty() ? 0 :
+            ta::taShotGroundHeight(x >> 4, z >> 4, terrain.width, terrain.height, [&](int cx, int cz) {
+                return terrain.heights[size_t(cz) * size_t(terrain.width) + size_t(cx)];
+            });
+        const float zm = mapView_.zoom();
+        const auto& fr = art->frames.front();
+        const auto origin = ta::retailEffectSpriteOrigin((float(x) - mapView_.offX()) * zm,
+            (float(z - (ground >> 1)) - mapView_.offY()) * zm, fr.ax, fr.ay, zm);
+        SDL_FRect dst{origin.x, origin.y, float(fr.w) * zm, float(fr.h) * zm};
+        SDL_SetTextureAlphaMod(fr.tex, 255);
+        SDL_RenderCopyF(ren_, fr.tex, nullptr, &dst);
+    }
+
+    // TotalA.exe 0x49be60, rendertypes 1..6 (client/tashotdraw.h).
+    void GameView::drawTaShot(const ta::sim::Projectile& p) {
+        if (debugSkipTaShots_) return;
+        const auto& w = *p.wsrc;
+        const float zm = mapView_.zoom();
+        const auto whole = [](int32_t v) { return int(std::bit_cast<int16_t>(uint16_t(uint32_t(v) >> 16))); };
+        const int x = whole(p.position[0]), y = whole(p.position[1]), z = whole(p.position[2]);
+        const float sx = (float(x) - mapView_.offX()) * zm;
+        const float sy = (float(z - (y >> 1)) - mapView_.offY()) * zm;
+        // The sim's age is tick - launch + 1 after the tick's step; retail's
+        // draw reads now - launch (+0x42) and expiry (+0x46) - now.
+        const int32_t elapsed = std::max(p.age - 1, 0);
+        const int32_t left = int32_t(p.end - (p.start + uint32_t(elapsed)));
+        const auto frameAt = [&](const EffectAnim& art, uint32_t index) {
+            if (index >= art.frames.size()) return;
+            const auto& fr = art.frames[index];
+            const auto origin = ta::retailEffectSpriteOrigin(sx, sy, fr.ax, fr.ay, zm);
+            SDL_FRect dst{origin.x, origin.y, float(fr.w) * zm, float(fr.h) * zm};
+            SDL_SetTextureAlphaMod(fr.tex, 255);
+            SDL_RenderCopyF(ren_, fr.tex, nullptr, &dst);
+            ++debugTaShotDraws_[w.renderType];
+        };
+        if (ta::taShotDrawsShadow(w.renderType, w.color)) drawTaShotShadow(p);
+        const float px = ta::sim::Fixed::raw(p.position[0]).toFloat();
+        const float pz = ta::sim::Fixed::raw(p.position[2]).toFloat();
+        const float yaw = 3.14159265358979323846f - float(p.angles[1]) * (6.283185307179586f / 65536.f);
+        switch (w.renderType) {
+            case 1: {
+                if (w.shotModel.empty()) return;
+                SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+                drawShotModel(w.shotModel, p.fromPlayer, px, pz, 0, yaw, &p, ShotPart::Root);
+                ++debugTaShotDraws_[1];
+                if (left > 0) {
+                    // The flare (or prop) while the motor runs; a propeller
+                    // weapon rolls it 0x400 a tick in flight.
+                    ta::sim::Projectile posed = p;
+                    if (w.hasTaFlag(ta::sim::kWPropeller)) posed.angles[0] = uint16_t(elapsed * 0x400);
+                    drawShotModel(w.shotModel, p.fromPlayer, px, pz, 0, yaw, &posed, ShotPart::Child);
+                }
+                return;
+            }
+            case 3: case 6:
+                if (w.shotModel.empty()) return;
+                SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+                drawShotModel(w.shotModel, p.fromPlayer, px, pz, 0, yaw, &p, ShotPart::Root);
+                ++debugTaShotDraws_[w.renderType];
+                return;
+            case 4: {
+                const auto sequence = ta::taShotSequence(w.color);
+                if (!sequence || w.color >= 0xff) return;
+                const EffectAnim* art = effectFor("fx:" + std::string(*sequence), kGamePalette);
+                if (!art) return;
+                if (const auto index = ta::taShotCycleFrame(elapsed, uint32_t(art->frames.size())))
+                    frameAt(*art, *index);
+                return;
+            }
+            case 5: {
+                const EffectAnim* art = effectFor("fx:flamestream", kGamePalette);
+                if (!art) return;
+                if (const auto index = ta::taShotBurnFrame(left, uint32_t(art->frames.size()), w.weaponTimerTicks))
+                    frameAt(*art, *index);
+                return;
+            }
+            default:
+                // 2: a refraction lens over the pixels already drawn at the
+                // head (0x4b9360). The SDL renderer cannot sample its own
+                // target mid-frame, so the shot stays invisible, as a lens
+                // over plain ground nearly is. No shipped unit carries one.
+                return;
+        }
+    }
+
     void GameView::drawFxProjectile(const ta::sim::Projectile& p) {
         const float zm = mapView_.zoom();
         if(p.taLineOfSight && p.wsrc && (p.wsrc->renderType==0 || p.wsrc->renderType==7)) {
@@ -7506,6 +7604,12 @@
         if (native3d ? !projectedVisibleR(renderX, renderZ -
                            float(int(std::bit_cast<int16_t>(uint16_t(uint32_t(p.position[1]) >> 16))) >> 1))
                      : !cellVisibleR(renderX, renderZ)) return;
+        // A TA shot draws by its weapon's rendertype (TotalA.exe 0x49be60).
+        if (p.wsrc && (p.taLineOfSight || p.taSelfProp || p.taBallistic) &&
+            p.wsrc->renderType >= 1 && p.wsrc->renderType <= 6) {
+            drawTaShot(p);
+            return;
+        }
         float t = std::clamp(float(p.age) / std::max(float(p.flight), 1.0f), 0.0f, 1.0f);
         // Legacy 2D fixture shots have no vertical trajectory. Production
         // weapons carry native XYZ; do not invent a height from live units.
@@ -8121,9 +8225,30 @@
     }
 
     void GameView::drawShotModel(const std::string& name, int player, float x, float z,
-                       float altPx, float facing, const ta::sim::Projectile* native) {
+                       float altPx, float facing, const ta::sim::Projectile* native,
+                       ShotPart part) {
         const ta::tdo::Model* model = ghostModel(name);
         if (!model) return;
+        const ta::tdo::Object* object = &model->root;
+        if (part != ShotPart::Whole) {
+            ShotPieces& pieces = shotPieces_[name];
+            if (pieces.model != model) {
+                pieces.model = model;
+                pieces.root = model->root;
+                pieces.root.children.clear();
+                pieces.child.reset();
+                if (!model->root.children.empty()) {
+                    // 0x46bae0 places the object's vertices at the shot's point:
+                    // its offset from the root is not applied.
+                    pieces.child = model->root.children.front();
+                    pieces.child->children.clear();
+                    pieces.child->x = pieces.child->y = pieces.child->z = 0;
+                    pieces.child->offsetRaw = {};
+                }
+            }
+            if (part == ShotPart::Child && !pieces.child) return;
+            object = part == ShotPart::Root ? &pieces.root : &*pieces.child;
+        }
         // These retail bolt meshes have their arrowhead on -Z; the other
         // directional projectile meshes (including araarrow) point along +Z.
         if (name == "verbal1" || name == "verbal1_vet") facing += 3.14159265f;
@@ -8133,7 +8258,7 @@
         // Projectile roots contain the shot itself, unlike unit roots whose
         // ground-reference plates are suppressed by collect().
         const Xform base=native ? modelBodyTransform(native->angles[2],native->angles[0]) : Xform{};
-        collect(tris_, atlas, model->root, base, nullptr, facing, player,
+        collect(tris_, atlas, *object, base, nullptr, facing, player,
                 false, false);
         if (tris_.empty()) return;
         std::stable_sort(tris_.begin(), tris_.end(),

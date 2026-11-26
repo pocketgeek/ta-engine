@@ -2862,6 +2862,16 @@ if(TA_BUILD_CLIENT)
           --testbuild --winsize 1024 768 --shot "${CMAKE_CURRENT_BINARY_DIR}/beam-fx.png")
       set_tests_properties(beam_fx PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "PASS: beam fx \\(head")
+      # TotalA.exe's sprite and model shots (0x49be60 rendertypes 1, 3, 4, 5;
+      # client/tashotdraw.h): each one's art reaches the screen round its head.
+      add_test(NAME shot_fx COMMAND ${CMAKE_COMMAND} -E env
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_SHOT_FX_TEST=1
+          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/shot-fx-profile
+          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/shot-fx-profile
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
+          --testbuild --winsize 1024 768 --shot "${CMAKE_CURRENT_BINARY_DIR}/shot-fx.png")
+      set_tests_properties(shot_fx PROPERTIES TIMEOUT 120
+          PASS_REGULAR_EXPRESSION "PASS: shot fx \\(")
       # Shots and effects draw in depth order with the ground units and the tall
       # features (the owner's request, not retail): behind a tree covered, in front over it.
       add_test(NAME depth_fx COMMAND ${CMAKE_COMMAND} -E env

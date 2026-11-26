@@ -1429,6 +1429,70 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: air over fx (altitude %.0f)\n",altitude);
             return;
         }
+        if (ta::devFlag("TA_SHOT_FX_TEST")) {
+            // TotalA.exe's sprite and model shots (0x49be60 rendertypes 1, 3,
+            // 4, 5; client/tashotdraw.h): each case's shot in flight, drawn
+            // through the real draw() with and without the TA shots; the art
+            // must change pixels round the head. TA_SHOT_FX_CAPTURE=<prefix>
+            // writes <prefix>-<shooter>.png.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("shot fx: "+what);
+                std::fprintf(stderr,"PASS: shot fx: %s\n",what.c_str());
+            };
+            constexpr int W=1024,H=768;
+            noFog_=true;edgeScrollOn_=false;healthBars_=0;
+            const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f;
+            struct Case { const char* shooter; int renderType; bool dgun; };
+            const Case cases[]={{"armpw",4,false},{"armstump",4,false},{"corpyro",5,false},
+                                {"armsam",1,false},{"armcom",3,true}};
+            const char* capture=ta::devEnv("TA_SHOT_FX_CAPTURE");
+            int row=0;
+            for (const Case& c:cases) {
+                const float z=z0+float(row++-2)*192.0f;
+                const int shooter=spawn(c.shooter,x0,z,0,0);
+                const int foe=spawn("corestor",x0+130,z,0,1);
+                check(shooter>=0 && foe>=0,std::string(c.shooter)+" fixture spawned");
+                if (c.dgun) writableWorld().dgun(shooter,foe,false);
+                else writableWorld().attack(shooter,foe,false);
+                std::optional<ta::sim::Projectile> shot;
+                for (int t=0;t<600 && !shot;++t) {
+                    writableWorld().tick(1.f/30);
+                    for (const auto& p:world_.projectiles())
+                        if (p.fromId==shooter && p.wsrc && p.wsrc->renderType==c.renderType && p.life>0 && p.age>=3)
+                            {shot=p;break;}
+                }
+                check(shot.has_value(),std::string(c.shooter)+"'s rendertype "+std::to_string(c.renderType)+" shot is in flight");
+                const auto head=ta::taShotScreenPoint(shot->position);
+                std::vector<uint8_t> with,without;
+                int ow=0,oh=0;
+                for (const bool skip:{false,true}) {
+                    debugSkipTaShots_=skip;debugTaShotDraws_={};
+                    captureFrame();beginFrame();cosmeticStep(0);
+                    mapView_.setZoom(1.0f);
+                    mapView_.setOffset(std::floor(float(head[0])-float(W-300)*0.5f),std::floor(float(head[1])-float(H)*0.5f));
+                    prepare(W,H);draw(W,H);
+                    SDL_GetRendererOutputSize(ren_,&ow,&oh);
+                    auto& px=skip ? without : with;
+                    px.assign(size_t(ow)*size_t(oh)*4,0);
+                    readViewPixels(px.data(),ow*4);
+                    if (capture && !skip) ta::png::write((std::string(capture)+"-"+c.shooter+".png").c_str(),ow,oh,px);
+                    endFrame();
+                    if (!skip) check(debugTaShotDraws_[size_t(c.renderType)]>0,
+                                     std::string(c.shooter)+": drawTaShot drew rendertype "+std::to_string(c.renderType)+" art");
+                }
+                debugSkipTaShots_=false;
+                const int hx=int(float(head[0])-mapView_.offX()),hy=int(float(head[1])-mapView_.offY());
+                int changed=0;
+                for (int y=std::max(hy-12,0);y<=std::min(hy+12,oh-1);++y)
+                    for (int x=std::max(hx-12,0);x<=std::min(hx+12,ow-1);++x) {
+                        const size_t i=(size_t(y)*size_t(ow)+size_t(x))*4;
+                        changed+=std::memcmp(&with[i],&without[i],3)!=0;
+                    }
+                check(changed>0,std::string(c.shooter)+": the shot changes "+std::to_string(changed)+" px round its head");
+            }
+            std::fprintf(stderr,"PASS: shot fx (%d cases)\n",row);
+            return;
+        }
         if (ta::devFlag("TA_BEAM_FX_TEST")) {
             // TotalA.exe's beam draw (0x49bf3a..0x49c097, client/tabeamdraw.h):
             // an Arm LLT's laser in flight is a line from its head to its tail

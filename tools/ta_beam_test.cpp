@@ -19,6 +19,7 @@
 // A dev harness; not shipped in a game.
 
 #include "client/tabeamdraw.h"
+#include "client/tashotdraw.h"
 #include "gaf/gaf.h"
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
@@ -194,6 +195,43 @@ int main(int argc, char** argv) {
         check(jitter, "each point within 5 px of its step (rand * 11 / 32768 - 5)");
         TaCrtRand crt;
         check(crt() == 41 && crt() == 18467, "the CRT rand (0x4e4870)");
+    }
+
+    std::printf("[0x49be60, the sprite and model shots]\n");
+    {
+        // Rendertype 4's colours (0x49c30b..0x49c345) name sequences the
+        // shipped fx.gaf holds; 5..254 draw only the shadow, 255 nothing.
+        const auto seqs = gaf::load(vfs.read("anims/fx.gaf"),
+                                    gaf::Palette::fromBytes(vfs.read("palettes/palette.pal"), "palette.pal"),
+                                    -1, "anims/fx.gaf");
+        const auto has = [&](std::string_view name) {
+            for (const auto& q : seqs) {
+                std::string a = q.name;
+                for (auto& c : a) c = char(std::tolower(static_cast<unsigned char>(c)));
+                if (a == name) return true;
+            }
+            return false;
+        };
+        bool all = true;
+        for (uint8_t c = 0; c <= 4; ++c) all = all && taShotSequence(c) && has(*taShotSequence(c));
+        check(all && has("flamestream") && has("shadow"),
+              "fx.gaf holds cannonshell, plasmasm, plasmamd, ultrashell, flamestream and shadow");
+        check(!taShotSequence(5) && !taShotSequence(255) && taShotDrawsShadow(4, 254) &&
+              !taShotDrawsShadow(4, 255) && !taShotDrawsShadow(5, 0) && !taShotDrawsShadow(2, 0) &&
+              taShotDrawsShadow(1, 0) && taShotDrawsShadow(3, 0) && taShotDrawsShadow(6, 0),
+              "the shadow: rendertypes 1, 3, 6 and 4 below colour 255 (0x49c270)");
+        check(taShotCycleFrame(0, 10) == 0u && taShotCycleFrame(23, 10) == 3u && !taShotCycleFrame(5, 0),
+              "rendertype 4 cycles (now - launch) mod count (0x49c365)");
+        // FLAMETHROWER: weapontimer 1 s = 30 ticks, 20 frames.
+        // The last tick (1 left: 20 - 0) falls past the sequence, and so does
+        // 32 left (20 - 21); 31 left truncates to frame 0, as idiv does.
+        check(taShotBurnFrame(30, 20, 30) == 0u && taShotBurnFrame(15, 20, 30) == 10u &&
+              taShotBurnFrame(2, 20, 30) == 19u && !taShotBurnFrame(1, 20, 30) && !taShotBurnFrame(32, 20, 30),
+              "rendertype 5: count - left * count / weapontimer, in [0, count) (0x49c3ca..0x49c3ee)");
+        const uint8_t cells[3][3] = {{10, 20, 30}, {40, 50, 60}, {70, 80, 90}};
+        const auto at = [&](int x, int z) { return cells[z][x]; };
+        check(taShotGroundHeight(0, 0, 3, 3, at) == (50 + 10) / 2 && taShotGroundHeight(2, 2, 3, 3, at) == 90,
+              "the shadow's ground: (max + min) / 2 of the cell's corners, clipped at the edge (0x49b1c3)");
     }
 
     // ---- 3. In a World ---------------------------------------------------
