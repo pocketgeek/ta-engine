@@ -954,6 +954,13 @@ void World::activateBuilt(int unitId,bool hold) {
     switchScript(*u,true,hold);
 }
 
+// 0x48b090(1, on) from the engine's own callers (the flight mode 0x43d210,
+// VTOL_LandIfCan 0x40f4c7): only a change of the bit runs a call-in.
+void World::switchScriptEdge(Unit& u,bool on) {
+    const auto* script=unitScript(u.id);
+    if (script && script->activated!=on) switchScript(u,on,false);
+}
+
 void World::switchScript(Unit& u,bool on,bool hold) {
     auto* script=unitScript(u.id);
     if (!script) return;
@@ -4319,8 +4326,13 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             return result;
         }
         void initialize() {} // 0x4898b0(3) (every slot manual): not ported, see the standby
-        void activate(bool on) { u.active=on; }
-        void takeOff() { u.flightGroundMode=2;w.groundMove(u); }   // 0x43d210(unit, 2); 51b3b0 unstamps
+        // 0x48b090(1, on): the activation bit, whose edge runs the script's
+        // Activate / Deactivate (0x48b0f7 / 0x48b11c): a flyer's wings close
+        // as it starts down (0x40f4c7) and open as it lifts off.
+        void activate(bool on) { u.active=on; w.switchScriptEdge(u,on); }
+        // 0x43d210(unit, 2): airborne, and a mode change to anything but
+        // landed sets the activation bit (0x43d26d..0x43d275).
+        void takeOff() { u.flightGroundMode=2;w.groundMove(u);w.switchScriptEdge(u,true); }   // 51b3b0 unstamps
         int seaLevel() const { return uint8_t(w.seaLevel_); }
         bool landable(RetailFlightVector point) {
             return w.flightLandingFree(u,Fixed::raw(point.x),Fixed::raw(point.z));
@@ -4352,6 +4364,9 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             if(u.flightGroundMode!=1) {
                 u.flightGroundMode=1;
                 w.groundMove(u);   // 51b3b0's mode change stamps the landed body
+                // 0x43d210(unit, 1) (0x40f3ef): landed clears the activation
+                // bit (0x43d260..0x43d265: 0x48b090(1, 0)).
+                w.switchScriptEdge(u,false);
             }
             u.flightVelocity={};u.speed=Fixed();
         }
@@ -17530,6 +17545,26 @@ void World::carriedOrientation(Unit& u,const Unit& carrier,int piece) {
     u.groundRoll=uint16_t(carrier.groundRoll+turn[2]);
 }
 
+// A factory's output under construction rides its QueryBuildInfo piece:
+// BUILD attaches it there (0x402948: 0x48aac0(output, factory, piece, 1),
+// the piece in unit +0xf9, the factory in +0x86), and every mover tick the
+// attached branch (0x43d6d0) puts it on that piece's world point (0x43e060;
+// a floater no lower than the sea less its waterline, 0x43d712..0x43d75a),
+// commits it (0x43d775 -> 0x48a9f0) and turns it with the piece (0x43d78e ->
+// 0x43e180, carriedOrientation). A factory spinning its pad from
+// StartBuilding (armvp: spin pad around y-axis) so spins its output.
+void World::followBuildPiece(Unit& u) {
+    Unit* factory=productionOwnerOf(u);
+    if (!factory || !factory->type || !factory->type->isStructure()) return;
+    const auto point=retailAttachedPosition(unitPiecePoint(*factory,u.buildPiece,false),
+        u.type->floater,uint8_t(u.type->waterline),uint8_t(seaLevel_));
+    const bool moved=u.x.v!=point[0] || u.z.v!=point[2];
+    u.x=Fixed::raw(point[0]);u.z=Fixed::raw(point[2]);
+    if (u.type->canFly) u.flightY=Fixed::raw(point[1]); else u.groundY=Fixed::raw(point[1]);
+    carriedOrientation(u,*factory,u.buildPiece);
+    if (moved) { groundMove(u);updateBodyIndex(u); }
+}
+
 // 0x48aac0(unit, 0, -1, 2), every flyer mission's stage 0 (0x40f221,
 // 0x40fb48, 0x4102a1, 0x4107a1, 0x411112, 0x411979, ...): back on the map
 // where it sits (0x47cb40), airborne.
@@ -18660,7 +18695,8 @@ bool World::canPlaceProduction(int builderId,const UnitType* t,float x,float z) 
     return std::none_of(bodies.cells.begin(),bodies.cells.end(),[](const auto* u){return u!=nullptr;});
 }
 
-bool World::productionPosition(int builderId,const UnitType* t,Fixed& spawnX,Fixed& spawnY,Fixed& spawnZ) {
+bool World::productionPosition(int builderId,const UnitType* t,Fixed& spawnX,Fixed& spawnY,Fixed& spawnZ,int* piece) {
+    if (piece) *piece=-1;
     auto* builder=unit(builderId);
     if(!builder || !builder->type || !t)return false;
     Unit& u=*builder;
@@ -18670,6 +18706,7 @@ bool World::productionPosition(int builderId,const UnitType* t,Fixed& spawnX,Fix
         std::array<uint32_t,4> args{0xffffffffu,0,0,0};
         ScriptHost host{*this,u,it->second};
         if (!it->second.state().query(file,file.scriptIndex("QueryBuildInfo"),args,host)) return false;
+        if (piece) *piece=std::bit_cast<int32_t>(args[0]);
         const auto offset=retailPieceOrigin(u.type->productionModel,it->second.peek().pieces,
                                            std::bit_cast<int32_t>(args[0]),portHeadingToRetail(u.heading));
         spawnX=u.x+Fixed::raw(offset[0]); spawnZ=u.z+Fixed::raw(offset[2]);
@@ -18716,7 +18753,8 @@ void World::tickProduction(Unit& u, float dt) {
         // (A rallied mobile producer's room search sets this tick too.)
         if (tickCounter_<u.productionRetryTick) return;
         Fixed spawnX,spawnZ,spawnY;
-        if (!productionPosition(producerId,t,spawnX,spawnY,spawnZ)) {
+        int buildPiece=-1;
+        if (!productionPosition(producerId,t,spawnX,spawnY,spawnZ,&buildPiece)) {
             if (u.type->productionScript) {
                 u.productionRetryTick=tickCounter_+7+gameRand(15);
                 if (u.type->isStructure() && !(u.doorSerial&1u)) ++u.doorSerial;   // a new refusal episode
@@ -18734,6 +18772,9 @@ void World::tickProduction(Unit& u, float dt) {
         site->flightSectorX=spawnX.v>>23;site->flightSectorZ=spawnZ.v>>23;
         site->underConstruction=site->buildBegun=true;
         site->productionOwner=producerId;
+        // 0x402948: 0x48aac0(output, factory, QueryBuildInfo piece, 1) attaches
+        // the output to the build piece (followBuildPiece places it each tick).
+        site->buildPiece=int8_t(std::clamp(buildPiece,-1,127));
         site->hp=Fixed::fromFloat(t->maxHp*0.05f);
         unit(producerId)->productionSiteId=siteId;
         if (auto it=unitScripts_.find(producerId);it!=unitScripts_.end()) {
@@ -18828,6 +18869,7 @@ void World::finishProduction(int producerId,Unit& finished) {
     const bool commanded=!site->orders.empty();
     site->underConstruction=false;
     site->productionOwner=0;
+    site->buildPiece=-1;
     activateBuilt(id);   // 429a8d: the completion activates an activatewhenbuilt output
     // A building's output remembers its factory (clearYardDoor).
     if (producer->type->isStructure()) { site->builtBy=producerId;producer->doorSerial=(producer->doorSerial|1u)+1u; }
@@ -20176,7 +20218,10 @@ void World::tick(float dt) {
             u.cloaked = false;   // toggled off (or no longer a cloaker): decloak now
         }
 
-        if (u.underConstruction) continue;   // silent until finished
+        if (u.underConstruction) {   // silent until finished
+            if (u.buildPiece>=0) followBuildPiece(u);
+            continue;
+        }
         // Retail 51d9d4 updates weapon timers independently of transport
         // missions; 52ae90 decrements before checking whether a weapon can aim.
         // One tick per tick. The referee always steps at exactly 1/kServerHz and game

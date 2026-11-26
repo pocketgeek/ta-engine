@@ -1671,6 +1671,13 @@ struct alignas(64) Unit {
     // infinite queue (World::setStandingOrder, as outputStance); -1 = none, the
     // output keeps its type's own. Hashed when set.
     int8_t outputMoveState = -1, outputFireState = -1;
+    // On a factory's output under construction: the QueryBuildInfo piece it
+    // is attached to (TotalA.exe BUILD 0x402948: 0x48aac0(output, factory,
+    // piece, 1)); the attached branch of the mover (0x43d6d0) then puts it on
+    // that piece's point and turns it with the piece every tick, so it spins
+    // with a spinning pad. -1 otherwise. Set from hashed state (the script's
+    // answer) and only read to place the output, whose pose is hashed.
+    int8_t buildPiece = -1;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -2197,6 +2204,7 @@ public:
     // (tickUnitScript); a Deactivate meanwhile cancels it and starts nothing.
     // `hold` false starts it at once (a finished creation).
     void switchScript(Unit& u,bool on,bool hold=true);
+    void switchScriptEdge(Unit& u,bool on);
     // The activation byte's bit 1 (+0x114 & 2): the script's activation,
     // or the unit's own flag when it has no script.
     bool retailActivated(const Unit& u) const {
@@ -2381,7 +2389,8 @@ public:
     const std::vector<uint8_t>& obstacles() const { return obst_; }
     // Evaluate the same current scripted/fallback output site used by production.
     // Runs QueryBuildInfo, so editor diagnostics must use a private World.
-    bool productionPosition(int builderId,const UnitType* type,Fixed& x,Fixed& y,Fixed& z);
+    // `piece` (optional) receives the QueryBuildInfo piece (-1 for a producer without a production script).
+    bool productionPosition(int builderId,const UnitType* type,Fixed& x,Fixed& y,Fixed& z,int* piece=nullptr);
     // Queue production of `typeId` at a builder building.
     void train(int builderId, const UnitType* type, int count = 1);   // queue `count`
     void dequeue(int builderId, const UnitType* type, int count);     // un-queue `count`
@@ -4619,6 +4628,7 @@ private:
     // within its areaofeffect bursts too (0x49a664..0x49a7ee).
     void burstTaShot(size_t index,int hitUnit);
     void carriedOrientation(Unit& u,const Unit& carrier,int piece);
+    void followBuildPiece(Unit& u);
     // 0x48b16e..0x48b195: a unit whose cloak bit (+0x10e & 4) comes on posts
     // 0x10000 to the missions listening to it (those that target it, through
     // the mission vtable's 0x438870); VTOL_PICKUP waits on it and fails.

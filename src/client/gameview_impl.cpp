@@ -12,6 +12,7 @@
 #include "client/retailfeatureclock.h"
 #include "client/retailbuilderanimation.h"
 #include "client/retailmovementcallbacks.h"
+#include "client/retailactivation.h"
 #include "client/gaitpace.h"
 #include "client/retaildeathsfx.h"
 #include "client/runtimesettings.h"
@@ -2429,9 +2430,13 @@
             // The simulation owns activation, including manual gate commands and
             // automatic AI gate occupancy checks. Mirror its edge so door poses
             // agree with the authoritative yard handshake below.
-            if (u.type && (u.type->onOffable || u.type->activateWhenBuilt) && a.hasActivate && u.active != a.active) {
-                a.active = u.active;
-                a.vm->start(u.active ? "Activate" : "Deactivate");
+            // A flyer follows the script's bit: its wings open at take-off and
+            // fold on landing (client/retailactivation.h).
+            if (u.type) {
+                const int call = ta::retailDisplayActivation(a.active, a.hasActivate,
+                    u.type->canFly && !isStructure(u.type), u.type->onOffable, u.type->activateWhenBuilt,
+                    u.scriptWords.activated, u.active);
+                if (call) a.vm->start(call > 0 ? "Activate" : "Deactivate");
             }
             // Cloak pose. StartCloaking/StopCloaking are real engine entry points
             // (they appear in the icd's call-script-by-name sites alongside Create
@@ -2524,14 +2529,27 @@
             [](const auto& a,const auto& b){return a.first<b.first;});
         for(const auto& [id,vm]:explosionVmTick_)vm->tick(dt);
 #ifndef NDEBUG
-        // TA_PIECELOG=<unit id>: that unit's display-VM piece poses, about twice a second.
-        if (const char* logId = ta::devEnv("TA_PIECELOG")) {
+        // TA_PIECELOG=<unit id>[,<unit id>...]: those units' display-VM piece poses and
+        // headings, about twice a second (TA_PIECELOG_PERIOD=<seconds> to change that).
+        if (const char* logIds = ta::devEnv("TA_PIECELOG")) {
             static float logT = 0; logT += dt;
-            if (logT >= 0.5f) {
+            const char* periodEnv = ta::devEnv("TA_PIECELOG_PERIOD");
+            const float period = periodEnv ? float(std::atof(periodEnv)) : 0.5f;
+            if (logT >= period) {
                 logT = 0;
-                if (auto it = anims_.find(std::atoi(logId)); it != anims_.end() && it->second.vm) {
+                for (const char* p = logIds; *p; ) {
+                const int logId = std::atoi(p);
+                while (*p && *p != ',') ++p;
+                if (*p == ',') ++p;
+                if (auto it = anims_.find(logId); it != anims_.end() && it->second.vm) {
                     const auto& vm = *it->second.vm;
                     std::string line;
+                    if (const UnitR* lu = frameUnitP(logId)) {
+                        char buf[96];
+                        std::snprintf(buf, sizeof buf, " id=%d heading=%u xz=%.1f,%.1f", logId,
+                                      unsigned(lu->headingWord), lu->x, lu->z);
+                        line += buf;
+                    }
                     for (size_t p = 0; p < vm.pieces().size(); ++p) {
                         const auto& s = vm.pieces()[p];
                         if (!s.visible || s.rot[0] || s.rot[1] || s.rot[2] || s.move[0] || s.move[1] || s.move[2]) {
@@ -2544,6 +2562,7 @@
                     }
                     std::fprintf(stderr, "PIECELOG tick=%u threads=%zu%s\n", front().gameTick,
                                  vm.threadPcs().size(), line.c_str());
+                }
                 }
             }
         }
@@ -2675,7 +2694,13 @@
         float printed = 0;
         for (float t = 0; t < seconds; t += 1.0f / 30.0f) {
             update(1.0f / 30.0f);
-            if (ta::devFlag("TA_CONJURE_TEST")) {
+            if (ta::devFlag("TA_CONJURE_TEST") || ta::devEnv("TA_ANIM_TEST")) {
+#ifndef NDEBUG
+                if (const auto* f = animFollowId_ ? world_.unit(animFollowId_) : nullptr) {
+                    const float fx = f->x.toFloat(), fz = f->z.toFloat();
+                    mapView_.setOffset(fx - 640 / mapView_.zoom(), fz - terrainLift(fx, fz) - 400 / mapView_.zoom());
+                }
+#endif
                 beginFrame();
                 cosmeticStep(1.0f / 30.0f);
                 animFrame(1.0f / 30.0f);
