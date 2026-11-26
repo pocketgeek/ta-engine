@@ -87,6 +87,12 @@ enum class Cmd : uint8_t {
     // 0x43f0e0 action 1 -> VTOL_LANDING, 0x43fb26; World::landOnAirBase). An
     // ordinary PlayerCommands item (base layout).
     Land,
+    // Protocol 342: TA's standing orders, the sidebar's MOVEORD / FIREORD
+    // (TotalA.exe 0x41a4d5 / 0x41a5d9): unitId's move state (queue 0,
+    // Standing_MoveOrder 0x4030d0) or fire state (queue 1, Standing_FireOrder
+    // 0x403100) becomes targetId (0..2; World::setStandingOrder). An ordinary
+    // PlayerCommands item (base layout).
+    StandingOrder,
 };
 
 struct SelectionOrder;

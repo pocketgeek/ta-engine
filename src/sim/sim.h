@@ -394,6 +394,29 @@ struct UnitType {
     // "mobile and armed" happened to give the same answer; this is the flag retail
     // actually consults, so a unit that breaks that coincidence still behaves.
     bool canSetStance = true;
+    // TotalA.exe's order-capability word, UnitType +0x245 bits 0-14, as the FBI
+    // parser writes it (0x42c8ae..0x42cac4; every key atol & 1, absent = 0). The
+    // sidebar's ORDERS page enables a button when any selected unit has its bit
+    // (0x41b2e0, 0x41a120; client/orderpage.h). Raw FBI values: canmove here is
+    // the key itself, not canMove's bmcode-gated mobility.
+    enum OrderFlag : uint16_t {
+        kOrderMoveState = 1u << 0,   // mobilestandorders: MOVEORD
+        kOrderFireState = 1u << 1,   // firestandorders:   FIREORD
+        kOrderOnOff     = 1u << 2,   // onoffable:         ONOFF
+        kOrderStop      = 1u << 3,   // canstop:           STOP
+        kOrderAttack    = 1u << 4,   // canattack:         ATTACK
+        kOrderGuard     = 1u << 5,   // canguard:          DEFEND
+        kOrderPatrol    = 1u << 6,   // canpatrol:         PATROL
+        kOrderMove      = 1u << 7,   // canmove:           MOVE
+        kOrderLoad      = 1u << 8,   // canload:           LOAD / UNLOAD
+        kOrderRepair    = 1u << 9,   // = canreclamate (0x42ca3b..0x42ca4f): REPAIR
+        kOrderReclaim   = 1u << 10,  // canreclamate:      RECLAIM
+        kOrderResurrect = 1u << 11,  // canresurrect (no ORDERS button)
+        kOrderCapture   = 1u << 12,  // cancapture:        CAPTURE
+        kOrderCloak     = 1u << 13,  // cloakcost > 0 (0x42ca5a..0x42ca99): CLOAK
+        kOrderDgun      = 1u << 14,  // candgun:           BLAST
+    };
+    uint16_t orderFlags = 0;
     Fixed waterMult = Fixed::fromInt(1);      // watermultiplier: speed factor in shallow water
     // Ticks to cross HALF A CELL (8px) at this type's best speed -- retail's per-type
     // movement time scale, UnitType+0x249, computed at FBI load (icd 0x4bfc5e-0x4bfd34):
@@ -1642,6 +1665,12 @@ struct alignas(64) Unit {
     // drop it stays until that wake (no carrier: 5), so the unit's other
     // missions and its default one wait for it. Hashed when set.
     uint32_t beCarriedWake = 0;
+    // The move / fire state a producer hands its output (TotalA.exe 0x402e82..
+    // 0x402ec2 copies the builder's unit +0x110 bits 18-21 into the new unit):
+    // set by a standing order given to a factory, or to a mobile builder on an
+    // infinite queue (World::setStandingOrder, as outputStance); -1 = none, the
+    // output keeps its type's own. Hashed when set.
+    int8_t outputMoveState = -1, outputFireState = -1;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -3320,6 +3349,11 @@ public:
 
     void setStance(int unitId, int stance); // combat stance 0=offensive/1=defensive/2=passive
     static constexpr int kStanceNone=3;     // setStance on a producer: no stance for its output
+    // TA's standing orders (the sidebar's FIREORD / MOVEORD, 0x41a4d5 / 0x41a5d9):
+    // Standing_MoveOrder (0x4030d0) sets the move state, Standing_FireOrder
+    // (0x403100) the fire state, to value & 3. Only a type with the matching
+    // order bit takes it (0x48d0d7 / 0x48d104). fire = false: the move state.
+    void setStandingOrder(int unitId, bool fire, int value);
     void setCloak(int unitId, bool on);     // canCloak unit: enable/disable cloaking
     void setActive(int unitId, bool on);    // onOffable unit: power on/off
     void setSquad(int unitId, int squad);   // control squad: 0 none, +N group N, -N formation N

@@ -364,6 +364,9 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         case Cmd::Stance:
             if (owns(c.unitId)) world.setStance(c.unitId, c.targetId);
             break;
+        case Cmd::StandingOrder:
+            if (owns(c.unitId)) world.setStandingOrder(c.unitId, c.queue != 0, c.targetId);
+            break;
         case Cmd::Cloak:
             if (owns(c.unitId)) world.setCloak(c.unitId, c.targetId != 0);
             break;

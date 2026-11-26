@@ -345,6 +345,9 @@ add_executable(cursor_enemy_test tools/cursor_enemy_test.cpp)
 add_executable(friendly_order_test tools/friendly_order_test.cpp)
 target_include_directories(friendly_order_test PRIVATE src)
 add_test(NAME friendly_order COMMAND friendly_order_test)
+add_executable(order_page_test tools/order_page_test.cpp)
+target_include_directories(order_page_test PRIVATE src)
+add_test(NAME order_page COMMAND order_page_test)
 add_executable(navblock_test tools/navblock_test.cpp)
 add_executable(setup_reachability_test tools/setup_reachability_test.cpp)
 add_executable(match_rebuild_test tools/match_rebuild_test.cpp)
@@ -1422,6 +1425,7 @@ add_executable(gpuvram_test tools/gpuvram_test.cpp)
 target_link_libraries(placement_test PRIVATE ta-formats)
 target_link_libraries(cursor_enemy_test PRIVATE ta-formats)
 target_link_libraries(friendly_order_test PRIVATE ta-formats)
+target_link_libraries(order_page_test PRIVATE ta-formats)
 target_link_libraries(navblock_test PRIVATE ta-formats)
 target_link_libraries(setup_reachability_test PRIVATE ta-formats)
 target_link_libraries(match_rebuild_test PRIVATE ta-formats)
@@ -1750,6 +1754,7 @@ if(TA_TEST_DATA)
     add_test(NAME placement COMMAND placement_test "${TA_TEST_DATA}")
     add_test(NAME cursor_enemy COMMAND cursor_enemy_test "${TA_TEST_DATA}")
     add_test(NAME friendly_order_data COMMAND friendly_order_test "${TA_TEST_DATA}")
+    add_test(NAME order_page_data COMMAND order_page_test "${TA_TEST_DATA}")
     # The Release client intentionally strips the local game/dev command path.
     # Keep this headless client integration fixture in Debug configurations.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -1766,6 +1771,16 @@ if(TA_TEST_DATA)
         set_tests_properties(factory_build_menu PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_FACTORY_MENU_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: factory build menu"
+            TIMEOUT 120)
+        # The sidebar's ORDERS page on the real page (client/orderpage.h; TotalA.exe
+        # 0x41b2e0 / 0x41a120 / 0x41a490): greyed and hidden order buttons per unit,
+        # and FIREORD / MOVEORD / ONOFF through taHudEvent.
+        add_test(NAME order_page_ui COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/order-page-test.png")
+        set_tests_properties(order_page_ui PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_ORDER_PAGE_TEST=1"
+            PASS_REGULAR_EXPRESSION "PASS: order page\n"
             TIMEOUT 120)
         add_test(NAME diplomacy_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0

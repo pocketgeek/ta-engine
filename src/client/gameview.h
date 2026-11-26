@@ -271,6 +271,10 @@ public:
     int taBuildPage_ = 1;
     ta::TaGuiView* taPage(const std::string& name);
     std::string taSidebarPage();
+    // The selected units the sidebar's ORDERS page counts: the shown player's own
+    // live ones (TotalA.exe 0x41b3a6..0x41b3de walks that player's units).
+    std::vector<const UnitR*> taOrderUnits() const;
+    void applyTaOrderPage(ta::TaGuiView& page, const std::string& prefix);
     void renderTaHud(int winW, int winH);
     void renderTaTopBar(int winW);
     void renderTaBottomBar(int winW, int winH);
@@ -4198,7 +4202,7 @@ private:
     bool buildIconClick(float mx, float my, bool lmb, bool rmb);
 
     // Issue a per-unit toggle command (targetId = value) to every selected own unit.
-    void issuePerUnit(ta::net::Cmd kind, int value);
+    void issuePerUnit(ta::net::Cmd kind, int value, int queue = 0);
 
     // Retail's Unit Info dialog (guis/unitinfo.gui): portrait + the three mobility
     // stats for the hovered conjure icon, else the first selected unit. Does not

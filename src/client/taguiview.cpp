@@ -342,10 +342,16 @@ void TaGuiView::draw(const GuiLayout& L) {
                 if (down && !(g.attribs & tagui::kAttrNoPressOffset)) frame = std::max(0, n - 2);
                 if (g.grayedOut && (g.attribs & tagui::kAttrGrayLastFrame)) frame = n - 1;
             } else if (f) {
+                // TotalA.exe's button draw (0x4a6071..0x4a616c) for a button with no
+                // stages: grayed, attribs 0x100 takes the last frame (the sidebar's
+                // FIREORD / MOVEORD / ONOFF / CLOAK), else base + min(status + 2,
+                // n - 1); otherwise base + status, where the code may have written a
+                // status (0x4a11c0: those four buttons' state, 0x41a120).
                 const int n = int(f->tex.size());
-                const int status = down ? 1 : 0;
-                frame = g.grayedOut ? base + std::min(status + 2, std::max(0, n - 1 - base))
-                                    : base + status;
+                const int status = s && s->stage > 0 ? s->stage : (down ? 1 : 0);
+                if (g.grayedOut && (g.attribs & tagui::kAttrGrayLastFrame)) frame = n - 1;
+                else frame = g.grayedOut ? base + std::min(status + 2, std::max(0, n - 1 - base))
+                                         : std::min(base + status, n - 1);
             }
             if (f) drawFrame(*f, frame, fr, L, false);
             const Rect rr = rectOf(g);   // may have been resized
@@ -547,6 +553,7 @@ int TaGuiView::stage(const std::string& n) const { const State* s = stc(n); retu
 void TaGuiView::setPressed(const std::string& n, bool v) { st(n).pressed = v; }
 bool TaGuiView::pressed(const std::string& n) const { const State* s = stc(n); return s && s->pressed; }
 void TaGuiView::setVisible(const std::string& n, bool v) { st(n).visible = v; }
+bool TaGuiView::visible(const std::string& n) const { const State* s = stc(n); return !s || s->visible; }
 void TaGuiView::setList(const std::string& n, std::vector<std::string> items) {
     auto& s = st(n);
     s.items = std::move(items);

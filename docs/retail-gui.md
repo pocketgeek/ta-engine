@@ -518,9 +518,112 @@ when that flag is missing.
 | ARMBLAST (D-gun) | (64,317) | d | shares this slot with ARMLOAD (l) |
 
 - Small order buttons are 55×31 with 54×30 art, latched (attr 0x40).
-- Buttons that do not apply are hidden or grayed by the code (`ONOFF` is checked at
-  `0x41b011`).
 - Other commongui sequences: ARMACTIVATE, ARMSPECIAL. The CORE versions are named `COR*`.
+
+**Which page [C]** (`0x41b2e0`). The routine counts the local player's selected units. It
+walks that player's unit array (player record `+0x1b63 + 0x14a·player`, units
+`[+0x67, +0x6b]`, stride 0x118) and counts the live ones (`+0xa6`) that are selected
+(`+0x110 & 0x10`) (`0x41b3a6..0x41b3de`).
+- No unit: `<SIDE>MAIN2` (`0x41b74d` → `0x491d70`).
+- Exactly one unit whose type has build pages (type `+0x22e`, the number of
+  `guis\<UNIT>N.GUI` found, `0x42d8ad`): its build page, when the unit's own tab bit
+  (`+0x110` bit 22) is set (`0x41b758..0x41b83a`).
+- Anything else: `0x41b0f0` loads `<SIDE>GEN.GUI` again, so every gadget starts shown and
+  enabled as the file has it. It then calls `0x41a120` with the unit, or with 0 when
+  more than one is selected (`0x41b86b..0x41b883`).
+
+**Order word [C].** Each type has an order word at UnitType `+0x245`. The FBI parser
+writes it with every key `atol & 1`, absent = 0 (`0x42c8ae..0x42cac4`). The engine keeps
+it as `UnitType::orderFlags`.
+
+| bit | FBI key | button |
+|---|---|---|
+| 0 | `mobilestandorders` | MOVEORD |
+| 1 | `firestandorders` | FIREORD |
+| 2 | `onoffable` | ONOFF |
+| 3 | `canstop` | STOP |
+| 4 | `canattack` | ATTACK |
+| 5 | `canguard` | DEFEND |
+| 6 | `canpatrol` | PATROL |
+| 7 | `canmove` (the raw key; a factory has it) | MOVE |
+| 8 | `canload` | LOAD / UNLOAD |
+| 9 | a copy of bit 10 (`0x42ca3b..0x42ca4f`) | REPAIR |
+| 10 | `canreclamate` | RECLAIM |
+| 11 | `canresurrect` | none |
+| 12 | `cancapture` | CAPTURE |
+| 13 | `cloakcost` > 0 (`0x42ca5a..0x42ca99`) | CLOAK |
+| 14 | `candgun` | BLAST |
+
+REPAIR follows `canreclamate`, not `builder`. Every construction unit (armcv, armck,
+armca, the Commander) has REPAIR; a Peewee does not.
+
+**Selection summary [C]** (`0x41b3c4..0x41b73c`, stored at game `+0x37ebe..+0x37ec2`):
+- An order button's bit is the OR over the selected units. One unit that has the order
+  enables the button for the whole selection.
+- FIREORD / MOVEORD hold the fire / move state (unit `+0x110` bits 20-21 / 18-19) of the
+  units that have the bit. The value is 3 when those units differ and 4 when no unit has
+  the bit (`0x41b3fc..0x41b449`).
+- ONOFF holds the activated bit (unit `+0x10e` bit 0) of the onoffable units. The value is
+  2 when they differ and 3 when there are none (`0x41b44e..0x41b472`,
+  `0x41b893..0x41b8b5`).
+- CLOAK holds the first cloaker's cloak order (unit `+0x110` bit 11). A second cloaker
+  makes the value 2 even when both agree (`0x41b485..0x41b497`). The value is 3 when
+  there are no cloakers.
+
+**Page setup [C]** (`0x41a120`). The routine greys buttons with `0x4a1200` (gadget
+`+0x13c` bit 0). It hides only with `0x4a03f0` (`active`, `+0x29` = 0). It writes a state
+with `0x4a11c0` (status `+0x138`).
+- BUILD and ORDERS: with one unit whose type has build pages, their status is the unit's
+  tab bit. Otherwise both are greyed (`0x41a134..0x41a1be`).
+- CLOAK, ONOFF, MOVEORD, FIREORD: greyed when no selected unit has the order. Otherwise
+  the status is the summary value, which is also the art frame (`0x41a1c3..0x41a2c1`).
+- MOVE, STOP, ATTACK, DEFEND, PATROL, RECLAIM, REPAIR, CAPTURE: greyed unless the
+  summary has the bit (`0x41a2c6..0x41a403`). They are never hidden.
+- LOAD and BLAST share a slot.
+  - If a selected unit has `canload`: LOAD and UNLOAD stay as loaded and BLAST is hidden
+    (`0x41a471..0x41a485`).
+  - Otherwise LOAD is hidden, UNLOAD is greyed (`0x41a412..0x41a43f`), and BLAST is
+    greyed unless a selected unit has `candgun` (`0x41a444..0x41a466`).
+
+**State buttons [C].** The state buttons are FIREORD, MOVEORD, ONOFF and CLOAK. The
+.GUI gives them no `stages` and attribs 0x100. The button draw (`0x4a6071..0x4a616c`)
+picks the frame as follows:
+- Greyed: the last frame.
+- Not greyed, status ≠ 0: frame base + status.
+- Not greyed, status 0: the base frame.
+
+The commongui art therefore has these frames:
+- FIREORD and MOVEORD (6 frames): the three states, mixed, then the pressed and greyed
+  frames.
+- ONOFF and CLOAK (5 frames): off, on, mixed, then the pressed and greyed frames.
+
+A press (handler `0x41a490`) sends the next state to the selection through `0x48cf30`,
+then sets the page up again:
+- MOVEORD / FIREORD: 0 → 1 → 2 → 0, and mixed → 0 (jump tables `0x41a900` / `0x41a910`).
+  They send `STANDING_MOVEORDER` / `STANDING_FIREORDER`.
+  - `0x48cf30` gives these orders only to types with bit 0 / bit 1 (`0x48d104` /
+    `0x48d0d7`).
+  - The missions set unit `+0x110` bits 18-19 (`Standing_MoveOrder` `0x4030d0`) or bits
+    20-21 (`Standing_FireOrder` `0x403100`).
+  - Hold fire and return fire also drop the weapons' own targets (`0x40312c..0x403150`).
+- ONOFF: off → `ACTIVATE`, on → `DEACTIVATE`, mixed → `ACTIVATE` (`0x41a7db..0x41a88f`).
+- CLOAK: on or mixed → `CLOAK_OFF`, off → `CLOAK_ON` (`0x41a743..0x41a7a5`).
+
+A factory passes its move and fire states to each unit it finishes
+(`0x402e82..0x402ec2` copies the builder's `+0x110` bits 18-21). The copy depends on a
+builder flag, `+0x110` bit 28, whose meaning is not traced [U].
+
+**Engine.**
+- `client/orderpage.h` implements the summary, the page setup and the presses.
+  `GameView::applyTaOrderPage` applies them to `<SIDE>GEN` every frame, and
+  `taSidebarPage` chooses the page by the count of the shown player's own selected units.
+- FIREORD / MOVEORD send `Cmd::StandingOrder` (protocol 342), which runs
+  `World::setStandingOrder`. A factory, or a builder on an infinite queue, passes the new
+  state on to its output (`Unit::outputMoveState` / `outputFireState`).
+- Tests: `order_page` / `order_page_data` (`tools/order_page_test.cpp`) and
+  `order_page_ui` (the real page through `taHudEvent`).
+- CAPTURE has no engine order yet: the button lights for `cancapture` types, but a press
+  does nothing.
 
 **Bottom-anchored popups:**
 
