@@ -2658,6 +2658,12 @@ public:
     int flyingPatrolLook(Unit& b);
     int groundPatrolLook(Unit& b);
     void setPatrolRepairs(bool enabled) { patrolRepairs_=enabled; }
+    // +shootall (camps/briefs/t21brief.txt, t33brief.txt): with it on, a
+    // human-owned unit's sweep also auto-targets types without shootme
+    // (structures). Retail starts with it off; this engine starts with it on.
+    // Off restores retail's gate (tests that measure that gate turn it off).
+    void setShootAll(bool enabled) { shootAll_=enabled; }
+    bool shootAll() const { return shootAll_; }
     // True if (x,z) lies over water (for choosing the water impact effect).
     // Retail (icd 0x509760): a unit is "on road" only when EVERY cell under its
     // footprint carries the road flag (ground units only; checked per tick into
@@ -4451,6 +4457,7 @@ private:
     DamageMode damageMode_ = DamageMode::Normal;   // DoubleShot / HalfShot: every player's damage
     uint16_t powerLosOff_ = 0, powerMappingOff_ = 0;   // per-player bits
     bool patrolRepairs_ = true;
+    bool shootAll_ = true;   // setShootAll; hashed only when off
     // Raw TNT heightmap. Like slope_, depth_ and installedMapFeatures_, set with the
     // terrain and never written again: a world and its copies share it (SharedArray).
     SharedArray<uint8_t> heights_;

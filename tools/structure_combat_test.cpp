@@ -124,6 +124,7 @@ int siteCase(const char* data) {
     // fires only through the sweep (Guard_NoMove picks nothing, 401a90) at
     // what its player sees (40f330, list +5).
     auto eye=*registry.find("armpw");eye.id="eye";eye.shootMe=false;
+    w.setShootAll(false);   // retail's gate, which the passive spotters rely on
     for(const auto& [x,player]:{std::pair{4096.0f+distance-150,0},{4096.0f+150,1}}) {
         const int id=w.spawn(&eye,x,4096+120,0,player);
         w.unit(id)->fireState=0;w.unit(id)->moveState=0;

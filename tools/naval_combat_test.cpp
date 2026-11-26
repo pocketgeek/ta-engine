@@ -51,9 +51,9 @@ int main(int argc,char**argv) {
             auto victim=*registry.find(shore?"armguard":"armtship");
             victim.maxHp=30000;victim.healTime=0;victim.weapon.damage=0;
             victim.weapons.clear();victim.maxVel={};
-            // A shore target is a Guardian (ShootMe=1): a human player's sweep
-            // takes only a structure with shootme (40f330, UnitDef+0x260 bit
-            // 15), so a solar collector would be left alone.
+            // A shore target is a Guardian (ShootMe=1): with +shootall off
+            // (retail's start), a human player's sweep takes only a structure
+            // with shootme (40f330, UnitDef+0x260 bit 15).
             const float tx=shore?4160.f:3800.f,tz=1800.f;
             // A fight-move (order 1) takes only what its player sees (Move
             // response mode -1, 4d8370), so it starts 300 px past the nearer

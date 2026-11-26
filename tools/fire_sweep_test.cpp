@@ -103,12 +103,22 @@ void vision() {
     check(lost>=0 && w.visibleEnemies(0).empty(),"vision: an enemy that left sight drops off the list at the next rebuild");
     check(consistent,"vision: the view counters equal a rebuild from the footprints every tick");
 }
-// shootme: a human-owned shooter's sweep skips types without it; an AI-owned
-// shooter picks them anyway (icd 412620).
+// shootme: with +shootall off (retail's start), a human-owned shooter's sweep
+// skips types without it; an AI-owned shooter picks them anyway (icd 412620).
+// This engine starts with +shootall on: a human-owned shooter picks them too.
 void shootMe() {
     const auto g=gunner(400);auto d=dummy();d.shootMe=false;
+    {
+        sim::World w;setup(w,2);
+        check(w.shootAll(),"shootme: +shootall is on by default");
+        const int shooter=w.spawn(&g,400,1000,0,0),foe=w.spawn(&d,600,1000,0,1);
+        w.unit(shooter)->fireState=0;
+        int picked=0;
+        for(int i=0;i<8 && !picked;++i){ticks(w,1);picked=w.retailSelectTarget(*w.unit(shooter),0,true);}
+        check(picked==foe,"shootme: with +shootall a human-owned shooter picks a type without shootme");
+    }
     for (bool ai:{false,true}) {
-        sim::World w;setup(w,2);w.player(0).automaticGates=ai;
+        sim::World w;setup(w,2);w.setShootAll(false);w.player(0).automaticGates=ai;
         const int shooter=w.spawn(&g,400,1000,0,0),foe=w.spawn(&d,600,1000,0,1);
         w.unit(shooter)->fireState=0;
         int picked=0;

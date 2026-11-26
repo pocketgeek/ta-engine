@@ -163,9 +163,10 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     const sim::UnitType* st = reg.find(shooterId);
     const sim::UnitType* tt = reg.find(targetId);
     if (!st || !tt) { check(false, std::string("shipped ") + shooterId + " and " + targetId + " load"); return {}; }
-    // A human owner's sweep takes only shootme units (docs/retail-ai.md,
-    // weapon target selection 0x40b7b0); a TA factory is not one, so the
-    // target is a shootme copy: the cases measure range, not the gate.
+    // With +shootall off, a human owner's sweep takes only shootme units
+    // (docs/retail-ai.md, weapon target selection 0x40b7b0); a TA factory is
+    // not one, so the target is a shootme copy: the cases measure range, not
+    // the gate.
     static sim::UnitType shootable;
     shootable = *tt; shootable.shootMe = true; tt = &shootable;
     const float sx = 1000, sz = 600;

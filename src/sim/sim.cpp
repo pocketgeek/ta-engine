@@ -8130,9 +8130,9 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
         if (!tp || !tp->alive() || tp->hp<=Fixed()) continue;
         const Unit& t=*tp;
         // shootme (UnitDef+0x260 bit 15) is required unless the shooter is
-        // AI-owned. Retail's global override ([[62d558]]+7) is not identified
-        // and is treated as unset.
-        if (!t.type->shootMe && !players_[size_t(u.player)].automaticGates) continue;
+        // AI-owned or +shootall is on (likely retail's global override,
+        // [[62d558]]+7, not confirmed). This engine defaults +shootall on.
+        if (!t.type->shootMe && !shootAll_ && !players_[size_t(u.player)].automaticGates) continue;
         const int32_t eff=int32_t(w.damageVs(t.type));
         // 0x49abb0: distance^2 <= range^2 from the unit origin; kamikaze types
         // skip it. TA has no line-of-fire test (docs/retail-weapon-scripts.md 3).
@@ -21112,6 +21112,7 @@ uint64_t World::stateHash() const {
         mix(uint8_t(damageMode_));mix(powerLosOff_);mix(powerMappingOff_);
     }
     if (patrolRepairs_) mix(0x5054524c52455052ull);
+    if (!shootAll_) mix(0x53484f4f54414c4cull);   // retail's shootme gate: only off changes the hash
     mix(nextMovementController_);
     mix(navigationExplored_.size());
     mix(uint32_t(restoredNavigationViewer_));
