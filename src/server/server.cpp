@@ -502,6 +502,8 @@ public:
     void setLimits(ta::srv::Limits limits) {limits_=limits;}
     void closeRegistration() { registrationOpen_=false; }
     void setLoopbackOnly() { loopbackOnly_ = true; }
+    // A player's own single-player server: loopback only, no sign-in, not a LAN host.
+    bool privateSinglePlayer() const { return loopbackOnly_ && !requireAuth_ && !lan_; }
     // A player's LOCAL SERVER (--lan): no accounts, plain TCP on every interface; it
     // announces its open game on the LAN once a second and tells clients in its
     // Welcome, so a joiner goes straight into that game.
@@ -1587,9 +1589,11 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             if (!mission.empty()) { o.pathfindingMode = ta::sim::PathfindingMode::Retail; o.doubleSight = 0; }
             // POWER CODES: on or off, never in a campaign mission (retail 0x499610).
             o.powerCodes = o.powerCodes && mission.empty() ? 1 : 0;
-            // A campaign mission is played alone on a private local server: its player may
-            // always change the game speed with -/+.
-            if (!mission.empty()) o.speedUnlock = 1;
+            // A campaign mission, or any game on a private single-player server (a
+            // loopback, no-auth, non-LAN local server: PLAY THE MACHINE / skirmish), is
+            // played alone: its player may always change the game speed with -/+, as in
+            // TA's single player.
+            if (!mission.empty() || privateSinglePlayer()) o.speedUnlock = 1;
             // MAP SCENARIO: only an ordinary file-map room can play a map's scenario. The map
             // itself is checked at START -- its package has not arrived yet.
             o.mapScenario = (o.mapScenario && mission.empty() && !ta::mapgen::isGeneratedMapId(mapId) &&
@@ -2806,6 +2810,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
             if (o.stressTest || o.benchmark) o.mapScenario = 0;   // as CreateGame clears it
             if (o.mapScenario) o.randomStarts = kStartsFixed;     // ownership and rule regions follow fixed seats
             if (!r->mission.empty()) o.doubleSight = 0;
+            if (!r->mission.empty() || privateSinglePlayer()) o.speedUnlock = 1;   // as CreateGame
             if (!rd.ok || rd.p!=rd.end) return;
             if(!(testWork_ || (loopbackOnly_ && !requireAuth_)) && (o.stressTest || o.benchmark)) {sendReject(c,"public benchmark/stress requests disabled");return;}
             o.speed = uint8_t(std::clamp<int>(o.speed, kMinGameSpeed, maxGameSpeed(o)));   // 0.1x .. 2x (a benchmark 11x)
