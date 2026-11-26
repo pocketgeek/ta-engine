@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <map>
 #include <set>
+#include <string>
 
 using namespace ta;
 
@@ -21,8 +22,8 @@ int main(int argc,char** argv) {
     auto vfs=hpi::mountRetailRoot(argv[1]);
     const auto& retailProfile=ai::builtinProfile(ai::Difficulty::Normal);
     int failures=0,cases=0;
-    auto check=[&](bool ok,const char* label) {
-        std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);
+    auto check=[&](bool ok,const std::string& label) {
+        std::printf("[%s] %s\n",ok?"PASS":"FAIL",label.c_str());
         ++cases;if (!ok) ++failures;
     };
     {
@@ -133,18 +134,29 @@ int main(int argc,char** argv) {
         // sea on Varro Passage; TA's yard-on-a-coast cases above cover the
         // naval side.) So: the opening fields an army and launches it, tries
         // a shipyard, and no builder stays held on a yard site it cannot reach.
-        // Whether a yard is tried at all is a draw (seed 0x1234 stopped trying
-        // one for Core once the ground RepairPatrol look took its patrolling
-        // builders; 0x1235 stopped trying one for Core when units took
-        // TotalA.exe's first free slot, 0x485fea, in place of Kingdoms' CRT-ranked
-        // one, which also drew from the stream); 0x1238 tries one for both sides.
+        // Whether a yard is tried at all is a draw: each idle builder picks
+        // one entry of its menu by score with a running Random(total) (Score
+        // 0x40bb00, TaRetailBrain::choose), and any change upstream (a builder
+        // a few ticks later off its pad) reshuffles every later draw. One seed
+        // kept failing on that: 0x1234 stopped trying one for Core once the
+        // ground RepairPatrol look took its patrolling builders, 0x1235 when
+        // units took TotalA.exe's first free slot (0x485fea), and 0x1238 when
+        // factory outputs began to ride their turning pad (0x402948 /
+        // 0x43d78e; the first Core difference, a Kbot lab's constructor taking
+        // its order 90 ticks later, came at tick 11,790 and the yard draw it
+        // had made at 49,770 went elsewhere). Over 16 seeds (0x1230..0x123f,
+        // measured 2026-11-25) a side tried one in 13 (Arm) and 10 (Core) of
+        // them. So every one of four seeds must field and launch an army and
+        // hold no builder on a yard site, and at least one must try a yard.
         for (int faction=0;faction<2;++faction) {
+          int yardSeeds=0;
+          for (uint32_t seed:{0x1238u,0x1239u,0x123au,0x123bu}) {
             sim::World world;
             sim::MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,"Seven Islands");
             config.roomMapRevealed=true;   // FOG OF WAR: EXPLORED, the room's default
             config.slots={{true,0,0,1.f},{true,faction,1,1.f,true,false}};
             const auto starts=sim::setupMatch(world,registry,config);
-            ai::Controller controller(1,registry,retailProfile,0x1238,ai::Difficulty::Normal,{starts[0]});
+            ai::Controller controller(1,registry,retailProfile,seed,ai::Difficulty::Normal,{starts[0]});
             auto isYard=[&](const sim::UnitType* t) {
                 if (!t || !t->isStructure()) return false;
                 for (const auto& child:registry.buildable(t->id))
@@ -177,10 +189,14 @@ int main(int argc,char** argv) {
                 }
                 heldSince=std::move(now);
             }
-            std::printf("faction=%d army=%zu attacks=%d yard orders=%d longest unstarted yard hold %u ticks: ",
-                        faction,army.size(),attacks,yardOrders,longestHold);
-            check(!army.empty() && attacks>0 && yardOrders>0 && longestHold<9000,
-                  "natural AI opening fields and launches an army, tries a shipyard, and no builder stays held on a yard site");
+            std::printf("faction=%d seed=%#x army=%zu attacks=%d yard orders=%d longest unstarted yard hold %u ticks: ",
+                        faction,seed,army.size(),attacks,yardOrders,longestHold);
+            check(!army.empty() && attacks>0 && longestHold<9000,
+                  "natural AI opening fields and launches an army, and no builder stays held on a yard site");
+            yardSeeds+=yardOrders>0;
+          }
+          std::printf("faction=%d: ",faction);
+          check(yardSeeds>0,"natural AI tries a shipyard ("+std::to_string(yardSeeds)+" of 4 seeds)");
         }
     }
     std::printf("naval AI: %d cases, %d failures\n",cases,failures);

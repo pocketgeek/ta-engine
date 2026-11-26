@@ -16351,7 +16351,32 @@ void World::clearYardDoor(const Unit& factory) {
         const int sz=footprintOrigin(Fixed::fromInt(factory.refusedSiteZ),next->footZ)*16;
         pl=std::min(pl,sx);pr=std::max(pr,sx+next->footX*16);pt=std::min(pt,sz);pb=std::max(pb,sz+next->footZ*16);
     }
-    if (!leaving && !refused && held.empty()) return;
+    if (!leaving && !refused && held.empty()) {
+        // With the door needing nothing more, a guard's step aside for this
+        // factory that is held (the Retail mover's refusal streak; under
+        // Legion, standing kHeldStill) ends where it is and its guard resumes.
+        // Held where it started, the step never counts as done
+        // (groundMissionAccepts: held once clear of where it stood), and the
+        // Retail navigator's next route through the 60-tick gate leads it back
+        // into the same gap: two Peewee guards of an armlab, sent to points
+        // behind two other guards, each in the other's way at the gap, walked
+        // out on a detour and back to their start for the whole settle
+        // (landdoor_exit Ward, measured 2026-11-25). Retail has no step aside
+        // to end (it moves no idle body, 0x50d50e / 0x401deb / 0x4dbe2c).
+        std::vector<int> stalled;
+        forEachNear(float(cx),float(cz),reach,[&](int index) {
+            const Unit& k=units_[size_t(index)];
+            if (!body(k) || k.doorYieldFactory!=factory.id || k.orders.empty()) return;
+            const size_t end=currentLeg(k.orders);
+            if (!k.orders[end].productionExit || end+1>=k.orders.size()) return;
+            const bool stopped=isLegionPathfinding(pathfindingMode_) ?
+                legion_ && legion_->stillTicks(k.id)>=kHeldStill : k.bodyBlockStreak>=2;
+            if (stopped) stalled.push_back(k.id);
+        });
+        std::sort(stalled.begin(),stalled.end());
+        for (int id:stalled) if (Unit* k=unit(id)) dropLeg(*k);
+        return;
+    }
     // The plane that has to be clear: a ship's, or a land unit's. Every output
     // of one factory shares it (a yard builds only ships).
     const Unit* any=leaving;

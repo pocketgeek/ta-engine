@@ -313,7 +313,16 @@ What these entries describe is ported; what is left of each is under "Open".
   piece (0x43d78e -> 0x43e180). World::followBuildPiece does it for an
   output under construction (Unit::buildPiece, cleared at completion), so
   a Flash on armvp's pad turns with StartBuilding's `spin pad` (182 BAM a
-  tick). The output used to sit unturned at its spawn point.
+  tick). The output used to sit unturned at its spawn point. Completion
+  (BUILD's next stage 0x402b07 -> 0x41b8d0) detaches it (0x41b9a1:
+  0x48aac0(output, 0, -1, 1); 0x48ab70 at 0x48acaf..0x48acdc unlinks it,
+  clears +0x86 and puts it back on the map, 0x47cb40) and writes no
+  heading: it leaves on whatever heading the pad gave it, as here.
+  Fallout: a guard's door step aside (engine deviation) that is held where
+  it began never counted as done, and the Retail navigator kept leading it
+  back into the same gap; once no output leaves and no site is refused the
+  door now ends such a held step and the guard resumes (clearYardDoor;
+  landdoor_exit Retail armlab Ward).
 - Aircraft activation (sim + client): 0x43d210 (the flight mode setter)
   calls 0x48b090(1, 1) on any change to a mode other than landed and
   0x48b090(1, 0) on landing (0x43d225..0x43d275), and VTOL_LandIfCan
