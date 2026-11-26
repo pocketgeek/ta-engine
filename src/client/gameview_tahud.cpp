@@ -11,6 +11,7 @@
 #include "client/gameview.h"
 #include "client/artscale.h"
 #include "client/guiart.h"
+#include "client/orderpage.h"
 #include "client/taguiview.h"
 #include "gaf/gaf.h"
 #include "gui/tagui.h"
@@ -43,14 +44,19 @@ std::string upperStr(std::string s) {
         return p;
     }
 
-    // The sidebar page for the current selection (section 3 table).
+    // The sidebar page for the current selection (section 3 table). TotalA.exe's
+    // 0x41b2e0 counts the shown player's selected units: none shows <SIDE>MAIN2
+    // (0x41b74d -> 0x491d70), exactly one whose type has build pages may show its
+    // build page (0x41b758..0x41b83a), anything else the <SIDE>GEN orders page
+    // (0x41b853..0x41b883 -> 0x41b0f0).
     std::string GameView::taSidebarPage() {
         const int side = std::max(0, ta::sides::find(side_));
         const std::string prefix = ta::sides::at(side).prefix;
-        const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
-        if (!u || !u->type) return prefix + "MAIN2";
+        const auto units = taOrderUnits();
+        if (units.empty()) return prefix + "MAIN2";
+        const UnitR* u = units.front();
         const auto& pages = registry_.buildPages(u->type->id);
-        if (taBuildTab_ && !pages.empty()) {
+        if (taBuildTab_ && units.size() == 1 && !pages.empty()) {
             int maxPage = 1;
             for (const auto& s : pages) maxPage = std::max(maxPage, s.page);
             taBuildPage_ = std::clamp(taBuildPage_, 1, maxPage);
@@ -58,6 +64,32 @@ std::string upperStr(std::string s) {
             return ta::tagui::exists(vfs_, gui) ? gui : prefix + "DL";
         }
         return prefix + "GEN";
+    }
+
+    std::vector<const UnitR*> GameView::taOrderUnits() const {
+        std::vector<const UnitR*> out;
+        const int owner = hudPlayer();
+        for (int id : selection_)
+            if (const UnitR* u = frameUnitP(id); u && u->type && u->alive() && u->player == owner) out.push_back(u);
+        return out;
+    }
+
+    // The <SIDE>GEN page for the selection (client/orderpage.h: TotalA.exe 0x41b2e0
+    // folds the selection, 0x41a120 greys, hides and stages the gadgets).
+    void GameView::applyTaOrderPage(ta::TaGuiView& page, const std::string& prefix) {
+        const auto units = taOrderUnits();
+        std::vector<ta::client::OrderPageUnit> sel;
+        for (const UnitR* u : units)
+            sel.push_back({u->type->orderFlags, u->moveState, u->fireState, u->active, u->cloakOn});
+        const bool tabs = units.size() == 1 && !registry_.buildPages(units.front()->type->id).empty();
+        for (const auto& b : ta::client::orderPage(ta::client::orderSummary(sel), tabs)) {
+            const std::string name = prefix + std::string(b.name);
+            page.setVisible(name, b.shown);
+            page.setGrayed(name, b.grayed);
+            page.setStage(name, std::max(0, b.stage));
+        }
+        page.setPressed(prefix + "ORDERS", true);
+        page.setPressed(prefix + "BUILD", false);
     }
 
     // sidedata.tdf's interface rectangles for the shown side, in 640x480 space (the
@@ -173,8 +205,12 @@ std::string upperStr(std::string s) {
             taHudLayout_ = L;
             // Build pages: slots the registry does not place on this page are fillers;
             // download add-ons take their slot (gadget BUTTON + 4).
-            const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
-            if (u && u->type && taBuildTab_) {
+            const std::string prefix = ta::sides::at(std::max(0, ta::sides::find(side_))).prefix;
+            const auto units = taOrderUnits();
+            const UnitR* u = units.empty() ? nullptr : units.front();
+            if (pageName == prefix + "GEN") {
+                applyTaOrderPage(*page, prefix);
+            } else if (u && pageName != prefix + "MAIN2") {
                 for (const auto& g : page->screen().gadgets) {
                     if (g.type != ta::tagui::Type::Button) continue;
                     const std::string n = upperStr(g.name);
@@ -193,23 +229,8 @@ std::string upperStr(std::string s) {
                         page->setText(g.name, caption);
                     }
                 }
-                page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "BUILD", true);
-                page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "ORDERS", false);
-            } else if (u && u->type) {
-                // The <SIDE>GEN page shows only the orders the unit has (BLAST is the
-                // Commander's D-gun, sharing LOAD's slot).
-                const auto& t = *u->type;
-                const std::string pre = ta::sides::at(std::max(0, ta::sides::find(side_))).prefix;
-                const bool armed = !t.weapons.empty();
-                const std::pair<const char*, bool> shown[] = {
-                    {"MOVE", t.canMove}, {"PATROL", t.canPatrol || t.canMove}, {"ATTACK", armed},
-                    {"DEFEND", t.canGuard || t.canMove}, {"RECLAIM", t.canReclaim}, {"REPAIR", t.isBuilder},
-                    {"LOAD", t.canTransport}, {"UNLOAD", t.canTransport}, {"BLAST", t.canDgun},
-                    {"CLOAK", t.canCloak}, {"ONOFF", t.onOffable}, {"FIREORD", armed && t.canSetStance},
-                    {"MOVEORD", t.canMove && t.canSetStance}, {"CAPTURE", false}};
-                for (const auto& [name, on] : shown) page->setVisible(pre + name, on);
-                page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "ORDERS", true);
-                page->setPressed(ta::sides::at(std::max(0, ta::sides::find(side_))).prefix + "BUILD", false);
+                page->setPressed(prefix + "BUILD", true);
+                page->setPressed(prefix + "ORDERS", false);
             }
             page->draw(L);
         }
@@ -390,7 +411,7 @@ std::string upperStr(std::string s) {
                                  "sidebar", stock ? tail : name);
                     ta::net::Command c;
                     c.kind = e.button.button == SDL_BUTTON_LEFT ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
-                    c.unitId = selection_.front();
+                    c.unitId = taOrderUnits().empty() ? selection_.front() : taOrderUnits().front()->id;   // the page's unit
                     c.targetId = (SDL_GetModState() & KMOD_SHIFT) ? 5 : 1;
                     std::snprintf(c.type, sizeof c.type, "%s", stock ? tail.c_str() : t->id.c_str());
                     issue(c);
@@ -431,9 +452,24 @@ std::string upperStr(std::string s) {
         else if (n == "UNLOAD") pendingCmd_ = 'u';
         else if (n == "RECLAIM") pendingCmd_ = 'e';
         else if (n == "STOP") stopAll();
-        else if (n == "FIREORD") issuePerUnit(ta::net::Cmd::Stance, std::clamp(page->stage(hit), 0, 2));
-        else if (n == "ONOFF") issuePerUnit(ta::net::Cmd::SetActive, page->stage(hit) ? 1 : 0);
-        else if (n == "CLOAK") issuePerUnit(ta::net::Cmd::Cloak, page->stage(hit) ? 1 : 0);
+        else if (n == "FIREORD" || n == "MOVEORD" || n == "ONOFF" || n == "CLOAK") {
+            // A state button sets the whole selection to the summary's next state
+            // (handler 0x41a490, client/orderpage.h); the order goes to every
+            // selected unit (0x48cf30), the sim keeping it to the types that
+            // take it (Standing_*Order: 0x48d0d7 / 0x48d104).
+            std::vector<ta::client::OrderPageUnit> sel;
+            for (const UnitR* u : taOrderUnits())
+                sel.push_back({u->type->orderFlags, u->moveState, u->fireState, u->active, u->cloakOn});
+            const auto s = ta::client::orderSummary(sel);
+            if (n == "FIREORD" && s.fire != 4)          // STANDING_FIREORDER (0x41a5d9..0x41a6ad)
+                issuePerUnit(ta::net::Cmd::StandingOrder, ta::client::nextStandingState(s.fire), 1);
+            else if (n == "MOVEORD" && s.move != 4)     // STANDING_MOVEORDER (0x41a4d5..0x41a5aa)
+                issuePerUnit(ta::net::Cmd::StandingOrder, ta::client::nextStandingState(s.move), 0);
+            else if (n == "ONOFF" && s.onOff != 3)      // ACTIVATE / DEACTIVATE (0x41a7db..0x41a88f)
+                issuePerUnit(ta::net::Cmd::SetActive, ta::client::nextOnOff(s.onOff) ? 1 : 0);
+            else if (n == "CLOAK" && s.cloak != 3)      // CLOAK_ON / CLOAK_OFF (0x41a743..0x41a7a5)
+                issuePerUnit(ta::net::Cmd::Cloak, ta::client::nextCloak(s.cloak) ? 1 : 0);
+        }
         return true;
     }
 

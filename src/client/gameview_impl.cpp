@@ -1181,7 +1181,7 @@
 #endif
         s.deadFor = u.deadFor < 0 ? -1.0f : float(u.deadFor) / 30.0f;   // ticks -> seconds
         s.inTransport = u.inTransport; s.padPiece = u.padPiece; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
-        s.standingOrder = u.standingOrder;
+        s.standingOrder = u.standingOrder; s.moveState = u.moveState; s.fireState = u.fireState;
         for(size_t w=0;w<s.weaponReloads.size();++w)
             s.weaponReloads[w]=u.reloads[w];
         s.stock=u.stock;
@@ -4026,7 +4026,7 @@
         }
     }
 
-    void GameView::issuePerUnit(ta::net::Cmd kind, int value) {
+    void GameView::issuePerUnit(ta::net::Cmd kind, int value, int queue) {
         ClickScope click(*this);   // one click: a Legion net game sends it as explicit orders
         for (int id : selection_) {
             const auto* u = frameUnitP(id);
@@ -4035,6 +4035,7 @@
             c.kind = kind;
             c.unitId = id;
             c.targetId = value;
+            c.queue = uint8_t(queue);
             issue(c);
         }
     }

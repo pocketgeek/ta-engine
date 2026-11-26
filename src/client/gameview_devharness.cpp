@@ -3154,6 +3154,121 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: idle builders strip\n");
             return;
         }
+        if (ta::devFlag("TA_ORDER_PAGE_TEST")) {
+            // The sidebar's ORDERS page (client/orderpage.h) on the real page: TotalA.exe
+            // greys every order button no selected unit has (0x41a120), REPAIR following
+            // canreclamate, and hides only LOAD or BLAST. FIREORD / MOVEORD show and step
+            // the selection's own states (0x41a490). TA_ORDER_PAGE_CAPTURE=<prefix> saves
+            // each unit's 640x480 frame as <prefix><unit>.png.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("order page: "+what);
+                std::fprintf(stderr,"PASS: order page: %s\n",what.c_str());
+            };
+            noFog_=true;edgeScrollOn_=false;
+            constexpr int W=640,H=480;
+            winW_=W;winH_=H;
+            const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
+            const int me=localPlayer_;
+            std::map<std::string,int> ids;
+            const char* kinds[]={"armcv","armpw","armcom","armatlas","armsolar","armspy","armck"};
+            for (size_t i=0;i<std::size(kinds);++i) {
+                ids[kinds[i]]=spawn(kinds[i],cx-240+float(i%4)*120,cz-120+float(i/4)*160,0,me);
+                check(ids[kinds[i]]>=0,std::string("spawned ")+kinds[i]);
+            }
+            for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
+            const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
+            mapView_.setZoom(1.0f);
+            const std::string pre=ta::sides::at(std::max(0,ta::sides::find(side_))).prefix;
+            const auto state=[&](const std::string& n) -> std::string {
+                ta::TaGuiView* page=taPage(taHudPage_);
+                if (!page) return "nopage";
+                if (!page->visible(pre+n)) return "hidden";
+                for (const auto& g:page->screen().gadgets)
+                    if (SDL_strcasecmp(g.name.c_str(),(pre+n).c_str())==0) return g.grayedOut ? "grey" : "on";
+                return "missing";
+            };
+            const auto show=[&](std::vector<int> sel,const std::string& tag) {
+                selection_=std::move(sel);taBuildTab_=false;
+                frame();frame();
+                check(taHudPage_==pre+"GEN",tag+": the orders page is on show ("+taHudPage_+")");
+                std::string line;
+                for (const char* n:{"MOVE","STOP","ATTACK","DEFEND","PATROL","RECLAIM","REPAIR","CAPTURE","LOAD","UNLOAD",
+                                    "BLAST","FIREORD","MOVEORD","ONOFF","CLOAK"})
+                    line+=std::string(" ")+n+"="+state(n);
+                std::fprintf(stderr,"order page: %s:%s\n",tag.c_str(),line.c_str());
+                if (const char* cap=ta::devEnv("TA_ORDER_PAGE_CAPTURE")) {
+                    captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);
+                    std::vector<uint8_t> px(size_t(W)*H*4);
+                    const SDL_Rect r{0,0,W,H};
+                    if (SDL_RenderReadPixels(ren_,&r,SDL_PIXELFORMAT_RGBA32,px.data(),W*4)==0)
+                        ta::png::write(std::string(cap)+tag+".png",W,H,px);
+                    endFrame();
+                }
+            };
+            show({ids["armcv"]},"armcv");
+            check(state("REPAIR")=="on" && state("RECLAIM")=="on","armcv: REPAIR and RECLAIM work (canreclamate)");
+            check(state("ATTACK")=="grey" && state("FIREORD")=="grey" && state("MOVEORD")=="on",
+                  "armcv: no weapons, so ATTACK and FIREORD are grey; MOVEORD works");
+            check(state("LOAD")=="hidden" && state("BLAST")=="grey" && state("UNLOAD")=="grey","armcv: BLAST grey in LOAD's slot");
+            show({ids["armpw"]},"armpw");
+            check(state("REPAIR")=="grey" && state("RECLAIM")=="grey","armpw: no canreclamate, REPAIR and RECLAIM grey");
+            check(state("ATTACK")=="on" && state("FIREORD")=="on" && state("MOVE")=="on","armpw: ATTACK, FIREORD and MOVE work");
+            show({ids["armcom"]},"armcom");
+            check(state("BLAST")=="on" && state("CAPTURE")=="on" && state("CLOAK")=="on" && state("ONOFF")=="grey",
+                  "armcom: BLAST (candgun), CAPTURE and CLOAK work, ONOFF grey");
+            show({ids["armatlas"]},"armatlas");
+            check(state("LOAD")=="on" && state("UNLOAD")=="on" && state("BLAST")=="hidden","armatlas: LOAD and UNLOAD, BLAST hidden");
+            show({ids["armsolar"]},"armsolar");
+            check(state("ONOFF")=="on" && state("STOP")=="grey" && state("MOVE")=="grey","armsolar: ONOFF alone");
+            show({ids["armspy"]},"armspy");
+            check(state("CLOAK")=="on" && state("ATTACK")=="grey","armspy: CLOAK works");
+            show({ids["armcv"],ids["armpw"]},"armcv+armpw");
+            check(state("REPAIR")=="on" && state("ATTACK")=="on" && state("FIREORD")=="on","a mixed selection: the union");
+            // The tabs: one builder may switch to its build page; two may not.
+            show({ids["armcv"]},"armcv");
+            check(state("BUILD")=="on","one builder: BUILD works");
+            show({ids["armcv"],ids["armck"]},"armcv+armck");
+            check(state("BUILD")=="grey" && state("ORDERS")=="grey","two builders: the tabs are grey (0x41b881)");
+            // FIREORD steps the Peewee's fire state through the real input path.
+            show({ids["armpw"]},"armpw");
+            const auto fireOf=[&](int id){const auto* u=world_.unit(id);return u ? int(u->fireState) : -1;};
+            const auto moveOf=[&](int id){const auto* u=world_.unit(id);return u ? int(u->moveState) : -1;};
+            const auto press=[&](const std::string& gadget) {
+                ta::TaGuiView* page=taPage(taHudPage_);
+                float gx=0,gy=0;
+                check(page && page->gadgetCentre(pre+gadget,gx,gy),taHudPage_+" has "+gadget);
+                for (Uint32 kind:{Uint32(SDL_MOUSEBUTTONDOWN),Uint32(SDL_MOUSEBUTTONUP)}) {
+                    SDL_Event e{};e.type=kind;e.button.button=SDL_BUTTON_LEFT;
+                    e.button.x=int(taHudLayout_.px(gx));e.button.y=int(taHudLayout_.py(gy));
+                    taHudEvent(e);
+                }
+                for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
+                frame();
+            };
+            const int fire0=fireOf(ids["armpw"]),move0=moveOf(ids["armpw"]);
+            const auto next=[](int s){return s==0 ? 1 : s==1 ? 2 : 0;};
+            press("FIREORD");
+            check(fireOf(ids["armpw"])==next(fire0) && moveOf(ids["armpw"])==move0,
+                  "FIREORD steps the fire state alone: "+std::to_string(fire0)+" -> "+std::to_string(fireOf(ids["armpw"])));
+            check(taPage(taHudPage_)->stage(pre+"FIREORD")==fireOf(ids["armpw"]),"and the button shows it");
+            press("MOVEORD");
+            check(moveOf(ids["armpw"])==next(move0),"MOVEORD steps the move state: "+std::to_string(move0)+" -> "+
+                  std::to_string(moveOf(ids["armpw"])));
+            if (fireOf(ids["armpw"])!=fireOf(ids["armcom"])) {
+                show({ids["armpw"],ids["armcom"]},"mixed");
+                check(taPage(taHudPage_)->stage(pre+"FIREORD")==3,"fire states that differ show the mixed frame (3)");
+            }
+            const int cvFire=fireOf(ids["armcv"]);
+            show({ids["armcv"],ids["armpw"]},"armcv+armpw");
+            press("FIREORD");
+            check(fireOf(ids["armcv"])==cvFire,"a unit without firestandorders keeps its fire state (0x48d0d7)");
+            show({ids["armsolar"]},"armsolar");
+            const bool on0=world_.unit(ids["armsolar"])->active;
+            press("ONOFF");
+            check(world_.unit(ids["armsolar"])->active!=on0,"ONOFF switches the solar collector");
+            std::fprintf(stderr,"PASS: order page\n");
+            return;
+        }
         if (ta::devFlag("TA_GUI_SOUND_TEST")) {
             // TA's GUI sounds (client/guisound.h): a click on a sidebar gadget, through
             // taHudEvent as the input path delivers it, requests the allsound.tdf entry

@@ -20,8 +20,10 @@ inline bool parsePlayerCommands(const std::vector<uint8_t>& payload, std::vector
         const bool power=c.kind==ta::net::Cmd::PowerCode;
         const bool resurrect=c.kind==ta::net::Cmd::Resurrect;
         const bool ground=c.kind==ta::net::Cmd::AttackGround;
-        // The D-gun (339), RECLAIMUNIT (340) and Land (341) are ordinary verbs too.
-        const bool late=c.kind==ta::net::Cmd::DGun || c.kind==ta::net::Cmd::ReclaimUnit || c.kind==ta::net::Cmd::Land;
+        // The D-gun (339), RECLAIMUNIT (340), Land (341) and the standing orders
+        // (342) are ordinary verbs too.
+        const bool late=c.kind==ta::net::Cmd::DGun || c.kind==ta::net::Cmd::ReclaimUnit || c.kind==ta::net::Cmd::Land ||
+                        c.kind==ta::net::Cmd::StandingOrder;
         // Kingdoms' lodestone area build and weapon switch are retired; the
         // area reclaim is an engine feature (TA has no RECLAIMAREA,
         // docs/ta-port-plan.md).

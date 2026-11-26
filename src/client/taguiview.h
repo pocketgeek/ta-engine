@@ -70,6 +70,7 @@ public:
     void setPressed(const std::string& gadget, bool down);   // latched/radio state
     bool pressed(const std::string& gadget) const;
     void setVisible(const std::string& gadget, bool visible);
+    bool visible(const std::string& gadget) const;
     void setList(const std::string& gadget, std::vector<std::string> items);
     int selection(const std::string& gadget) const;
     void setSelection(const std::string& gadget, int index);

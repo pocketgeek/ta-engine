@@ -90,6 +90,9 @@ struct UnitR {
     int stance = 1;
     int8_t outputStance = -1;   // a producer's stance for its output (-1: none chosen)
     uint8_t standingOrder = 3;
+    // TA's move and fire states (sim Unit::moveState / fireState, TotalA.exe unit
+    // +0x110 bits 18-19 / 20-21): the ORDERS page's MOVEORD / FIREORD stages.
+    uint8_t moveState = 2, fireState = 2;
     std::array<int32_t,3> weaponReloads{};
     std::array<uint8_t,3> stock{};   // sim Unit::stock (stockpile weapons)
     int stockQueued = 0;             // World::queuedStock(slot 0): the build button's " +N"

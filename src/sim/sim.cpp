@@ -514,6 +514,24 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // absent = 0). The engine's single stance control serves either.
             t.canSetStance = ((int32_t(info->numberOr("mobilestandorders", 0)) |
                                int32_t(info->numberOr("firestandorders", 0))) & 1) != 0;
+            {   // TotalA.exe's order word, UnitType +0x245 (0x42c8ae..0x42cac4).
+                const auto bit = [&](const char* key) { return (int32_t(info->numberOr(key, 0)) & 1) != 0; };
+                const std::pair<const char*, uint16_t> keys[] = {
+                    {"mobilestandorders", UnitType::kOrderMoveState}, {"firestandorders", UnitType::kOrderFireState},
+                    {"onoffable", UnitType::kOrderOnOff}, {"canstop", UnitType::kOrderStop},
+                    {"canattack", UnitType::kOrderAttack}, {"canguard", UnitType::kOrderGuard},
+                    {"canpatrol", UnitType::kOrderPatrol}, {"canmove", UnitType::kOrderMove},
+                    {"canload", UnitType::kOrderLoad}, {"canreclamate", UnitType::kOrderReclaim},
+                    {"canresurrect", UnitType::kOrderResurrect}, {"cancapture", UnitType::kOrderCapture},
+                    {"candgun", UnitType::kOrderDgun}};
+                uint16_t f = 0;
+                for (const auto& [key, flag] : keys) if (bit(key)) f |= flag;
+                // 0x42ca3b..0x42ca4f: bit 9, the REPAIR button's, is a copy of bit 10
+                // (canreclamate); 0x42ca5a..0x42ca99: bit 13, CLOAK's, is cloakcost > 0.
+                if (f & UnitType::kOrderReclaim) f |= UnitType::kOrderRepair;
+                if (int32_t(info->numberOr("cloakcost", 0)) > 0) f |= UnitType::kOrderCloak;
+                t.orderFlags = f;
+            }
             {
                 std::string dmt = lower(info->valueOr("defaultmissiontype", ""));
                 t.wanders = dmt == "standby_wander";
@@ -6554,6 +6572,29 @@ void World::setStance(int unitId, int stance) {
         case 0: u->moveState = 1; u->fireState = 2; break;   // Offensive
         case 1: u->moveState = 0; u->fireState = 2; break;   // Defensive
         default: u->moveState = 0; u->fireState = 0; break;  // Passive
+    }
+}
+
+void World::setStandingOrder(int unitId, bool fire, int value) {
+    Unit* u = unit(unitId);
+    if (!u || !u->alive() || !u->type || value < 0 || value > 2) return;
+    // 0x48cf30 hands Standing_FireOrder only to a type with firestandorders
+    // (UnitType +0x245 & 2, 0x48d0d7), Standing_MoveOrder only to one with
+    // mobilestandorders (& 1, 0x48d104).
+    if (!(u->type->orderFlags & (fire ? UnitType::kOrderFireState : UnitType::kOrderMoveState))) return;
+    // A factory, or a mobile builder on an infinite queue, passes its states on
+    // to what it makes (0x402e82..0x402ec2; applied as each is finished).
+    if ((u->type->producesUnits() || u->repeatType) && !computerOwned(u->player))
+        (fire ? u->outputFireState : u->outputMoveState) = int8_t(value);
+    if (fire) {
+        u->fireState = uint8_t(value);   // 0x403100: unit +0x110 bits 20-21
+        // Hold fire or return fire drops what the weapons picked for themselves
+        // (0x40312c..0x403150 -> 0x48a0f0): an autonomous engagement ends here.
+        if (value < 2 && !u->orders.empty() && u->orders.front().autoTarget) {
+            dropLeg(*u);cancelPath(*u);u->routeStamp=-1;
+        }
+    } else {
+        u->moveState = uint8_t(value);   // 0x4030d0: unit +0x110 bits 18-19
     }
 }
 
@@ -18840,6 +18881,14 @@ void World::finishProduction(int producerId,Unit& finished) {
     if (const Unit* pb = unit(producerId); pb && pb->outputStance >= 0 && t->canSetStance &&
         (pb->type->isStructure() || pb->repeatType))
         setStance(id, pb->outputStance);
+    // ... and the move / fire state a standing order gave it (0x402e82..0x402ec2).
+    if (const Unit* pb = unit(producerId); pb && (pb->type->isStructure() || pb->repeatType))
+        if (Unit* nu = unit(id); nu && nu->type) {
+            if (pb->outputMoveState >= 0 && (nu->type->orderFlags & UnitType::kOrderMoveState))
+                nu->moveState = uint8_t(pb->outputMoveState);
+            if (pb->outputFireState >= 0 && (nu->type->orderFlags & UnitType::kOrderFireState))
+                nu->fireState = uint8_t(pb->outputFireState);
+        }
     if (const Unit* pb = unit(producerId); pb && !commanded)
         for (const Order& ro : pb->rally) {
             Unit* nu = unit(id);
@@ -21142,6 +21191,9 @@ uint64_t World::stateHash() const {
         if (u.legionLift) { mix(0x4c494654u); mix(u.legionLiftUntil); mix(uint32_t(u.legionLiftX.v)); mix(uint32_t(u.legionLiftZ.v)); mix(u.legionLiftSince); }
         if (u.legionLiftRest) { mix(0x52455354u); mix(u.legionLiftRest); }
         if (u.outputStance >= 0) { mix(0x4f535443u); mix(uint32_t(u.outputStance)); }
+        if (u.outputMoveState >= 0 || u.outputFireState >= 0) {
+            mix(0x4f535444u); mix(uint32_t(uint8_t(u.outputMoveState)) | uint32_t(uint8_t(u.outputFireState)) << 8);
+        }
         if (u.holdLift) { mix(0x484c4654u); mix(u.holdLiftUntil); mix(uint32_t(u.holdLiftX.v)); mix(uint32_t(u.holdLiftZ.v)); }
         if (u.fireStartPending || u.unreleasedFires) { mix(0x46525354u); mix(uint32_t(u.fireStartPending)|uint32_t(u.unreleasedFires)<<8); mix(u.fireStartTick); }
         if (u.legionWindow || u.legionStill || u.legionShuffle) {
