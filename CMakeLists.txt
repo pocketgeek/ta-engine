@@ -1788,6 +1788,21 @@ if(TA_TEST_DATA)
             set_tests_properties(result_click_${result_press} PROPERTIES ENVIRONMENT "${result_env}"
                 PASS_REGULAR_EXPRESSION "${result_pass}" TIMEOUT 60)
         endforeach()
+        # GUI sounds through the real paths: a click on the title screen's EXIT (TA's
+        # front end, TA_FRONT_SCRIPT) and on the sidebar's order buttons (taHudEvent)
+        # request retail's allsound.tdf entry and queue its WAV.
+        add_test(NAME gui_sound_title COMMAND taclient --data "${TA_TEST_DATA}")
+        set_tests_properties(gui_sound_title PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_GUISOUNDLOG=1;TA_FRONT_SCRIPT=CLICK:EXIT;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-sound-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-sound-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/gui-sound-profile/settings.ini"
+            PASS_REGULAR_EXPRESSION "gui sound: front end MAINMENU EXIT -> EXIT \\(button2.wav\\) decoded=1"
+            TIMEOUT 60)
+        add_test(NAME gui_sound_sidebar COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/gui-sound-sidebar.png")
+        set_tests_properties(gui_sound_sidebar PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_GUI_SOUND_TEST=1;TA_GUISOUNDLOG=1"
+            PASS_REGULAR_EXPRESSION "PASS: gui sound sidebar"
+            TIMEOUT 60)
         add_test(NAME retirement_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/retirement-ui.png")
@@ -3165,7 +3180,15 @@ if(TA_BUILD_CLIENT)
         src/client/hotkeys.cpp src/client/settings.cpp)
     target_compile_definitions(screen_lifecycle_test PRIVATE SDL_MAIN_HANDLED)
     target_link_libraries(screen_lifecycle_test PRIVATE ta-uifont ta-music ta-formats ta_ffmpeg ${_ta_sdl2})
+    # TA's GUI sounds (client/guisound.h): the allsound.tdf entry each press requests
+    # (TotalA.exe's per-handler 0x47f1a0 names); with the install, the WAVs decode.
+    add_executable(gui_sound_test tools/gui_sound_test.cpp)
+    target_include_directories(gui_sound_test PRIVATE src)
+    target_compile_definitions(gui_sound_test PRIVATE SDL_MAIN_HANDLED)
+    target_link_libraries(gui_sound_test PRIVATE ta-formats ${_ta_sdl2})
+    add_test(NAME gui_sound COMMAND gui_sound_test)
     if(TA_TEST_DATA)
+      add_test(NAME gui_sound_roster COMMAND gui_sound_test "${TA_TEST_DATA}")
       add_test(NAME screen_lifecycle COMMAND screen_lifecycle_test "${TA_TEST_DATA}")
       set_tests_properties(screen_lifecycle PROPERTIES
           ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy" TIMEOUT 60)

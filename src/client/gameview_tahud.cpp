@@ -379,13 +379,15 @@ std::string upperStr(std::string s) {
                 const bool stock = tail == "MAKENUKE" || tail == "MAKEANTI";
                 const ta::sim::UnitType* t = stock ? nullptr : registry_.find(g->name);
                 if (t && t->buildMovementCode == 0) {
-                    playClickTone();
+                    playGuiSound(ta::guisound::sidebar(name, true), "sidebar", name);   // addbuild, 0x41ab97
                     placing_ = t;
                     shiftBuildPlaced_ = false;
                     return true;
                 }
                 if (stock || t) {
-                    playClickTone();
+                    // addbuild / subbuild by the count's sign (0x419b1d..0x419b33).
+                    playGuiSound(ta::guisound::sidebar(stock ? tail : name, true, e.button.button == SDL_BUTTON_RIGHT),
+                                 "sidebar", stock ? tail : name);
                     ta::net::Command c;
                     c.kind = e.button.button == SDL_BUTTON_LEFT ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
                     c.unitId = selection_.front();
@@ -399,11 +401,12 @@ std::string upperStr(std::string s) {
         if (mouse && e.button.button != SDL_BUTTON_LEFT) return true;   // any other press on the page
         const std::string hit = page->handle(e, taHudLayout_);
         if (hit.empty()) return mouse;
-        playClickTone();
         const int side = std::max(0, ta::sides::find(side_));
         const std::string prefix = upperStr(ta::sides::at(side).prefix);
         std::string n = upperStr(hit);
         if (n.rfind(prefix, 0) == 0) n = n.substr(prefix.size());
+        // The press's retail sound (client/guisound.h: 0x419be0 orders, 0x41aa60 tabs/pages/builds).
+        playGuiSound(ta::guisound::sidebar(n, taBuildTab_ && registry_.find(hit)), "sidebar", n);
         if (n == "BUILD") { taBuildTab_ = true; return true; }
         if (n == "ORDERS") { taBuildTab_ = false; return true; }
         if (n == "NEXT") { ++taBuildPage_; return true; }

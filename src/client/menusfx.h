@@ -2,7 +2,9 @@
 
 // Plays the front-end's button clicks (client/menuclick.h): one queue-driven device,
 // separate from the shared MenuMusic device so a click mixes over the music. The
-// title menu, the campaign picker it hosts and the result screen each own one.
+// title menu, the campaign picker it hosts, TA's front end (tafrontend.cpp) and the
+// result screen each own one. A request is a WAV name or a gamedata/allsound.tdf
+// entry (client/guisound.h), as TotalA.exe's 0x47f1a0 takes.
 
 #include <SDL.h>
 
@@ -10,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "client/guisound.h"
 #include "client/menuclick.h"
 #include "client/options.h"    // ta::openAudioDevice (routes to the chosen device)
 #include "client/settings.h"
@@ -68,17 +71,51 @@ public:
         }
     }
 
-    // Play a click now (loading it first if need be), cutting off any still playing.
-    void play(const std::string& name) {
-        if (name.empty()) return;
-        load(name);
-        auto it = pcm_.find(name);
-        if (!dev_ || it == pcm_.end() || it->second.empty()) return;
-        const auto out = menuclick::level(it->second, settings ? settings->masterVol : 256,
-                                          settings ? settings->sfxVol : 256);
-        SDL_ClearQueuedAudio(dev_);   // retrigger cleanly on rapid clicks
-        SDL_QueueAudio(dev_, out.data(), Uint32(out.size()));
+    // The WAV a request plays: a WAV name as is when sounds/ has it; an allsound.tdf
+    // entry (no extension, e.g. "BIGBUTTON") through that table, as 0x47f1a0 looks it
+    // up; and the Kingdoms click names (menuclick::kOk ...), which TA does not ship,
+    // as their retail counterparts (guisound::engineClick).
+    std::string resolve(const std::string& name) {
+        if (name.empty()) return {};
+        std::string low = name;
+        for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+        const bool isWav = low.size() > 4 && low.compare(low.size() - 4, 4, ".wav") == 0;
+        if (isWav && vfs_.has("sounds/" + name)) return name;
+        if (!table_.loaded()) table_.load(vfs_);
+        if (!isWav) return table_.wav(name);
+        const std::string entry = guisound::engineClick(name);
+        const std::string wav = entry.empty() ? std::string() : table_.wav(entry);
+        return wav.empty() ? name : wav;
     }
+
+    // Play a click now (loading it first if need be), cutting off any still playing.
+    // True when it was queued on the device. `where` / `gadget` name the press for
+    // TA_GUISOUNDLOG (guisound::log).
+    bool play(const std::string& name, const char* where = "menu", const std::string& gadget = {}) {
+        const std::string wav = resolve(name);
+        last = wav;
+        lastDecoded = false;
+        bool queued = false;
+        if (!wav.empty()) {
+            load(wav);
+            auto it = pcm_.find(wav);
+            lastDecoded = it != pcm_.end() && !it->second.empty();
+            if (dev_ && lastDecoded) {
+                const auto out = menuclick::level(it->second, settings ? settings->masterVol : 256,
+                                                  settings ? settings->sfxVol : 256);
+                SDL_ClearQueuedAudio(dev_);   // retrigger cleanly on rapid clicks
+                queued = SDL_QueueAudio(dev_, out.data(), Uint32(out.size())) == 0;
+            }
+        }
+        if (!name.empty()) guisound::log(where, gadget, name, wav, lastDecoded, queued);
+        return queued;
+    }
+    // The WAV the last play() resolved to ("" none), for logs and checks.
+    std::string last;
+    bool lastDecoded = false;   // ... and it decoded
+
+    // Wait (bounded, ~300 ms) for a click to finish before the device is closed.
+    void drain() const { for (int i = 0; i < 30 && busy(); ++i) SDL_Delay(10); }
 
     // Still sounding. Closing the device (destroying this) cuts the click off, so a
     // screen that a click leaves keeps drawing until this clears (bounded, ~140ms).
@@ -88,6 +125,7 @@ private:
     const hpi::Vfs& vfs_;
     SDL_AudioDeviceID dev_ = 0;
     std::unordered_map<std::string, std::vector<uint8_t>> pcm_;
+    guisound::Table table_;   // gamedata/allsound.tdf, read on the first entry request
 };
 
 }  // namespace ta

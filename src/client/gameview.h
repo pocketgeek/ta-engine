@@ -47,6 +47,7 @@
 #include "client/watchonly.h"    // what a spectator or replay viewer may do
 #include "net/replaywriter.h"    // the replay recording, streamed as the game is played
 #include "client/situation.h"    // TA_SITUATION (debug builds)
+#include "client/guisound.h"     // TA GUI sounds (allsound.tdf)
 #include "client/pacelog.h"       // TA_PACELOG (debug builds)
 #include <future>
 #include "util/procmetrics.h"   // benchmark: cross-platform CPU/RSS sampling
@@ -4178,6 +4179,12 @@ private:
     // mixing headroom: retail played tones at native amplitude, and quiet
     // click.hpi replacements vanish at half volume.
     void playClickTone(int semitone = 0);
+    // TA's GUI sounds (client/guisound.h): play an allsound.tdf entry (TotalA.exe
+    // 0x47f1a0), non-positional, at the SOUND EFFECTS level. `where` / `gadget` name the
+    // press for TA_GUISOUNDLOG and lastGuiSound_.
+    void playGuiSound(const std::string& entry, const char* where = "game", const std::string& gadget = {});
+    ta::guisound::Table guiSounds_;   // gamedata/allsound.tdf, read on first use
+    std::string lastGuiSound_, lastGuiWav_;   // the last request (entry, WAV), for checks
 
     // The conjure/build menu for a builder type, filtered by the active mission's unit
     // whitelist (missions/<stem>.tdf) when one is loaded -- so a campaign mission only
@@ -4356,7 +4363,9 @@ private:
     void lbCycle(float x, float y, float w, float h, const std::string& label, bool enabled,
                  std::function<void(int)> cycle, float labelPx = kBtnLabelPx) {
         lbBtn(x, y, w, h, label, enabled, {}, {60, 66, 86, 255}, labelPx);
-        if (enabled && cycle) lobbyHots_.emplace_back(SDL_FRect{x,y,w,h}, std::move(cycle));
+        if (enabled && cycle)   // a setting: the battle room's Multi (0x4484f1..0x4486de)
+            lobbyHots_.emplace_back(SDL_FRect{x,y,w,h}, std::function<void(int)>(
+                [this, label, c = std::move(cycle)](int d) { playGuiSound(ta::guisound::kMulti, "lobby", label); c(d); }));
     }
     // A text-input field: label + box; clicking activates it (id != 0). Not enabled: greyed,
     // and deaf to clicks. A password's value is drawn Hidden, one pip per character

@@ -697,7 +697,11 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 SDL_SetRenderDrawColor(ren_, fill.r, fill.g, fill.b, 255); SDL_RenderFillRectF(ren_, &cell);
                 SDL_SetRenderDrawColor(ren_, hot ? 180 : 90, hot ? 200 : 100, hot ? 240 : 130, 255); SDL_RenderDrawRectF(ren_, &cell);
                 text = rule.live ? SDL_Color{225, 230, 240, 255} : rule.dim ? SDL_Color{110, 115, 125, 255} : SDL_Color{160, 165, 178, 255};
-                if (rule.live && rule.cycle) lobbyHots_.emplace_back(cell, rule.cycle);
+                if (rule.live && rule.cycle)   // a room setting: the battle room's Multi (client/guisound.h)
+                    lobbyHots_.emplace_back(cell, std::function<void(int)>([this, label = rule.label, c = rule.cycle](int d) {
+                        playGuiSound(ta::guisound::kMulti, "lobby", label);
+                        c(d);
+                    }));
             } else
                 text = rule.dim ? SDL_Color{130, 135, 150, 255} : SDL_Color{205, 210, 225, 255};
             if (rule.field != RoomField::kCount) drawRoomFlash(rule.field, cell);   // the host changed it

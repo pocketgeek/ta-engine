@@ -3154,6 +3154,50 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: idle builders strip\n");
             return;
         }
+        if (ta::devFlag("TA_GUI_SOUND_TEST")) {
+            // TA's GUI sounds (client/guisound.h): a click on a sidebar gadget, through
+            // taHudEvent as the input path delivers it, requests the allsound.tdf entry
+            // its TotalA.exe handler names, which resolves to a shipped WAV.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("gui sound: "+what);
+                std::fprintf(stderr,"PASS: gui sound: %s\n",what.c_str());
+            };
+            constexpr int W=1280,H=960;
+            winW_=W;winH_=H;noFog_=true;edgeScrollOn_=false;
+            const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
+            const int commander=spawn("armcom",cx,cz,0,localPlayer_);
+            check(commander>=0,"fixture commander spawned");
+            const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
+            selection_={commander};taBuildTab_=false;
+            frame();frame();
+            const std::string pre=ta::sides::at(std::max(0,ta::sides::find(side_))).prefix;
+            const auto press=[&](const std::string& gadget,const char* entry,const char* wav) {
+                ta::TaGuiView* page=taPage(taHudPage_);
+                float gx=0,gy=0;
+                check(page && page->gadgetCentre(gadget,gx,gy),taHudPage_+" has "+gadget);
+                lastGuiSound_.clear();lastGuiWav_.clear();
+                for (Uint32 kind:{Uint32(SDL_MOUSEBUTTONDOWN),Uint32(SDL_MOUSEBUTTONUP)}) {
+                    SDL_Event e{};e.type=kind;e.button.button=SDL_BUTTON_LEFT;
+                    e.button.x=int(taHudLayout_.px(gx));e.button.y=int(taHudLayout_.py(gy));
+                    taHudEvent(e);
+                }
+                check(lastGuiSound_==entry && lastGuiWav_==wav && sounds_.has(lastGuiWav_.substr(0,lastGuiWav_.size()-4)),
+                      gadget+" requests "+entry+" = "+wav+" (got "+lastGuiSound_+" = "+lastGuiWav_+")");
+                frame();
+            };
+            press(pre+"MOVE","IMMEDIATEORDERS","button5.wav");        // 0x419c65
+            press(pre+"STOP","IMMEDIATEORDERS","button5.wav");        // 0x419cf2 -> 0x41a0ea
+            press(pre+"FIREORD","SETFIREORDERS","butnagr2.wav");      // 0x41a6af
+            press(pre+"MOVEORD","SETMOVEORDERS","butnmbl2.wav");      // 0x41a5ac
+            press(pre+"REPAIR","SPECIALORDERS","button5.wav");        // 0x419e9c
+            press(pre+"BUILD","BUILDBUTTON","butnmbl1.wav");          // 0x41ab39
+            check(taBuildTab_,"BUILD opened the build page "+taHudPage_);
+            press(pre+"SOLAR","ADDBUILD","button9.wav");              // 0x41ab97
+            placing_=nullptr;
+            press(pre+"ORDERS","ORDERSBUTTON","butnmbl1.wav");        // 0x41aaf8
+            std::fprintf(stderr,"PASS: gui sound sidebar\n");
+            return;
+        }
         if (ta::devFlag("TA_UNIT_SPOTS_TEST")) {
             // Destination markers (GameView::drawUnitSpots): a mixed-speed right-click
             // move of Peewees, Hammers and Stumpies, four Peewee stragglers far outside

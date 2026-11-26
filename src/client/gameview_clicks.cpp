@@ -347,6 +347,20 @@ namespace {
         return canPlacePreview(placing_, wx, wz) || placePreviewClearable(placing_, wx, wz);
     }
 
+    void GameView::playGuiSound(const std::string& entry, const char* where, const std::string& gadget) {
+        if (entry.empty()) return;
+        if (!guiSounds_.loaded()) guiSounds_.load(vfs_);
+        const std::string wav = guiSounds_.wav(entry);   // 0x47f1a0: an unknown entry plays nothing
+        lastGuiSound_ = entry;
+        lastGuiWav_ = wav;
+        // The SoundBank indexes sounds/ by stem; played non-positional, at UI priority.
+        const std::string stem = wav.size() > 4 ? wav.substr(0, wav.size() - 4) : std::string();
+        const bool known = !stem.empty() && sounds_.has(stem);
+        ta::guisound::log(where, gadget, entry, wav, known, known);
+        if (!known) return;
+        sounds_.play(stem, 1.f, 1.f, 7, false);
+    }
+
     // Retail mode 14 on the minimap (0x527eb0 S): MOBILEBUILD at the minimap point
     // with the "oktobuild" sound when the placement flag passes, else
     // "notoktobuild". Its flag is the main view's (stale, I); ours is checked at
@@ -356,7 +370,7 @@ namespace {
         float wx, wz;
         if (!placing_ || watchOnly() || !minimapToWorld(mx, my, winW, winH, wx, wz)) return false;
         const uint8_t queue = keyQueue();   // Ctrl puts the build at the head of the queue
-        if (selection_.empty()) { sounds_.play("notoktobuild", 1.f, 1.f, 7, false); return true; }
+        if (selection_.empty()) { playGuiSound(ta::guisound::kNotOkToBuild, "minimap"); return true; }
         const int builder = selectedBuilder() ? selectedBuilder()->id : selection_.front();
         std::vector<int> feats;
         bool placed = false;
@@ -373,7 +387,7 @@ namespace {
             issueClearThenBuild(builder, placing_, wx, wz, feats, queue);
             placed = true;
         }
-        sounds_.play(placed ? "oktobuild" : "notoktobuild", 1.f, 1.f, 7, false);
+        playGuiSound(placed ? ta::guisound::kOkToBuild : ta::guisound::kNotOkToBuild, "minimap");
         if (placed) {
             if (shiftHeld()) shiftBuildPlaced_ = true;
             else { placing_ = nullptr; shiftBuildPlaced_ = false; }
