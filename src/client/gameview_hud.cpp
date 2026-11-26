@@ -161,7 +161,7 @@ namespace {
         // Pointer position in renderer-output pixels (the space mouse events are mapped
         // into). Before the first motion, sample the OS position and map it the same way.
         int mx, my;
-        if (!uiOverlay && mouseX_ >= 0) { mx = int(mouseX_); my = int(mouseY_); }
+        if (!uiOverlay && screenMouseX_ >= 0) { mx = int(screenMouseX_); my = int(screenMouseY_); }
         else {
             int wx, wy; SDL_GetMouseState(&wx, &wy);
             float lx, ly; SDL_RenderWindowToLogical(ren_, wx, wy, &lx, &ly);
@@ -194,7 +194,7 @@ namespace {
         frame.placing = placing_ != nullptr;
         if (frame.placing && !frame.watcher && !frame.modalUi && area == PointerArea::Minimap) {
             float wx = 0, wz = 0;
-            frame.minimapPlaceOk = minimapToWorld(mouseX_, mouseY_, winW_, winH_, wx, wz) && minimapPlaceOk(wx, wz);
+            frame.minimapPlaceOk = minimapToWorld(screenMouseX_, screenMouseY_, winW_, winH_, wx, wz) && minimapPlaceOk(wx, wz);
         }
         // A box past its area threshold (the right-drag, an armed A/L/C left-drag)
         // shows what its release does; before that, the cursor of the click.
@@ -221,7 +221,7 @@ namespace {
         // that is the camera.
         if (stage == CursorStage::Hover && area == PointerArea::Minimap) return ta::CursorId::Normal;
         float wx = 0, wz = 0;
-        if (area == PointerArea::Minimap) minimapToWorld(mouseX_, mouseY_, winW_, winH_, wx, wz);
+        if (area == PointerArea::Minimap) minimapToWorld(screenMouseX_, screenMouseY_, winW_, winH_, wx, wz);
         else pickWorld(mouseX_, mouseY_, wx, wz);
         const UnitR* hovered = hoveredUnit(area);
         if (stage == CursorStage::Hover) return hoverCursor(wx, wz, hovered);
@@ -232,20 +232,18 @@ namespace {
     }
 
     // Where the pointer is, as retail's 0x528430 sorts it: the main view, the
-    // minimap, or interface (the command panel, the bottom bar, the build strip,
-    // the replay bar), where every cursor is Normal.
+    // minimap, or interface (the side panel, the top and bottom bars, the replay
+    // bar), where every cursor is Normal. The minimap and the frame are tested in
+    // window coordinates, the replay bar (in the view) in view coordinates.
     ta::client::PointerArea GameView::pointerArea() const {
         using ta::client::PointerArea;
-        if (mouseX_ < 0) return PointerArea::Unknown;
-        // Build icons and their strip cover the map. Do not classify world
-        // targets behind them, even with a placement or command armed.
-        if (overBuildMenu(mouseX_, mouseY_)) return PointerArea::Interface;
+        if (screenMouseX_ < 0 || screenMouseY_ < 0) return PointerArea::Unknown;
         if (replayMode_ && replayBar_.box.hit(mouseX_, mouseY_)) return PointerArea::Interface;
         const SDL_FRect mini = minimapRect(winW_, winH_);
-        if (mouseX_ >= mini.x && mouseY_ >= mini.y && mouseX_ <= mini.x + mini.w &&
-            mouseY_ <= mini.y + mini.h) return PointerArea::Minimap;
-        if (mouseX_ > mapViewW(winW_) || (hudShown() && mouseY_ > winH_ - barH()))
-            return PointerArea::Interface;
+        const float sx = screenMouseX_, sy = screenMouseY_;
+        if (sx >= mini.x && sy >= mini.y && sx <= mini.x + mini.w && sy <= mini.y + mini.h)
+            return PointerArea::Minimap;
+        if (!inView(sx, sy)) return PointerArea::Interface;
         return PointerArea::World;
     }
 
@@ -346,24 +344,28 @@ namespace {
         if (miniTex_) { gpuvram::destroy(miniTex_); miniTex_ = nullptr; }
     }
 
-    int GameView::cmdPanelW() const { return panelW(); }
+    int GameView::cmdPanelW() const { return taSideW(); }
 
+    // Window coordinates. TotalA.exe's minimap (0x466780) is the map fitted into a
+    // 126x126 box at the side panel's top-left corner: the longer side 126 pixels,
+    // the shorter one 126 * its share, centred on that axis (0x4667c6 / 0x4667eb).
     SDL_FRect GameView::minimapRect(int winW, int winH) const {
-        float aspect = float(mapView_.map().blocksY) / float(mapView_.map().blocksX);
+        const float bx = float(mapView_.map().blocksX), by = float(mapView_.map().blocksY);
+        float aspect = by / std::max(1.0f, bx);
         if (fsRadar_) {
-            // Retail sets the rect to exactly the world viewport (0, 0,
-            // screenW-128, screenH-48) so the command panel and the bottom bar
-            // stay visible. We fit the map's aspect INSIDE that viewport and
-            // centre it rather than stretching to fill: retail's corner box is
-            // square while ours already honours the map's shape, and stretching a
-            // 2:1 map to a 16:9 viewport would distort every distance on it.
-            // Spectators have no bottom HUD: use the entire available height.
-            float vw = float(mapViewW(winW)), vh = float(winH) - (hudShown() ? barH() : 0);
+            // The full-screen radar fills the world view, the map's aspect fitted
+            // inside and centred rather than stretched (a 2:1 map on a 16:9 view
+            // would distort every distance on it).
+            float vw = float(mapViewW(winW)), vh = float(mapViewH(winH));
             float w = vw, h = vw * aspect;
             if (h > vh) { h = vh; w = vh / aspect; }
-            return {(vw - w) * 0.5f, (vh - h) * 0.5f, w, h};
+            return {float(viewX0()) + (vw - w) * 0.5f, float(viewY0()) + (vh - h) * 0.5f, w, h};
         }
-        return {float(winW) - miniSize() - 10, 10, float(miniSize()), float(miniSize()) * aspect};
+        const float box = 126.0f * uiScale_;
+        float w = box, h = box;
+        if (bx >= by) h = std::floor(126.0f * by / std::max(1.0f, bx)) * uiScale_;
+        else w = std::floor(126.0f * bx / std::max(1.0f, by)) * uiScale_;
+        return {std::floor((box - w) / 2), std::floor((box - h) / 2), w, h};
     }
 
     void GameView::buildMinimap() {
@@ -409,27 +411,20 @@ namespace {
         // The rows draw in the UI face (blockText -> ta::uiText), not hudFont_: that is
         // fonts/bodfontbody.gaf, a Kingdoms font TA does not ship, and gating on it hid
         // the panel (and a benchmark run's PATHFINDER row) on every TA install.
+        statsBottom_ = 0;
         if (!statsPanel_) return;
 
-        // WHERE THE GAP IS. The right strip holds the minimap at the top and the command
-        // panel at the bottom; everything between them is the black space this fills.
-        // Both edges move: the minimap is as tall as the map's aspect makes it, and the
-        // command panel is anchored to the bottom bar and scaled by guiS(). So measure
-        // them rather than assuming a layout -- a hard-coded gap would overlap the
-        // command panel on a tall map, or float in mid-strip on a wide one.
+        // WHERE IT GOES. TA's frame leaves no free strip (the side panel is the
+        // minimap and the sidebar page), so the readout is a column in the world
+        // view's top-right corner, in view coordinates (drawn through the view's
+        // viewport, like the other in-view overlays).
+        (void)winW; (void)winH;
         const float pad = std::max(4.0f, 6.0f * uiScale_);
-        float x0 = float(mapViewW(winW)) + pad;
-        float x1 = float(winW) - pad;
-        // TAB (full-screen radar) moves the minimap out of the strip entirely and over
-        // the world viewport, so the strip is free all the way to the top.
+        const float viewW = float(mapViewW(winW_)), viewH = float(mapViewH(winH_));
+        float x1 = viewW - pad;
+        float x0 = std::max(pad, x1 - 190.0f * uiScale_);
         float top = pad;
-        if (!fsRadar_) {
-            SDL_FRect mr = minimapRect(winW, winH);
-            top = mr.y + mr.h + 2 + pad;
-        }
-        // Bottom edge: the bottom bar. A spectator has none, so the strip runs to
-        // the window edge.
-        const float bot = hudShown() ? float(winH) - barH() - pad : float(winH) - pad;
+        const float bot = viewH - pad;
         float availW = x1 - x0, availH = bot - top;
         if (availW <= 8 || availH <= 4) return;
 
@@ -560,6 +555,11 @@ namespace {
         rows.resize(size_t(fit.rows));
 
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        {   // a dark plate, so the column reads over the terrain
+            const SDL_FRect plate{x0 - pad / 2, top - pad / 2, availW + pad, fit.rowH * float(fit.rows) + pad / 2};
+            SDL_SetRenderDrawColor(ren_, 10, 10, 14, 170);
+            SDL_RenderFillRectF(ren_, &plate);
+        }
         const SDL_Color mc{200, 215, 255, 255};   // the readout's colour
         float y = top;
         for (const auto& r : rows) {
@@ -569,6 +569,7 @@ namespace {
             blockText(r.value, x1 - blockWidth(r.value, px), y, px, mc);
             y += fit.rowH;
         }
+        statsBottom_ = y;
 #ifndef NDEBUG
         // TA_BENCH_REPORT: the rows as drawn during a run, for benchmark_pathfinding.
         static bool reported = false;
@@ -587,12 +588,13 @@ namespace {
         // Full-screen: black out the WHOLE world viewport first. Retail's radar
         // rect simply is the viewport, so no world shows around it; ours fits the
         // map's aspect inside, which would leave the terrain peeking through the
-        // letterbox margins and read as a window rather than a map.
-        SDL_FRect frame = fsRadar_
-            ? SDL_FRect{0, 0, float(mapViewW(winW)), float(winH) - (hudShown() ? barH() : 0)}
-            : SDL_FRect{r.x - 2, r.y - 2, r.w + 4, r.h + 4};
-        SDL_SetRenderDrawColor(ren_, 30, 30, 40, 255);
-        SDL_RenderFillRectF(ren_, &frame);
+        // letterbox margins and read as a window rather than a map. In the corner
+        // the side panel's art (PANELSIDE) shows round a map that is not square.
+        if (fsRadar_) {
+            const SDL_FRect frame{float(viewX0()), float(viewY0()), float(mapViewW(winW)), float(mapViewH(winH))};
+            SDL_SetRenderDrawColor(ren_, 30, 30, 40, 255);
+            SDL_RenderFillRectF(ren_, &frame);
+        }
         if (miniTex_) SDL_RenderCopyF(ren_, miniTex_, nullptr, &r);
         // 0x4f93a0: the minimap shows the local plane cell by cell, unblended.
         if (!noFog_ && !front().fog.empty() && syncFogTexture(miniFogTex_, miniFogUpload_, miniFogTexGen_)) {
@@ -626,7 +628,7 @@ namespace {
         // Camera view rectangle.
         float zm = mapView_.zoom();
         SDL_FPoint a = toMini(mapView_.offX(), mapView_.offY());
-        SDL_FRect view{a.x, a.y, winW / zm / mapW * r.w,
+        SDL_FRect view{a.x, a.y, mapViewW(winW) / zm / mapW * r.w,
                        mapViewH(winH) / zm / mapH * r.h};
         SDL_SetRenderDrawColor(ren_, 240, 240, 240, 200);
         SDL_RenderDrawRectF(ren_, &view);
@@ -923,7 +925,7 @@ namespace {
         // the stream banner and the GAME TIME clock.
         const float requestedScale = (settings_ ? settings_->scorecardScale : 1.0f) * kHudBase;
         const auto board = ta::hudcorner::scoreboard(requestedScale, showTeams, np, float(mapViewW(winW)),
-                                                      float(winH_ - barH()), topLeft_.next());
+                                                      float(mapViewH(winH_)), topLeft_.next());
         const float scale = board.scale, top = board.top;
         topLeft_.place(top, 32 * scale * float(rows.size() + 1));
         const float x = 12 * scale, rowH = 32 * scale;
@@ -1318,15 +1320,17 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
         return a.type->name < b.type->name;
     });
     const float edge = ta::buildrow::kEdge;
-    const float unitH = float(barH()) - 10.0f, unitW = unitH * (4.0f / 3.0f), unitGap = 6.0f;
+    const float unitH = kBarHBase * uiScale_ - 10.0f, unitW = unitH * (4.0f / 3.0f), unitGap = 6.0f;
     // The column's room: the play area's height, above any build menu whose box
     // reaches under the column.
-    const float right = float(mapViewW(winW)) - edge;
+    // In the world view's coordinates (drawn through its viewport): winW is its width.
+    const float right = float(winW) - edge;
     float bottom = barTop - edge;
     const float wantW = unitW * idleBuildersScale_;
     if (buildMenuRect_.w > 0 && buildMenuRect_.x + buildMenuRect_.w > right - wantW)
         bottom = std::min(bottom, buildRowTop_ - edge);
-    const float top = edge + 30.0f;   // under the top notices
+    // Under the top notices, and under the stats column that shares the corner.
+    const float top = std::max(edge + 30.0f, statsBottom_ + edge);
     const float room = std::max(bottom - top, unitH * 0.4f);
     const int n = int(idleRects_.size());
     const float scale = std::min(idleBuildersScale_, room / (n * unitH + (n - 1) * unitGap));
@@ -1432,7 +1436,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
     blockText("VOICE",x+456*scale,y+66*scale,1.6f*scale,{190,190,200,255});
     blockText("VOLUME",x+524*scale,y+66*scale,1.6f*scale,{190,190,200,255});
     auto button=[&](const std::string& label,SDL_FRect r,int p,DiplomacyAction action,bool enabled) {
-        const bool hover=enabled && mouseX_>=r.x && mouseX_<r.x+r.w && mouseY_>=r.y && mouseY_<r.y+r.h;
+        const bool hover=enabled && screenMouseX_>=r.x && screenMouseX_<r.x+r.w && screenMouseY_>=r.y && screenMouseY_<r.y+r.h;
         SDL_SetRenderDrawColor(ren_,enabled?(hover?90:60):37,enabled?(hover?110:66):39,enabled?(hover?150:86):46,255);
         SDL_RenderFillRectF(ren_,&r);
         blockText(label,r.x+(r.w-blockWidth(label,1.7f*scale))/2,

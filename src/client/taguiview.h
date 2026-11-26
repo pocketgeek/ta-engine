@@ -82,6 +82,13 @@ public:
     std::string handle(const SDL_Event& e, const GuiLayout& L);
     // Draw frame `frame` of `gaf`'s sequence `seq` with its top-left at (x, y) in GUI space.
     void drawSequence(const std::string& gaf, const std::string& seq, int frame, float x, float y, const GuiLayout& L);
+    // Width and height of that frame ({0, 0} when it is missing).
+    SDL_Point sequenceSize(const std::string& gaf, const std::string& seq, int frame = 0);
+    // Colour `index` of this view's palette (palette.pal in game, guipal.pal in menus).
+    SDL_Color paletteColor(int index) const {
+        const auto& c = pal_.rgba[index & 255];
+        return SDL_Color{c[0], c[1], c[2], 255};
+    }
     // Press gadget `name` as a click would (stage/radio/latch effects); returns the
     // name, or "" when it is absent or grayed. For scripted front-end runs.
     std::string activate(const std::string& name);

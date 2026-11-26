@@ -77,7 +77,7 @@
         // (benchSaved_) it takes no click. Nor does the rest of the panel: a click that
         // just misses SAVE AS JPG must not throw the results away.
         if (benchStatsShown_) {
-            if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
+            if (e.type == SDL_MOUSEMOTION) { trackMouse(float(e.motion.x), float(e.motion.y)); }
             else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
                 menuRequested_ = true;   // main() tears down the game and returns to the front-end
             else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
@@ -91,7 +91,7 @@
         // Hotkey-config overlay (opened FROM Options) sits on top of it, so it takes
         // input first while up. Cursor tracking as below.
         if (hotkeysScreen_) {
-            if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
+            if (e.type == SDL_MOUSEMOTION) { trackMouse(float(e.motion.x), float(e.motion.y)); }
             if (hotkeysScreen_->input(e, winW, winH)) hotkeysScreen_.reset();   // BACK / Esc -> Options
             return;
         }
@@ -100,7 +100,7 @@
             // Keep the drawn cursor tracking the mouse (same as the exitMenu_ branch
             // below): the custom cursor renders from mouseX_/mouseY_, so swallowing
             // motion events here froze it for as long as Options was open.
-            if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
+            if (e.type == SDL_MOUSEMOTION) { trackMouse(float(e.motion.x), float(e.motion.y)); }
             if (options_->input(e, winW, winH)) options_.reset();   // BACK / Esc (all saved)
             return;
         }
@@ -110,7 +110,7 @@
         // local single-player runs on a private server). Buttons fire on release;
         // hit-rects come from the last draw (see the overlay in draw()).
         if (exitMenu_) {
-            if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
+            if (e.type == SDL_MOUSEMOTION) { trackMouse(float(e.motion.x), float(e.motion.y)); }
             else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) { exitMenu_ = false; surrenderArmed_ = false; }
             else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
                 float mx = float(e.button.x), my = float(e.button.y);
@@ -120,7 +120,7 @@
             return;
         }
         if (giveUnitsMenu_) {
-            if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
+            if (e.type == SDL_MOUSEMOTION) { trackMouse(float(e.motion.x), float(e.motion.y)); }
             if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE ||
                 hotkeys_.match(e.key.keysym.sym, e.key.keysym.mod) == ta::Act::GiveUnits))
                 giveUnitsMenu_ = false;
@@ -184,7 +184,8 @@
             return;
         }
         if (inputUnitInfo(e, winW, winH)) return;
-        if (replayMode_ && replayBarInput(e)) return;
+        // The replay bar sits in the world view: its rectangles are view coordinates.
+        if (replayMode_ && replayBarInput(toView(e))) return;
         // In-game chat capture. While composing, keyboard goes to the draft;
         // mouse events still fall through so the camera stays usable.
         if (chatTyping_) {
@@ -216,6 +217,10 @@
             return;
         }
         float zm = mapView_.zoom();
+        // `e` is in window coordinates (the frame: side panel, minimap, bars); `v` is
+        // the same event in the world view's coordinates, which every world pick, drag
+        // and box below uses (viewX0 / viewY0).
+        const SDL_Event v = toView(e);
         if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
             // Ctrl+Esc removes the selection from its squad; plain Escape cancels a
             // pending placement/order first, then a stray selection, else the in-game
@@ -271,18 +276,17 @@
             }
             mapView_.input(e);
         } else if (e.type == SDL_MOUSEMOTION) {
-            mouseX_ = float(e.motion.x);
-            mouseY_ = float(e.motion.y);
+            trackMouse(float(e.motion.x), float(e.motion.y));
             if (draggingMinimap_) {
-                minimapClick(mouseX_, mouseY_, winW, winH);
+                minimapClick(screenMouseX_, screenMouseY_, winW, winH);
             } else if (e.motion.state & SDL_BUTTON_MMASK) {   // middle-drag scrolls
                 trackSel_ = false;
                 mapView_.setOffset(mapView_.offX() - e.motion.xrel / zm,
                                    mapView_.offY() - e.motion.yrel / zm);
             }
-            if (dragging_) { dragX1_ = float(e.motion.x); dragY1_ = float(e.motion.y); }
+            if (dragging_) { dragX1_ = float(v.motion.x); dragY1_ = float(v.motion.y); }
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
-                   idleBuilderClick(float(e.button.x), float(e.button.y), e.button.button == SDL_BUTTON_LEFT)) {
+                   idleBuilderClick(float(v.button.x), float(v.button.y), e.button.button == SDL_BUTTON_LEFT)) {
             // IDLE BUILDERS portrait: select the next idle one of that type (Shift: all)
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
                    buildIconClick(float(e.button.x), float(e.button.y),
@@ -321,22 +325,21 @@
                    minimapClick(float(e.button.x), float(e.button.y), winW, winH)) {
             draggingMinimap_ = true;   // camera follows the drag until release
             trackSel_ = false;
-        } else if (e.type == SDL_MOUSEBUTTONDOWN &&
-                   e.button.x > mapViewW(winW) && e.button.y < mapViewH(winH)) {
-            // Right-hand panel press: swallowed so it can't start a box-select or drop
-            // an order on the map. (Only the PRESS -- releases still fall through to
-            // end a drag/box-select.)
+        } else if (e.type == SDL_MOUSEBUTTONDOWN && !inView(float(e.button.x), float(e.button.y))) {
+            // A press on the frame (side panel, top bar): swallowed so it can't start a
+            // box-select or drop an order on the map. (Only the PRESS -- releases still
+            // fall through to end a drag/box-select.)
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
                    pendingCmd_) {
             // An armed press waits for the release (retail 0x527bf0): a click at
             // the press, or past the area threshold an armed box (2.9).
-            pickWorld(float(e.button.x), float(e.button.y), apX0_, apZ0_);
+            pickWorld(float(v.button.x), float(v.button.y), apX0_, apZ0_);
             armedPress_ = true;
             dragging_ = true;
             dragClicks_ = e.button.clicks;
-            dragAnchor_ = dragAnchorAt(float(e.button.x), float(e.button.y));
-            dragX1_ = float(e.button.x);
-            dragY1_ = float(e.button.y);
+            dragAnchor_ = dragAnchorAt(float(v.button.x), float(v.button.y));
+            dragX1_ = float(v.button.x);
+            dragY1_ = float(v.button.y);
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
                    placing_) {
             // Placement pick: a building takes the flat cell under the cursor (so the
@@ -344,7 +347,7 @@
             // lands there); a conjured unit uses the height-aware pick so it drops on
             // the elevated cell drawn under the cursor, not the low cell behind.
             float wx, wz;
-            pickWorld(float(e.button.x), float(e.button.y), wx, wz);
+            pickWorld(float(v.button.x), float(v.button.y), wx, wz);
             if ((SDL_GetModState() & KMOD_SHIFT) && !(SDL_GetModState() & KMOD_CTRL)) {
                 // Shift: begin a drag — a whole line of these gets queued on
                 // release (a single shift-click is just a zero-length line).
@@ -379,7 +382,7 @@
                    buildDrag_) {
             buildDrag_ = false;
             float ewx, ewz;
-            pickWorld(float(e.button.x), float(e.button.y), ewx, ewz);
+            pickWorld(float(v.button.x), float(v.button.y), ewx, ewz);
             if (placeBuildLine(bdX0_, bdZ0_, ewx, ewz)) shiftBuildPlaced_=true;
             if (shiftBuildPlaced_ && !(SDL_GetModState() & KMOD_SHIFT)) {
                 placing_ = nullptr;shiftBuildPlaced_=false;
@@ -388,7 +391,7 @@
                    rightDrag_) {
             rightDrag_ = false;
             const uint8_t queue = keyQueue();
-            float ex = float(e.button.x), ey = float(e.button.y), ewx, ewz;
+            float ex = float(v.button.x), ey = float(v.button.y), ewx, ewz;
             pickWorld(ex, ey, ewx, ewz);
             // Retail orders on the release (0x5281ad). Only a deliberate box is one
             // (both sides at least the area threshold, measured from where the press's
@@ -418,14 +421,14 @@
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             dragging_ = true;
             dragClicks_ = e.button.clicks;
-            dragAnchor_ = dragAnchorAt(float(e.button.x), float(e.button.y));
-            dragX1_ = float(e.button.x);
-            dragY1_ = float(e.button.y);
+            dragAnchor_ = dragAnchorAt(float(v.button.x), float(v.button.y));
+            dragX1_ = float(v.button.x);
+            dragY1_ = float(v.button.y);
         } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
                    draggingMinimap_) {
             draggingMinimap_ = false;
         } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
-                   dragging_ && armedPress_ && armedRelease(float(e.button.x), float(e.button.y))) {
+                   dragging_ && armedPress_ && armedRelease(float(v.button.x), float(v.button.y))) {
             // the armed press's click or box (armedRelease)
         } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
                    dragging_) {
@@ -574,10 +577,10 @@
             // Retail orders on the release (0x5281ad): keep the press, which the
             // release turns into a click at it or a box (above).
             float wx, wz;
-            pickWorld(float(e.button.x), float(e.button.y), wx, wz);
+            pickWorld(float(v.button.x), float(v.button.y), wx, wz);
             rightDrag_ = true;
             rdX0_ = wx; rdZ0_ = wz;
-            rdAnchor_ = dragAnchorAt(float(e.button.x), float(e.button.y));
+            rdAnchor_ = dragAnchorAt(float(v.button.x), float(v.button.y));
             return;
         }
     }
@@ -589,7 +592,8 @@
         const rb::Layout& l = replayBar_;
         if (e.type == SDL_MOUSEMOTION) {
             if (!replayDragging_) return false;
-            mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y);
+            mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y);   // e is in view coordinates (input)
+            screenMouseX_ = mouseX_ + float(viewX0()); screenMouseY_ = mouseY_ + float(viewY0());
             if (!(e.motion.state & SDL_BUTTON_LMASK)) {   // let go where nothing could see it
                 replayDragging_ = false;
                 return false;
@@ -654,16 +658,17 @@
 
     void GameView::edgeScroll(float dt, float zm) {
         if (winW_ <= 0 || winH_ <= 0 || !edgeScrollOn_) return;
-        if (mouseX_ < 0 || mouseX_ > winW_ || mouseY_ < 0 || mouseY_ > winH_) return;
+        const float mx = screenMouseX_, my = screenMouseY_;   // the window's edges
+        if (mx < 0 || mx > winW_ || my < 0 || my > winH_) return;
         if (replayMode_ && (replayDragging_ || replayBar_.box.hit(mouseX_, mouseY_))) return;
         const float margin = 24.0f, panPx = 2000.0f * edgeScrollSpeed_;   // px/s at zoom 1
-        // Trigger at the real window edges (incl. the far right, past the panel),
+        // Trigger at the real window edges (incl. the far left, past the side panel),
         // so the player pushes to the screen edge to scroll -- not to the map edge.
         float sx = 0, sz = 0;
-        if (mouseX_ < margin) sx = -1;
-        else if (mouseX_ > winW_ - margin) sx = 1;
-        if (mouseY_ < margin) sz = -1;
-        else if (mouseY_ > winH_ - margin) sz = 1;
+        if (mx < margin) sx = -1;
+        else if (mx > winW_ - margin) sx = 1;
+        if (my < margin) sz = -1;
+        else if (my > winH_ - margin) sz = 1;
         if (sx == 0 && sz == 0) return;
         follow_ = false;   // the player is driving the camera now
         trackSel_ = false;
@@ -814,8 +819,8 @@
     void GameView::centerOn(int id) {
         const auto* u = frameUnitP(id);
         if (!u) return;
-        mapView_.setOffset(u->x - (winW_ / 2.0f) / mapView_.zoom(),
-                           u->z - uLiftY(*u) - (winH_ / 2.0f) / mapView_.zoom());
+        mapView_.setOffset(u->x - (mapViewW(winW_) / 2.0f) / mapView_.zoom(),
+                           u->z - uLiftY(*u) - (mapViewH(winH_) / 2.0f) / mapView_.zoom());
     }
 
     bool GameView::centerOnSelection() {
@@ -826,8 +831,8 @@
             if (u && u->alive()) { cx += u->x; cz += u->z - uLiftY(*u); ++n; }
         }
         if (!n) return false;
-        mapView_.setOffset(cx / n - (winW_ / 2.0f) / mapView_.zoom(),
-                           cz / n - (winH_ / 2.0f) / mapView_.zoom());
+        mapView_.setOffset(cx / n - (mapViewW(winW_) / 2.0f) / mapView_.zoom(),
+                           cz / n - (mapViewH(winH_) / 2.0f) / mapView_.zoom());
         return true;
     }
 

@@ -550,7 +550,7 @@ std::string defaultGameName(const std::string& player) {
             return true;
         }
         if (e.type == SDL_MOUSEBUTTONDOWN) {
-            mouseX_ = float(e.button.x); mouseY_ = float(e.button.y);
+            mouseX_ = screenMouseX_ = float(e.button.x); mouseY_ = screenMouseY_ = float(e.button.y);
             float mx, my; lobbyMouse(mx, my);
             if (e.button.button == SDL_BUTTON_LEFT)
                 for (auto& hot : lobbyHots_)
@@ -1501,7 +1501,7 @@ std::string defaultGameName(const std::string& player) {
         }
         // A press aimed at the screen before this one is no click here (lobbyPressStale).
         if (e.type == SDL_MOUSEBUTTONDOWN && lobbyPressStale(e)) {
-            mouseX_ = float(e.button.x); mouseY_ = float(e.button.y);
+            mouseX_ = screenMouseX_ = float(e.button.x); mouseY_ = screenMouseY_ = float(e.button.y);
             std::fprintf(stderr, "lobby: press dropped (the screen under it had just changed)\n");
             return;
         }
@@ -1509,9 +1509,9 @@ std::string defaultGameName(const std::string& player) {
         // else reaches the lobby under it.
         if (bigMap_) {
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) bigMap_.reset();
-            else if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
+            else if (e.type == SDL_MOUSEMOTION) { mouseX_ = screenMouseX_ = float(e.motion.x); mouseY_ = screenMouseY_ = float(e.motion.y); }
             else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                mouseX_ = float(e.button.x); mouseY_ = float(e.button.y);
+                mouseX_ = screenMouseX_ = float(e.button.x); mouseY_ = screenMouseY_ = float(e.button.y);
                 float mx, my; lobbyMouse(mx, my);
                 for (auto& hot : lobbyHots_)
                     if (ptIn(hot.rect, mx, my) && hot.action) { hot.action(); break; }
@@ -1530,7 +1530,7 @@ std::string defaultGameName(const std::string& player) {
             return;
         }
         if (e.type == SDL_MOUSEMOTION) {
-            mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y);
+            mouseX_ = screenMouseX_ = float(e.motion.x); mouseY_ = screenMouseY_ = float(e.motion.y);
             if (mapDrag_) setMapScrollFromThumb();   // dragging the map scrollbar
             if (genSlider_ >= 0) { float mx, my; lobbyMouse(mx, my); setGenSlider(genSlider_, mx); }
         } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
@@ -1547,7 +1547,7 @@ std::string defaultGameName(const std::string& player) {
                 if (modsScreen_ && ptIn(modListRect_[k], mx, my)) modScroll_[k] = std::max(0, modScroll_[k] - e.wheel.y);
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
                    (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT)) {
-            mouseX_ = float(e.button.x); mouseY_ = float(e.button.y);
+            mouseX_ = screenMouseX_ = float(e.button.x); mouseY_ = screenMouseY_ = float(e.button.y);
             const bool forward = e.button.button == SDL_BUTTON_LEFT;
             if (forward) { if (lbField_ == 5) applyGenParams(); lbField_ = 0; SDL_StopTextInput(); }
             float mx, my; lobbyMouse(mx, my);

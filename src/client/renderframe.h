@@ -78,6 +78,9 @@ struct UnitR {
     float hp = 0;
     int studyTint = 0;                 // render study only (TA_RENDER_VETERAN): the gold tint level 4..9; 0 in a game
     int kills = 0;                     // its own kill count (Unit::kills, the KillCount gadget)
+    // Its economy books' last settle (Unit::books, per second; [0] energy, [1] metal):
+    // the bottom bar's UNITENERGYMAKE / USE and UNITMETALMAKE / USE (TotalA.exe 0x46b16d..0x46b2b3).
+    float make[2] = {0, 0}, use[2] = {0, 0};
     float deadFor = -1;
     int inTransport = 0;
     // The pad piece a flyer sits on (sim Unit::padPiece): one on a repair

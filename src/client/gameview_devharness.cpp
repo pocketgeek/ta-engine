@@ -771,7 +771,7 @@
                     const std::string name=std::string("1024-ui")+std::to_string(int(scale))+
                         (style==ta::UiFontStyle::Modern ? "-modern" : "-classic");
                     selection_.clear();
-                    mouseX_=1;mouseY_=400;
+                    renderStudyMouse(1,400);
                     shot(1024,768,name);
                     // Hovering the timeline at a third, with a builder of the player on show.
                     selection_={builder};
@@ -780,7 +780,7 @@
                     shot(1024,768,name+"-hud");
                 }
             ta::setUiFontStyle(initialFont);uiScale_=1;
-            selection_={b};mouseX_=1;mouseY_=400;
+            selection_={b};renderStudyMouse(1,400);
             shot(1024,768,"1024-ui1-core");
             selection_={a};
             shot(1024,768,"1024-ui1-arm");
@@ -841,7 +841,7 @@
                 if (type==SDL_MOUSEMOTION) {
                     e.motion.x=int(x);e.motion.y=int(y);e.motion.xrel=0;e.motion.yrel=0;e.motion.state=0;
                 }
-                input(e,W,H);
+                inputFromView(e,W,H);   // points in the world view (the frame's are shifted below)
             };
             const auto clickAt=[&](float x,float y,Uint8 button=SDL_BUTTON_LEFT) {
                 mouse(SDL_MOUSEMOTION,x,y,0);
@@ -850,7 +850,7 @@
                 frame();
             };
             const auto at=[&](int id) { const auto* u=frameUnitP(id);return unitScreen(frameUnit(u->id)); };
-            // The TA sidebar page's buttons on show (gameview_tahud.cpp), each with a
+            // The TA sidebar page's buttons on show (gameview_tahud.cpp, the side panel), each with a
             // point inside it: the panel scanned through the page's own hit test.
             const auto taButtons=[&] {
                 std::vector<std::pair<std::string,SDL_FPoint>> out;
@@ -858,19 +858,19 @@
                 if (!page) return out;
                 std::set<std::string> seen;
                 for (float y=0;y<float(H);y+=3)
-                    for (float x=float(mapViewW(W));x<float(W);x+=3)
+                    for (float x=0;x<float(taSideW());x+=3)   // the side panel (left)
                         if (const auto* g=page->at(x,y,taHudLayout_);
                             g && g->type==ta::tagui::Type::Button && !g->grayedOut && seen.insert(g->name).second)
-                            out.push_back({g->name,{x+2,y+2}});
+                            out.push_back({g->name,{x+2-float(viewX0()),y+2-float(viewY0())}});   // as view coordinates
                 return out;
             };
             const auto clickUnit=[&](int id,Uint8 button=SDL_BUTTON_LEFT) { const auto p=at(id);clickAt(p.x,p.y,button); };
             check(hudPlayer()==-1 && !hudShown(),"nothing selected: no interface");
-            mouseX_=vw*0.5f;mouseY_=30;
+            renderStudyMouse(vw*0.5f,30);
             untouched("idle");
             {
                 const auto p=at(b1);
-                mouseX_=p.x;mouseY_=p.y;
+                renderStudyMouse(p.x,p.y);
                 check(desiredCursor(tint)==ta::CursorId::Select,"Select over another player's unit");
             }
             clickUnit(b1);
@@ -892,7 +892,7 @@
             clickUnit(a1,SDL_BUTTON_RIGHT);
             clickUnit(b2,SDL_BUTTON_RIGHT);
             {
-                const auto r=minimapRect(W,H);
+                SDL_FRect r=minimapRect(W,H);r.x-=float(viewX0());r.y-=float(viewY0());   // as view coordinates
                 const float ox=mapView_.offX();
                 clickAt(r.x+r.w*0.5f,r.y+r.h*0.5f,SDL_BUTTON_RIGHT);
                 check(mapView_.offX()==ox,"a right click on the minimap does not move the camera");
@@ -1069,7 +1069,7 @@
                 mouse(SDL_MOUSEBUTTONDOWN,xFor(1500),y,SDL_BUTTON_LEFT);
                 check(replayDragging_ && replayTick_==1800 && !replaySeekTo_,"a press only picks up the marker");
                 SDL_Event move{};move.type=SDL_MOUSEMOTION;move.motion.x=int(xFor(450));move.motion.y=int(y);
-                move.motion.state=SDL_BUTTON_LMASK;input(move,W,H);
+                move.motion.state=SDL_BUTTON_LMASK;inputFromView(move,W,H);
                 check(!replaySeekTo_,"dragging does not jump yet");
                 mouse(SDL_MOUSEBUTTONUP,xFor(450),y,SDL_BUTTON_LEFT);
                 check(replaySeekTo_.has_value() && !replayDragging_,"the release commits the jump");
@@ -1225,7 +1225,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                     land();
                     mouse(SDL_MOUSEBUTTONDOWN,xFor(700),y,SDL_BUTTON_LEFT);
                     SDL_Event lost{};lost.type=SDL_MOUSEMOTION;lost.motion.x=int(xFor(800));lost.motion.y=int(y);lost.motion.state=0;
-                    input(lost,W,H);
+                    inputFromView(lost,W,H);
                     check(!replayDragging_ && !replaySeekTo_,"motion with the button up drops the marker, with no jump");
                     mouse(SDL_MOUSEBUTTONUP,xFor(800),y,SDL_BUTTON_LEFT);
                     check(!replaySeekTo_,"and the release that follows does nothing");
@@ -1376,7 +1376,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 prepare(W,H);draw(W,H);
                 SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.assign(size_t(ow)*size_t(oh)*4,0);
-                SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
+                readViewPixels(px.data(),ow*4);
                 if (capture) ta::png::write(capture,ow,oh,px);
                 endFrame();
             };
@@ -1467,7 +1467,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 prepare(W,H);draw(W,H);
                 SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.assign(size_t(ow)*size_t(oh)*4,0);
-                SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
+                readViewPixels(px.data(),ow*4);
                 if (capture) ta::png::write((std::string(capture)+(zoom>1 ? "-z3.png" : "-z1.png")).c_str(),ow,oh,px);
                 endFrame();
                 // The middle pixel of each line, at the centre of its zoomed cell.
@@ -1532,7 +1532,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 prepare(W,H);mapView_.finishChunks();prepare(W,H);draw(W,H);   // the whole terrain: frames compare pixels
                 SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.assign(size_t(ow)*size_t(oh)*4,0);
-                SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
+                readViewPixels(px.data(),ow*4);
                 if (!capture.empty()) ta::png::write(capture.c_str(),ow,oh,px);
                 endFrame();
             };
@@ -1710,7 +1710,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 if (capture) {   // TA_TACTICAL_DOTS_CAPTURE: the frame as drawn
                     int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                     std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
-                    if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)
+                    if (readViewPixels(px.data(),ow*4)==0)
                         ta::png::write(capture,ow,oh,px);
                 }
                 endFrame();
@@ -1772,7 +1772,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 SDL_Event e{};e.type=kind;
                 if (kind==SDL_MOUSEMOTION) {e.motion.x=int(x);e.motion.y=int(y);}
                 else {e.button.button=SDL_BUTTON_LEFT;e.button.x=int(x);e.button.y=int(y);}
-                input(e,W,H);
+                inputFromView(e,W,H);   // a point in the world view
             };
             const auto savedMod=SDL_GetModState();SDL_SetModState(KMOD_NONE);
             selection_.clear();
@@ -1840,13 +1840,13 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                     mapView_.finishChunks();prepare(W,H);draw(W,H);
                     int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                     std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
-                    if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)
+                    if (readViewPixels(px.data(),ow*4)==0)
                         ta::png::write(capture,ow,oh,px);
                 }
                 endFrame();
             };
             const auto wheelOut=[&] {
-                mouseX_=float(mapViewW(W))*0.3f;mouseY_=float(mapViewH(H))*0.4f;
+                renderStudyMouse(float(mapViewW(W))*0.3f,float(mapViewH(H))*0.4f);
                 for (int i=0;i<120;++i) {
                     SDL_Event e{};e.type=SDL_MOUSEWHEEL;e.wheel.y=-1;e.wheel.direction=SDL_MOUSEWHEEL_NORMAL;
                     input(e,W,H);
@@ -1946,7 +1946,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 std::vector<uint8_t> px;
                 int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.resize(size_t(ow)*size_t(oh)*4);
-                if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)!=0) px.clear();
+                if (readViewPixels(px.data(),ow*4)!=0) px.clear();
                 else if (capture) ta::png::write(capture,ow,oh,px);
                 endFrame();
                 return std::pair{px,ow};
@@ -2019,8 +2019,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 const auto savedMod=SDL_GetModState();SDL_SetModState(KMOD_NONE);
                 selection_.clear();
                 e.type=SDL_MOUSEBUTTONDOWN;e.button.button=SDL_BUTTON_LEFT;e.button.x=int(c.x);e.button.y=int(c.y);
-                input(e,W,H);
-                e.type=SDL_MOUSEBUTTONUP;input(e,W,H);
+                inputFromView(e,W,H);
+                e.type=SDL_MOUSEBUTTONUP;inputFromView(e,W,H);
                 SDL_SetModState(savedMod);
                 check(selection_==std::vector<int>{behind},"click on the hidden dot selects the unit");
                 selection_.clear();
@@ -2380,7 +2380,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 SDL_Event e{};e.type=kind;
                 if (kind==SDL_MOUSEMOTION) {e.motion.x=int(x);e.motion.y=int(y);}
                 else {e.button.button=button;e.button.x=int(x);e.button.y=int(y);e.button.clicks=1;}
-                input(e,W,H);
+                inputFromView(e,W,H);   // a point in the world view
             };
             const auto at=[&](int id) {return unitScreen(frameUnit(id));};
             const auto stopAll=[&] {
@@ -2674,7 +2674,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             // 2.10 the minimap: a right-click on an enemy dot attacks it, the camera stays.
             selection_={archer};pendingCmd_=0;publish();
             {
-                const SDL_FRect r=minimapRect(W,H);
+                // In view coordinates, as this test's clicks are (the minimap is left of the view).
+                SDL_FRect r=minimapRect(W,H);r.x-=float(viewX0());r.y-=float(viewY0());
                 const float mapW=float(mapView_.map().blocksX)*32,mapH=float(mapView_.map().blocksY)*32;
                 const auto* e=frameUnitP(enemy2);
                 const float mx=r.x+e->x/mapW*r.w,my=r.y+e->z/mapH*r.h;
@@ -2692,7 +2693,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 // The event carries whole pixels: the point is where the truncated press lands
                 // (the minimap rect need not sit on whole pixels).
                 const float cornerX=std::floor(r.x+2),cornerY=std::floor(r.y+r.h-2);
-                float gx=0,gz=0;minimapToWorld(cornerX,cornerY,W,H,gx,gz);
+                float gx=0,gz=0;minimapToWorld(cornerX+float(viewX0()),cornerY+float(viewY0()),W,H,gx,gz);   // r is in view coordinates
                 cmds=capture([&] {clickAt(cornerX,cornerY,SDL_BUTTON_LEFT);});
                 check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackGround && std::abs(cmds[0].x-gx)<2 && std::abs(cmds[0].z-gz)<2 &&
                       mapView_.offX()==ox,"2.10 / C1 armed A on minimap ground fires at that point");
@@ -2702,14 +2703,15 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                     if (const auto* t=registry_.find(id); t && t->isStructure()) {site=t;break;}
                 check(site!=nullptr,"fixture: the mason builds a structure");
                 selection_={mason};pendingCmd_=0;placing_=site;publish();
-                float px=-1,py=-1;
-                for (float fy=0.3f;fy<0.8f && px<0;fy+=0.05f)
+                float px=-1,py=-1;bool sited=false;   // view coordinates, as r
+                for (float fy=0.3f;fy<0.8f && !sited;fy+=0.05f)
                     for (float fx=0.3f;fx<0.8f;fx+=0.05f) {
                         float wx,wz;
-                        if (!minimapToWorld(r.x+r.w*fx,r.y+r.h*fy,W,H,wx,wz) || !canPlaceLocked(site,wx,wz)) continue;
-                        px=r.x+r.w*fx;py=r.y+r.h*fy;break;
+                        const float qx=std::floor(r.x+r.w*fx),qy=std::floor(r.y+r.h*fy);   // whole pixels, as the event carries
+                        if (!minimapToWorld(qx+float(viewX0()),qy+float(viewY0()),W,H,wx,wz) || !canPlaceLocked(site,wx,wz)) continue;
+                        px=qx;py=qy;sited=true;break;
                     }
-                check(px>=0,"fixture: a valid minimap site");
+                check(sited,"fixture: a valid minimap site");
                 event(SDL_MOUSEMOTION,0,px,py);
                 check(desiredCursor(tint)==ta::CursorId::FindSite,"C2 placement over a valid minimap point: FindSite");
                 cmds=capture([&] {clickAt(px,py,SDL_BUTTON_LEFT);});
@@ -2834,7 +2836,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 SDL_Event e{};e.type=kind;
                 if (kind==SDL_MOUSEMOTION) {e.motion.x=int(x);e.motion.y=int(y);}
                 else {e.button.button=button;e.button.x=int(x);e.button.y=int(y);}
-                input(e,W,H);
+                inputFromView(e,W,H);   // a point in the world view
             };
             // Right-drag box through the real input().
             reset();
@@ -2889,7 +2891,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             check(reclaimTargetAt(fx,fz)==fid,"the feature picks under its own centre");
             mapView_.setOffset(fx-400,fz-300);
             reset();
-            mouseX_=-1000;mouseY_=-1000;   // no unit under the cursor: not an attack
+            renderStudyMouse(-1000,-1000);   // no unit under the cursor: not an attack
             {
                 ClickScope outer(*this);
                 rightClickOrder(fx,fz,false);
@@ -3005,6 +3007,13 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             selection_={lab};taBuildTab_=true;taBuildPage_=1;
             frame();frame();
             check(SDL_strcasecmp(taHudPage_.c_str(),"ARMLAB1")==0,"the lab's first build page is on show: "+taHudPage_);
+            if (const char* cap=ta::devEnv("TA_FACTORY_MENU_CAPTURE")) {   // the 640x480 frame, the lab selected
+                captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);
+                std::vector<uint8_t> px(size_t(W)*H*4);
+                const SDL_Rect r{0,0,W,H};
+                if (SDL_RenderReadPixels(ren_,&r,SDL_PIXELFORMAT_RGBA32,px.data(),W*4)==0) ta::png::write(cap,W,H,px);
+                endFrame();
+            }
             const auto pw=buttonAt("ARMPW");
             check(pw.has_value(),"the page has the Peewee's picture");
             clickAt(pw->x,pw->y,SDL_BUTTON_LEFT);
@@ -3245,7 +3254,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 SDL_Event e{};e.type=kind;
                 if (kind==SDL_MOUSEMOTION) {e.motion.x=int(x);e.motion.y=int(y);}
                 else {e.button.button=button;e.button.x=int(x);e.button.y=int(y);}
-                input(e,W,H);
+                inputFromView(e,W,H);   // a point in the world view
             };
             const auto savedMod=SDL_GetModState();SDL_SetModState(KMOD_NONE);
             const auto reset=[&] {
@@ -3325,7 +3334,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);
                 int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 std::vector<uint8_t> px4(size_t(ow)*size_t(oh)*4);
-                const bool read=SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px4.data(),ow*4)==0;
+                const bool read=readViewPixels(px4.data(),ow*4)==0;
                 check(read,"the drawn frame reads back");
                 {
                     if (const char* cap=ta::devEnv("TA_AREA_DRAG_CAPTURE")) ta::png::write(cap,ow,oh,px4);
@@ -3411,8 +3420,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             const int commander=spawn("armck",wx-60,wz+90,0,localPlayer_);
             captureFrame();beginFrame();cosmeticStep(0);
             selection_={commander};placing_=wall;SDL_SetModState(KMOD_LSHIFT);
-            SDL_Event e{};e.type=SDL_MOUSEBUTTONDOWN;e.button.button=SDL_BUTTON_LEFT;e.button.x=300;e.button.y=300;input(e,winW_,winH_);
-            SDL_Event m{};m.type=SDL_MOUSEMOTION;m.motion.x=300+dx;m.motion.y=300+dy;m.motion.state=SDL_BUTTON_LMASK;input(m,winW_,winH_);
+            SDL_Event e{};e.type=SDL_MOUSEBUTTONDOWN;e.button.button=SDL_BUTTON_LEFT;e.button.x=300;e.button.y=300;inputFromView(e,winW_,winH_);
+            SDL_Event m{};m.type=SDL_MOUSEMOTION;m.motion.x=300+dx;m.motion.y=300+dy;m.motion.state=SDL_BUTTON_LMASK;inputFromView(m,winW_,winH_);
             SDL_PushEvent(&m);   // again through the loop, after the window's own first motion
             for(int i=0;i<notches;++i){SDL_Event w{};w.type=SDL_MOUSEWHEEL;w.wheel.y=1;
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -3478,7 +3487,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 SDL_Event e{};e.type=kind;
                 if (kind==SDL_MOUSEMOTION) {e.motion.x=x;e.motion.y=y;e.motion.state=SDL_BUTTON_LMASK;}
                 else {e.button.button=SDL_BUTTON_LEFT;e.button.x=x;e.button.y=y;}
-                input(e,winW_,winH_);
+                inputFromView(e,winW_,winH_);
             };
             const auto wheel=[&](float notches) {
                 static uint32_t ms=1000;ms+=200;   // event times a notch apart, past the trackpad limit
@@ -3684,7 +3693,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 SDL_Event e{};e.type=kind;
                 if (kind==SDL_MOUSEMOTION) {e.motion.x=x;e.motion.y=y;e.motion.state=SDL_BUTTON_LMASK;}
                 else {e.button.button=SDL_BUTTON_LEFT;e.button.x=x;e.button.y=y;}
-                input(e,winW_,winH_);
+                inputFromView(e,winW_,winH_);
             };
             std::vector<std::pair<float,float>> all;
             for (size_t i=0;i+1<pts.size();++i) {
@@ -3772,7 +3781,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             selection_.clear();pendingCmd_=0;placing_=nullptr;
             publish();
             if (unitType_.count(lateId) || visuals_.count(late->id)) fail("the late unit registered in the first frame");
-            mouseX_=600;mouseY_=60;   // bare ground above the fillers
+            renderStudyMouse(600,60);   // bare ground above the fillers
             bool tint=false;
             const ta::CursorId first=desiredCursor(tint);
             const bool cached=hitBoxes_.count(late->id)!=0;
@@ -3784,7 +3793,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             if (!u) fail("late unit missing from the frame");
             const SDL_FPoint p=unitScreen(*u);
             const SDL_FRect& hb=unitHitBox(late);
-            mouseX_=p.x;mouseY_=p.y+12.0f-60.0f;   // 60 px above the anchor: past the fallback box
+            renderStudyMouse(p.x,p.y+12.0f-60.0f);   // 60 px above the anchor: past the fallback box
             const ta::CursorId probe=desiredCursor(tint);
             std::fprintf(stderr,"PICK_LATE_MODEL type=%s first=%d cached=%d box=%.1f,%.1f,%.1f,%.1f probe=%d\n",
                          late->id.c_str(),int(first),cached ? 1 : 0,hb.x,hb.y,hb.w,hb.h,int(probe));
@@ -5031,7 +5040,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         } else if (cmd) {
             pendingCmd_ = cmd;
         }
-        const float w = float(mapViewW(winW_)), h = float(std::max(1, winH_ - barH()));
+        const float w = float(mapViewW(winW_)), h = float(mapViewH(winH_));
         const float margin = 40.0f;   // clear of the edge-scroll band
         float x = w * (0.5f + 0.42f * std::sin(float(frame) * 0.037f));
         float y = h * (0.5f + 0.42f * std::sin(float(frame) * 0.051f + 1.0f));
@@ -5057,6 +5066,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
         mouseX_ = std::clamp(x, margin, std::max(margin, w - margin));
         mouseY_ = std::clamp(y, margin, std::max(margin, h - margin));
+        renderStudyMouse(mouseX_, mouseY_);   // and the window position
     }
 
     // Material-only invalidation for the render matrix (workstream E): every

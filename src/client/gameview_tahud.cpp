@@ -1,23 +1,25 @@
-// Total Annihilation's in-game interface (docs/retail-gui.md section 3), drawn from
-// the retail GUIs:
-//   - the sidebar page: <SIDE>MAIN2 with nothing selected, the builder's
-//     guis/<UNIT><n>.GUI build pages (with download/*.tdf add-ons and IGPATCH
-//     fillers), and the <SIDE>GEN orders page, switched by the ORDERS/BUILD tabs
-//     and paged with PREV/NEXT;
-//   - the top bar: the side's INT gaf PANELTOP with the metal and energy bars and
-//     numbers at sidedata.tdf's coordinates.
-// Layout difference from retail: the sidebar sits in the engine's right-hand
-// command strip under the minimap (retail: left edge, minimap above it), so the
-// world view keeps its screen origin.
+// Total Annihilation's in-game interface (docs/retail-gui.md section 3), laid out as
+// TotalA.exe lays it out at any resolution: the side panel on the left (PANELSIDE,
+// the minimap in its 128x128 corner and the sidebar page under it), the top bar
+// (PANELTOP with the energy and metal readouts) and the bottom bar (PANELBOT with
+// the selected unit's readouts), the game view taking the rest ((128, 32)-(W-1,
+// H-33), 0x4981c9). The sidebar page is <SIDE>MAIN2 with nothing selected, the
+// builder's guis/<UNIT><n>.GUI build pages (with download/*.tdf add-ons and IGPATCH
+// fillers), and the <SIDE>GEN orders page, switched by the ORDERS/BUILD tabs and
+// paged with PREV/NEXT.
 
 #include "client/gameview.h"
+#include "client/artscale.h"
+#include "client/guiart.h"
 #include "client/taguiview.h"
+#include "gaf/gaf.h"
 #include "gui/tagui.h"
 #include "sim/sides.h"
 #include "tdf/tdf.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace {
 std::string upperStr(std::string s) {
@@ -58,20 +60,116 @@ std::string upperStr(std::string s) {
         return prefix + "GEN";
     }
 
+    // sidedata.tdf's interface rectangles for the shown side, in 640x480 space (the
+    // footer's in `baseheight` space, 0x429efc), read the way TotalA.exe's 0x431950
+    // reads them (x1, y1, x2, y2), and the side's console font.
+    void GameView::loadTaFrame() {
+        const int side = std::max(0, ta::sides::find(side_));
+        const auto& s = ta::sides::at(side);
+        if (taTopBar_ && taFrameSide_ == side) return;
+        taFrameSide_ = side;
+        ta::tagui::Screen sc;
+        sc.name = upperStr(s.intGaf);
+        sc.gadgets.push_back(ta::tagui::Gadget{});
+        taTopBar_ = std::make_unique<ta::TaGuiView>(ren_, vfs_, sc, false);   // palette.pal
+        taBarRects_.clear();
+        taBaseHeight_ = 480;
+        try {
+            auto b = vread("gamedata/sidedata.tdf");
+            auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), "sidedata.tdf");
+            if (const auto* n = root.child("SIDE" + std::to_string(side))) {
+                for (const char* key : {"LOGO", "METALBAR", "ENERGYBAR", "METALNUM", "ENERGYNUM", "METALMAX",
+                                        "ENERGYMAX", "METAL0", "ENERGY0", "METALPRODUCED", "METALCONSUMED",
+                                        "ENERGYPRODUCED", "ENERGYCONSUMED", "LOGO2", "UNITNAME", "DAMAGEBAR",
+                                        "UNITMETALMAKE", "UNITMETALUSE", "UNITENERGYMAKE", "UNITENERGYUSE",
+                                        "UNITNAME2", "DAMAGEBAR2", "NAME", "DESCRIPTION"})
+                    if (const auto* r = n->child(key))
+                        taBarRects_[key] = SDL_Rect{int(r->numberOr("x1", 0)), int(r->numberOr("y1", 0)),
+                                                    int(r->numberOr("x2", 0)), int(r->numberOr("y2", 0))};
+                // 0x429efc: `baseheight` (default 480) -- the footer regions sit
+                // H - baseheight lower on a taller screen (0x46a86f..0x46a87e).
+                taBaseHeight_ = int(n->numberOr("baseheight", 480));
+            }
+        } catch (...) {}
+        taConsole_ = std::make_unique<ta::TaFont>();
+        try { taConsole_->loadFnt(ren_, vread("fonts/" + (s.font.empty() ? std::string("console") : s.font) + ".fnt"),
+                                  SDL_Color{255, 255, 255, 255}); } catch (...) {}
+    }
+
+    // The player's colour emblem: frame <colour> of textures\logos.gaf's 32xlogos
+    // (game +0x148db), drawn into a sidedata LOGO rectangle by 0x467c00.
+    SDL_Texture* GameView::taLogo(int colorSlot) {
+        auto it = taLogos_.find(colorSlot);
+        if (it != taLogos_.end()) return it->second;
+        SDL_Texture* tex = nullptr;
+        try {
+            const std::string pal = "palettes/palette.pal", gp = "textures/logos.gaf";
+            for (auto& sq : ta::gaf::load(vfs_.read(gp), ta::gaf::Palette::fromBytes(vfs_.read(pal), pal), -1, gp)) {
+                if (sq.name != "32xlogos" || sq.frames.empty()) continue;
+                const auto& f = sq.frames[size_t(std::clamp(colorSlot, 0, int(sq.frames.size()) - 1))];
+                if (f.width && f.height) tex = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                break;
+            }
+        } catch (...) {}
+        taLogos_[colorSlot] = tex;
+        return tex;
+    }
+
+    // TA's frame (docs/retail-gui.md section 3), in window coordinates at UI SCALE.
+    // TotalA.exe clears its offscreen surface to colour 0 and draws the side's INT
+    // gaf (0x467d70): PANELSIDE at (0, 0), nothing below it (the 480 rows it has);
+    // the top bar is PANELTOP at x 129 with PANELBOT copies after it to the screen's
+    // width (0x469050..0x46909d); the bottom bar is PANELBOT copies from x 129 at
+    // H - 32 (0x46a8b5..0x46a929). Frame offsets cancel (0x4b8051..0x4b805a).
+    void GameView::renderTaFrame(int winW, int winH) {
+        loadTaFrame();
+        const auto& s = ta::sides::at(taFrameSide_);
+        const float sc = uiScale_;
+        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
+        const SDL_FRect side{0, 0, float(taSideW()), float(winH)};
+        const SDL_FRect top{float(taSideW()), 0, float(winW - taSideW()), float(taTopH())};
+        const SDL_FRect bottom{float(taSideW()), float(winH - barH()), float(winW - taSideW()), float(barH())};
+        for (const auto* r : {&side, &top, &bottom}) SDL_RenderFillRectF(ren_, r);
+        ta::GuiLayout L;
+        L.scale = sc;
+        taTopBar_->drawSequence(s.intGaf, "PANELSIDE", 0, 0, 0, L);
+        const SDL_Point topArt = taTopBar_->sequenceSize(s.intGaf, "PANELTOP");
+        const SDL_Point botArt = taTopBar_->sequenceSize(s.intGaf, "PANELBOT");
+        {   // the top bar: 32 rows (the view starts at y 32, 0x4981d9)
+            const SDL_Rect clip{0, 0, winW, taTopH()};
+            SDL_RenderSetClipRect(ren_, &clip);
+            float x = 129;
+            taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, x, 0, L);
+            x += float(std::max(1, topArt.x));
+            while (botArt.x > 0 && x * sc < float(winW)) {
+                taTopBar_->drawSequence(s.intGaf, "PANELBOT", 0, x, 0, L);
+                x += float(botArt.x);
+            }
+        }
+        {   // the bottom bar
+            const SDL_Rect clip{0, winH - barH(), winW, barH()};
+            SDL_RenderSetClipRect(ren_, &clip);
+            ta::GuiLayout F = L;
+            F.oy = float(winH) - 480.0f * sc;
+            for (float x = 129; botArt.x > 0 && x * sc < float(winW); x += float(botArt.x))
+                taTopBar_->drawSequence(s.intGaf, "PANELBOT", 0, x, 448, F);
+        }
+        SDL_RenderSetClipRect(ren_, nullptr);
+    }
+
     void GameView::renderTaHud(int winW, int winH) {
-        const SDL_FRect mini = minimapRect(winW, winH);
-        const float panelX = float(mapViewW(winW));
-        const float scale = std::max(0.5f, (float(cmdPanelW()) - 8.0f) / 128.0f);
+        const float scale = uiScale_;
         const std::string pageName = taSidebarPage();
         ta::TaGuiView* page = taPage(pageName);
         taHudPage_ = pageName;
         if (page) {
-            // The page's container is authored at (0,128) in 640x480 space; map that
-            // corner just under the minimap in the command strip.
+            // The page is authored at (0, 128) in 640x480 space, under the minimap's
+            // 128x128 corner (docs/retail-gui.md section 3), and TA draws it there at
+            // every resolution: the side panel keeps its size.
             ta::GuiLayout L;
             L.scale = scale;
-            L.ox = panelX + 4.0f;
-            L.oy = (mini.y + mini.h + 6.0f) - 128.0f * scale;
+            L.ox = 0;
+            L.oy = 0;
             taHudLayout_ = L;
             // Build pages: slots the registry does not place on this page are fillers;
             // download add-ons take their slot (gadget BUTTON + 4).
@@ -116,67 +214,143 @@ std::string upperStr(std::string s) {
             page->draw(L);
         }
         renderTaTopBar(winW);
+        renderTaBottomBar(winW, winH);
     }
 
+    // The top bar's readouts (TotalA.exe 0x4690ab..0x46960b), at sidedata's
+    // coordinates in 640x480 space, which TA keeps at every width:
+    //   - the LOGO: the shown player's emblem (0x4690ab -> 0x467c00);
+    //   - each bar filled x1 .. x1 + (x2 - x1) * stored / storage over y1..y2, in the
+    //     side's energycolor / metalcolor (palette.pal; 0x4690f3..0x46912e);
+    //   - <RES>NUM the amount stored, "%d" at (x1, y1); <RES>0 a "0" at the bar's
+    //     left end; <RES>MAX the storage, "%d" right-aligned to x1 (0x469247);
+    //   - ENERGYPRODUCED / CONSUMED "%d" ("%dK" past 99999, 0x4692a5 / 0x469336),
+    //     METALPRODUCED / CONSUMED "%.1f" (0x469578 / 0x4695cf).
     void GameView::renderTaTopBar(int winW) {
-        const int side = std::max(0, ta::sides::find(side_));
-        const auto& s = ta::sides::at(side);
-        if (!taTopBar_) {
-            ta::tagui::Screen sc;
-            sc.name = upperStr(s.intGaf);
-            sc.gadgets.push_back(ta::tagui::Gadget{});
-            taTopBar_ = std::make_unique<ta::TaGuiView>(ren_, vfs_, sc, false);
-            try {   // sidedata rectangles, 640x480 space with PANELTOP at x=129
-                auto b = vread("gamedata/sidedata.tdf");
-                auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), "sidedata.tdf");
-                if (const auto* n = root.child("SIDE" + std::to_string(side)))
-                    for (const char* key : {"METALBAR", "ENERGYBAR", "METALNUM", "ENERGYNUM", "METALMAX",
-                                            "ENERGYMAX", "METALPRODUCED", "METALCONSUMED",
-                                            "ENERGYPRODUCED", "ENERGYCONSUMED"})
-                        if (const auto* r = n->child(key))
-                            taBarRects_[key] = SDL_Rect{int(r->numberOr("x1", 0)), int(r->numberOr("y1", 0)),
-                                                        int(r->numberOr("x2", 0)), int(r->numberOr("y2", 0))};
-            } catch (...) {}
-            taConsole_ = std::make_unique<ta::TaFont>();
-            try { taConsole_->loadFnt(ren_, vread("fonts/" + (s.font.empty() ? std::string("console") : s.font) + ".fnt"),
-                                      SDL_Color{255, 255, 255, 255}); } catch (...) {}
-        }
         (void)winW;
-        const float scale = uiScale_;
+        loadTaFrame();
+        const auto& s = ta::sides::at(taFrameSide_);
         ta::GuiLayout L;
-        L.scale = scale;
-        L.ox = -129.0f * scale;   // PANELTOP's authored x is 129; our bar starts at the view's left edge
-        L.oy = 0;
-        taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, 129, 0, L);
-        const PlayerR& p = framePlayer(std::clamp(hudPlayer(), 0, std::max(0, frameNumPlayers() - 1)));
+        L.scale = uiScale_;
+        const int shown = std::clamp(hudPlayer(), 0, std::max(0, frameNumPlayers() - 1));
+        const PlayerR& p = framePlayer(shown);
+        if (auto it = taBarRects_.find("LOGO"); it != taBarRects_.end())
+            if (SDL_Texture* logo = taLogo(playerColorSlot(shown))) {
+                const SDL_Rect r = it->second;
+                const SDL_FRect d = L.rect(float(r.x), float(r.y), float(r.w - r.x + 1), float(r.h - r.y + 1));
+                SDL_RenderCopyF(ren_, logo, nullptr, &d);
+            }
         auto bar = [&](const char* key, float value, float cap, SDL_Color c) {
             auto it = taBarRects_.find(key);
-            if (it == taBarRects_.end()) return;
+            if (it == taBarRects_.end() || cap <= 0) return;
             const SDL_Rect r = it->second;
-            const float frac = cap > 0 ? std::clamp(value / cap, 0.0f, 1.0f) : 0.0f;
-            SDL_FRect f = L.rect(float(r.x), float(r.y), float(r.w - r.x) * frac, float(std::max(1, r.h - r.y + 1)));
+            const float frac = std::clamp(value / cap, 0.0f, 1.0f);
+            const SDL_FRect f = L.rect(float(r.x), float(r.y), float(r.w - r.x) * frac, float(std::max(1, r.h - r.y + 1)));
             SDL_SetRenderDrawColor(ren_, c.r, c.g, c.b, 255);
             SDL_RenderFillRectF(ren_, &f);
         };
-        auto num = [&](const char* key, float v, SDL_Color c, bool right) {
+        auto text = [&](const char* key, const std::string& t, SDL_Color c, bool right) {
             auto it = taBarRects_.find(key);
             if (it == taBarRects_.end() || !taConsole_) return;
-            const std::string t = std::to_string(int(v + (v >= 0 ? 0.5f : -0.5f)));
             float x = float(it->second.x);
             if (right) x -= float(taConsole_->width(t));
             taConsole_->draw(ren_, L, x, float(it->second.y), t, c);
         };
-        const SDL_Color metalC{200, 200, 200, 255}, energyC{255, 255, 0, 255};
-        bar("METALBAR", p.metal, p.metalCap, metalC);
-        bar("ENERGYBAR", p.energy, p.energyCap, energyC);
-        num("METALNUM", p.metal, metalC, false);
-        num("ENERGYNUM", p.energy, energyC, false);
-        num("METALMAX", p.metalCap, metalC, true);
-        num("ENERGYMAX", p.energyCap, energyC, true);
-        num("METALPRODUCED", p.metalIncome, SDL_Color{0, 255, 0, 255}, false);
-        num("METALCONSUMED", p.metalExpense, SDL_Color{255, 64, 64, 255}, false);
-        num("ENERGYPRODUCED", p.energyIncome, SDL_Color{0, 255, 0, 255}, false);
-        num("ENERGYCONSUMED", p.energyExpense, SDL_Color{255, 64, 64, 255}, false);
+        auto whole = [](float v) { return std::to_string(int(v)); };
+        auto big = [](float v) {   // 0x46927a / 0x469308: past +-99999 the count goes in thousands
+            const int n = int(std::fabs(v));
+            return std::fabs(v) > 99999.0f ? std::to_string(n / 1000) + "K" : std::to_string(n);
+        };
+        auto tenth = [](float v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", double(std::fabs(v))); return std::string(b); };
+        const SDL_Color white{255, 255, 255, 255};
+        // The produced / consumed colours are entries of TA's interface colour table
+        // (game +0xdcb, +0xa / +0xc); which palette slots those are is not traced.
+        const SDL_Color made{0, 255, 0, 255}, spent{255, 64, 64, 255};
+        bar("ENERGYBAR", p.energy, p.energyCap, taTopBar_->paletteColor(s.energyColor ? s.energyColor : 208));
+        bar("METALBAR", p.metal, p.metalCap, taTopBar_->paletteColor(s.metalColor ? s.metalColor : 224));
+        text("ENERGYNUM", whole(p.energy), white, false);
+        text("ENERGY0", "0", white, false);
+        text("ENERGYMAX", whole(p.energyCap), white, true);
+        text("ENERGYPRODUCED", big(p.energyIncome), made, false);
+        text("ENERGYCONSUMED", big(p.energyExpense), spent, false);
+        text("METALNUM", whole(p.metal), white, false);
+        text("METAL0", "0", white, false);
+        text("METALMAX", whole(p.metalCap), white, true);
+        text("METALPRODUCED", tenth(p.metalIncome), made, false);
+        text("METALCONSUMED", tenth(p.metalExpense), spent, false);
+    }
+
+    // The bottom bar's readouts (TotalA.exe 0x46a860..0x46b789), sidedata's footer
+    // rectangles moved down by H - baseheight (0x46a86f..0x46a87e):
+    //   - the selected unit: its owner's emblem in LOGO2 (0x46b105), its name centred
+    //     on UNITNAME.x1 (0x46afcf..0x46b00e, palette colour 0x53), its health in
+    //     DAMAGEBAR (0x46b04c..0x46b0f0: x1 .. x1 + (x2 - x1) * hp / maxdamage, the
+    //     rest of the bar in the empty colour) and its kills under the bar ("%d
+    //     kill(s)", " - Veteran" past 4, 0x46b2b8..0x46b3ae); for one of the shown
+    //     player's units its make / use, UNITMETALMAKE "+%.1f", UNITENERGYMAKE
+    //     "+%.0f", UNITMETALUSE "-%.1f", UNITENERGYUSE "-%.0f" (0x46b16d..0x46b2b3);
+    //   - the unit under the pointer in UNITNAME2 / DAMAGEBAR2 (0x46b492..0x46b55f).
+    void GameView::renderTaBottomBar(int winW, int winH) {
+        (void)winW;
+        if (taBarRects_.empty() || !taConsole_) return;
+        ta::GuiLayout F;
+        F.scale = uiScale_;
+        F.oy = float(winH) - float(taBaseHeight_) * uiScale_;
+        auto rectOf = [&](const char* key) -> const SDL_Rect* {
+            auto it = taBarRects_.find(key);
+            return it == taBarRects_.end() ? nullptr : &it->second;
+        };
+        const SDL_Color nameC = taTopBar_->paletteColor(0x53);
+        const SDL_Color white{255, 255, 255, 255}, made{0, 255, 0, 255}, spent{255, 64, 64, 255};
+        auto centred = [&](const char* key, const std::string& t, SDL_Color c) {
+            if (const SDL_Rect* r = rectOf(key))
+                taConsole_->draw(ren_, F, float(r->x) - float(taConsole_->width(t) / 2), float(r->y), t, c);
+        };
+        auto at = [&](const char* key, const std::string& t, SDL_Color c) {
+            if (const SDL_Rect* r = rectOf(key)) taConsole_->draw(ren_, F, float(r->x), float(r->y), t, c);
+        };
+        auto health = [&](const char* key, const UnitR& u) {
+            const SDL_Rect* r = rectOf(key);
+            if (!r || !u.type || u.type->maxHp <= 0) return;
+            const float frac = std::clamp(u.hp / float(u.type->maxHp), 0.0f, 1.0f);
+            const float w = float(r->w - r->x), h = float(r->h - r->y + 1);
+            const float filled = std::floor(w * frac);
+            const SDL_FRect full = F.rect(float(r->x), float(r->y), filled, h);
+            const SDL_FRect rest = F.rect(float(r->x) + filled, float(r->y), w - filled, h);
+            SDL_SetRenderDrawColor(ren_, 0, 220, 0, 255);
+            SDL_RenderFillRectF(ren_, &full);
+            SDL_SetRenderDrawColor(ren_, 200, 0, 0, 255);
+            SDL_RenderFillRectF(ren_, &rest);
+        };
+        const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
+        if (u && u->alive() && u->type) {
+            if (const SDL_Rect* r = rectOf("LOGO2"))
+                if (SDL_Texture* logo = taLogo(playerColorSlot(u->player))) {
+                    const SDL_FRect d = F.rect(float(r->x), float(r->y), float(r->w - r->x + 1), float(r->h - r->y + 1));
+                    SDL_RenderCopyF(ren_, logo, nullptr, &d);
+                }
+            centred("UNITNAME", u->displayName(), nameC);
+            health("DAMAGEBAR", *u);
+            if (u->kills > 0)
+                if (const SDL_Rect* r = rectOf("DAMAGEBAR")) {
+                    std::string k = std::to_string(u->kills) + (u->kills == 1 ? " kill" : " kills");
+                    if (u->kills > 4) k += " - Veteran";
+                    taConsole_->draw(ren_, F, float(r->x), float(r->h + 2), k, white);
+                }
+            if (u->player == hudPlayer()) {
+                char b[32];
+                std::snprintf(b, sizeof b, "+%.1f", double(std::max(0.0f, u->make[1]))); at("UNITMETALMAKE", b, made);
+                std::snprintf(b, sizeof b, "+%.0f", double(std::max(0.0f, u->make[0]))); at("UNITENERGYMAKE", b, made);
+                std::snprintf(b, sizeof b, "-%.1f", double(std::max(0.0f, u->use[1]))); at("UNITMETALUSE", b, spent);
+                std::snprintf(b, sizeof b, "-%.0f", double(std::max(0.0f, u->use[0]))); at("UNITENERGYUSE", b, spent);
+            }
+        }
+        // The unit under the pointer, when it is in the world view.
+        if (inView(screenMouseX_, screenMouseY_))
+            if (const UnitR* h = hoveredUnit(ta::client::PointerArea::World); h && h->alive() && h->type) {
+                centred("UNITNAME2", h->displayName(), nameC);
+                health("DAMAGEBAR2", *h);
+            }
     }
 
     // Clicks on the sidebar page. True when the click belonged to it.

@@ -502,7 +502,7 @@ int seatedHumans(const ta::net::RoomView& room) {
         // selects it again and PICKs.
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && e.button.clicks >= 2 &&
             !picker_.random) {
-            mouseX_ = float(e.button.x); mouseY_ = float(e.button.y);
+            mouseX_ = screenMouseX_ = float(e.button.x); mouseY_ = screenMouseY_ = float(e.button.y);
             float mx, my; lobbyMouse(mx, my);
             if (!ptIn(mapListRect_, mx, my) || mx > mapListRect_.x + mapListRect_.w - 16) return false;
             for (auto& hot : lobbyHots_)

@@ -2453,9 +2453,10 @@ if(TA_BUILD_CLIENT)
       # unit must hold a distinct entry owned by its own identity with no other
       # unit's content (TA_GEOMETRY_OWNERSHIP_VERIFY), and every cache hit must
       # equal a rebuild (TA_GEOMETRY_VERIFY); both throw at the first violation.
+      # Zoom 0.9: the camera's swing must carry units out of TA's (wider) game view.
       add_test(NAME render_geometry_ownership COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
-          TA_SHADOW_BENCH=200 TA_PROFILE_ZOOM=0.75 TA_RENDER_MOTION=1 TA_RENDER_CAMERA=1
+          TA_SHADOW_BENCH=200 TA_PROFILE_ZOOM=0.9 TA_RENDER_MOTION=1 TA_RENDER_CAMERA=1
           TA_RENDER_CHURN=30 TA_RENDER_RESET=70 TA_RENDER_EPOCH=110
           TA_GEOMETRY_RETAIN_MS=100 TA_GEOMETRY_TRIM_MS=0
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=230 TA_GEOMETRY_VERIFY=1 TA_GEOMETRY_OWNERSHIP_VERIFY=1
@@ -2750,7 +2751,8 @@ if(TA_BUILD_CLIENT)
       # Its size is tuned to the scene: TA's models cast far smaller silhouettes than
       # the Kingdoms roster these variants were first sized on (80 units then filled
       # five pages, 58 the _full army), so the army is 240 and _full 210 (190 already
-      # released an extended page). _band is the _full army: 240 exceeds four pages by
+      # released an extended page). _band is 200 (TA's wider game view, 896x704 here, shows
+      # more of the army than the old right-panel layout did; 210 packed most frames): 240 exceeds four pages by
       # area (every frame falls back before packing, so nothing is refused for want of
       # room); 200-220 fit by area and fail only by packing, 190 sometimes packs and
       # 230 is over by area again. _zoom takes 600: with fewer, every zoomed frame
@@ -2766,7 +2768,7 @@ if(TA_BUILD_CLIENT)
           set(_scene TA_SHADOW_BENCH=600 TA_RENDER_ZOOM=1 TA_RENDER_CAMERA=1 TA_RENDER_FRAMES=120)
           set(_expect "kept=[0-9]+ allocs=[1-9][0-9]* compactions=[1-9][0-9]* migrated=[0-9]+ evicted=[1-9][0-9]*.* validated=[1-9]")
         elseif(_variant STREQUAL "_band")
-          set(_scene TA_SHADOW_BENCH=210 TA_RENDER_SPARSE_AFTER=80 TA_RENDER_SPARSE_OFFSET=5200,5000
+          set(_scene TA_SHADOW_BENCH=200 TA_RENDER_SPARSE_AFTER=80 TA_RENDER_SPARSE_OFFSET=5200,5000
               TA_RENDER_FRAMES=130 TA_SHADOW_PAGES_MAX=4)
           set(_expect "page_releases=[0-2] shrinks=[0-9]+ validated=[1-9][0-9]* page_allocs=[1-4] alloc_failures=[1-9][0-9]")
         elseif(_variant STREQUAL "_extended")

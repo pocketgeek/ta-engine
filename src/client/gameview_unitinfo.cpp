@@ -94,7 +94,7 @@ void GameView::toggleUnitInfo() {
 bool GameView::inputUnitInfo(const SDL_Event& e, int winW, int winH) {
     if (!unitInfoType_) return false;
     if (e.type == SDL_MOUSEMOTION) {
-        mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y);
+        trackMouse(float(e.motion.x), float(e.motion.y));
     }
     bool close = false;
     if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
@@ -200,7 +200,7 @@ void GameView::drawUnitInfo(int winW, int winH) {
     unitInfoOkRect_ = ok;
     for (int i = 0; i < 2; ++i)
         if (!unitInfoOk_[i]) unitInfoOk_[i] = ta::gafTexture(ren_, vfs_, g.bgGaf, "OkButtons", i);
-    bool hover = lay.hit(g.ok.x, g.ok.y, g.ok.w, g.ok.h, mouseX_, mouseY_);
+    bool hover = lay.hit(g.ok.x, g.ok.y, g.ok.w, g.ok.h, screenMouseX_, screenMouseY_);
     SDL_Texture* button = unitInfoOk_[hover && unitInfoOk_[1] ? 1 : 0];
     if (button) {
         SDL_RenderCopyF(ren_, button, nullptr, &ok);

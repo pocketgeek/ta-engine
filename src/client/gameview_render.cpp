@@ -166,10 +166,15 @@
             pool_.setStats(&poolStats_);
             noteFrameCapacities();
         }
-        // Everything world-space (map, units, effects, bars) is clipped to the map
-        // viewport so it never bleeds under the right-hand panel.
+        // Everything world-space (map, units, effects, bars) is drawn in the world
+        // view's own coordinates through an SDL viewport at TA's game view rectangle
+        // ((128, 32)-(W-1, H-33), TotalA.exe 0x4981c9; viewX0 / viewY0), and clipped
+        // to it so it never bleeds under the side panel or the bars.
         int mvw = mapViewW(winW);
-        SDL_Rect worldClip{0, 0, mvw, winH};
+        const int mvh = mapViewH(winH);
+        const SDL_Rect viewRect{viewX0(), viewY0(), mvw, posterFrame_ ? winH : mvh};
+        SDL_RenderSetViewport(ren_, &viewRect);
+        SDL_Rect worldClip{0, 0, viewRect.w, viewRect.h};
         SDL_RenderSetClipRect(ren_, &worldClip);
         mapView_.setUnderlay(miniTex_);   // low-res gap filler (null until the overview bakes)
         // The study's fixed clock: section idle trimming (and so what a capped frame has
@@ -2830,38 +2835,33 @@
         // Restore the un-shaken camera so the HUD/panel stays rock-steady.
         if (shaking) mapView_.setOffset(shakeBaseX, shakeBaseY);
         // A MakePoster tile (posterStep) is the world alone.
-        if (posterFrame_) { SDL_RenderSetClipRect(ren_, nullptr); return; }
+        if (posterFrame_) { SDL_RenderSetClipRect(ren_, nullptr); SDL_RenderSetViewport(ren_, nullptr); return; }
 
-        // Done with world-space: drop the clip and draw the right-hand panel and
-        // its minimap + order column on a solid strip (never over the map).
+        // Done with world-space: drop the clip and the view's viewport and draw TA's
+        // frame in window coordinates -- the side panel with the minimap and the
+        // sidebar page, the top bar and the bottom bar (client/gameview_tahud.cpp).
+        // Spectators get the frame and the minimap; the sidebar page and the bars'
+        // readouts are the shown player's (hudShown).
         SDL_RenderSetClipRect(ren_, nullptr);
-        // Neutral panel strip behind the minimap (kept for spectators too -- it's plain
-        // chrome, not the faction art). The bottom bar (drawPanel) and TA's sidebar
-        // page and top bar (renderTaHud) are PLAYER-only: a spectator isn't a player
-        // and gets neither, just the minimap and the F4 board.
-        SDL_SetRenderDrawColor(ren_, 16, 14, 12, 255);
-        // The strip normally stops short to leave room for the player's bottom
-        // InfoPanel bar; a spectator has no bottom bar, so it must reach the
-        // bottom edge (else a barH()-tall gap shows under the right panel).
-        float stripH = hudShown() ? float(winH) - barH() : float(winH);
-        SDL_FRect panelStrip{float(mvw), 0, float(winW - mvw), stripH};
-        SDL_RenderFillRectF(ren_, &panelStrip);
+        SDL_RenderSetViewport(ren_, nullptr);
+        iconRects_.clear();selPortraitRects_.clear();
+        buildMenuRect_={};buildRowTop_=0;
+        renderTaFrame(winW, winH);
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
             drawMinimap(winW, winH);
             profHudMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
                           (double(SDL_GetPerformanceFrequency()) / 1000.0);
         }
-        if (hudShown()) {
-            drawPanel(winW, winH);
-            renderTaHud(winW, winH);   // TA sidebar page + top bar (client/gameview_tahud.cpp)
-        } else {   // nothing on screen to click
-            iconRects_.clear();selPortraitRects_.clear();
-            buildMenuRect_={};buildRowTop_=0;
-        }
-        // After the command panel: the readout fills the strip BETWEEN the two, and it
-        // measures the panel's drawn position to find its own bottom edge.
+        if (hudShown()) renderTaHud(winW, winH);   // TA sidebar page and the bars' readouts
+        // The overlays that annotate the battle sit in the world view: back to its
+        // viewport, with the view's size for their layout (centring, room), until the
+        // window-wide menus below.
+        const int fullW = winW, fullH = winH;
+        SDL_RenderSetViewport(ren_, &viewRect);
+        winW = mvw; winH = mvh;
         drawStatsPanel(winW, winH);
+        drawIdleBuilders(winW, winH, float(mvh));   // under the stats column
         // The top-left column (client/hudcorner.h), top down: the GAME TIME clock, the F4
         // scoreboard, the mission objectives, then (later) the voice speakers.
         if (front().scenarioClock) {
@@ -2984,6 +2984,10 @@
 
         drawGameChat(winW, winH);   // in-game chat box (Options: CHAT POSITION / SCALE)
 
+        // The window-wide menus and dialogs: window coordinates again.
+        SDL_RenderSetViewport(ren_, nullptr);
+        winW = fullW; winH = fullH;
+
         // In-game exit menu overlay -- drawn last so it sits above the HUD. Screen
         // space (like the game-over banner); hit-rects are rebuilt here each frame
         // and consumed by input() (see the exitMenu_ branch).
@@ -3025,8 +3029,8 @@
             float bx = px0 + pad, by = py0 + pad + titleH;
             auto btn = [&](const std::string& label, std::function<void()> action) {
                 SDL_FRect r{bx, by, bw, bh};
-                bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w &&
-                           mouseY_ >= r.y && mouseY_ <= r.y + r.h;
+                bool hot = screenMouseX_ >= r.x && screenMouseX_ <= r.x + r.w &&
+                           screenMouseY_ >= r.y && screenMouseY_ <= r.y + r.h;
                 SDL_SetRenderDrawColor(ren_, hot ? 90 : 60, hot ? 110 : 66, hot ? 150 : 86, 255);
                 SDL_RenderFillRectF(ren_, &r);
                 SDL_SetRenderDrawColor(ren_, hot ? 180 : 90, hot ? 200 : 100, hot ? 240 : 130, 255);

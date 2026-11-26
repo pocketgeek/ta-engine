@@ -337,27 +337,85 @@ On first run, slot 0 is presumably forced to Player; this is [U]. Multiplayer eq
 
 ## 3. In-game interface
 
+**Screen layout [C].** TotalA.exe lays the in-game screen out the same way at every
+resolution: a fixed-size frame, and the game view takes whatever is left.
+- Game view: (128, 32)-(W-1, H-33), so the view is (W-128)×(H-64) (`0x4981c9..0x498237`:
+  left 0x80, top 0x20, right W-1, bottom H-0x21). The view grows with the window.
+- Side panel: the left 128 columns, full height.
+- Top bar: rows 0..31 right of the side panel.
+- Bottom bar: rows H-32..H-1 right of the side panel.
+
 **Frame art [C]** (`0x429f61`, `0x467d70`). `gamedata\sidedata.tdf` `intgaf=ARMINT|CORINT`
-selects `anims\<intgaf>.gaf`, which holds:
-- `PANELSIDE` (129×480), drawn at (0,0);
-- `PANELTOP` (513×32), drawn at (129,0);
-- `PANELBOT` (513×33), drawn at (129, H-32).
+selects `anims\<intgaf>.gaf`. The loader (`0x429f8b..0x429fd9`) keeps three sequences per side:
+`PANELTOP` at game `+0x1481f`, `PANELBOT` at `+0x14833` and `PANELSIDE` at `+0x14847`.
+- `PANELSIDE` (129×480) is drawn at (0,0) into the screen-sized OFFSCREEN surface after the
+  surface is cleared to colour 0 (`0x467d7f..0x467ddf`). Nothing is drawn under it, so below
+  row 480 the side panel is black.
+- The top bar is `PANELTOP` (513×32) at (129,0). After it come copies of `PANELBOT` at
+  x = 642, 1155, … until x ≥ W (`0x469050..0x46909d`; the table index is side + 5·(x > 129)).
+- The bottom bar is copies of `PANELBOT` (513×33) at y = H-32 for x = 129, 642, … until
+  x ≥ W. This loop is in both bottom-bar redraws (`0x46a8b5..0x46a929` and
+  `0x46ad69..0x46adc9`).
+- Frame offsets cancel: the blit draws at (x - xoff, y - yoff) (`0x4b804a..0x4b805a`), and
+  callers add the offsets first.
+- The `bitmaps\armgui*tile.pcx` files are not used [U].
 
-Each is drawn once with frame offsets cancelled, and none is tiled. At resolutions wider than
-640 or taller than 480, nothing in the exe uses the `bitmaps\armgui*tile.pcx` files [U]; the
-engine has to pick a fill.
+**Top bar readouts [C]** (`0x4690ab..0x46960b`). `sidedata.tdf` gives the rectangles in
+640×480 space as x1/y1/x2/y2 (parsed at `0x431c44..0x432307`). They do not move with W.
 
-**Top bar and info bar [D].** The other `sidedata.tdf` sections give coordinates in 640×480
-space:
-- Top bar regions: LOGO, ENERGYBAR (471,12)-(598,14), METALBAR (218,12)-(345,14), the NUM / MAX /
-  0 / PRODUCED / CONSUMED texts, TOTALUNITS, TOTALTIME.
-- Bottom info bar regions: LOGO2, UNITNAME, DAMAGEBAR, UNITMETALMAKE/USE, UNITENERGYMAKE/USE,
-  MISSIONTEXT, NAME, DESCRIPTION, RELOAD1-3.
-- Colours: `energycolor=208`, `metalcolor=224`.
-- At higher resolutions, footer y values are presumably offset by H-480 [U].
+| region | drawn | address |
+|---|---|---|
+| LOGO (132,5)-(152,25) | the player's colour emblem: `textures\logos.gaf` frame = colour (game `+0x148db`), stretched to the rectangle | `0x4690ab` → `0x467c00` |
+| ENERGYBAR (471,12)-(598,14), METALBAR (218,12)-(345,14) | filled x1 .. x1 + (x2-x1)·stored/storage over y1..y2, in `energycolor=208` / `metalcolor=224` (palette.pal) | `0x4690f3..0x46912e`, `0x469391..` |
+| (bar) | the share level as a 2-pixel marker at x1 + (x2-x1)·share/storage, when share > 0 and < stored | `0x469133..0x4691b2` |
+| ENERGYNUM (529,18), METALNUM (278,18) | stored, `"%d"`, left at (x1,y1) | `0x4691bd..0x4691f3` |
+| ENERGY0 (468,1), METAL0 (215,1) | `"0"` | `0x4691f8..0x469212` |
+| ENERGYMAX (595,1), METALMAX (341,1) | storage, `"%d"`, right-aligned to x1 | `0x469217..0x46926b` |
+| ENERGYPRODUCED (609,5) / CONSUMED (609,17) | `"%d"`, or `"%dK"` (in thousands) when the value is past ±99999 | `0x469270..0x46938c` |
+| METALPRODUCED (358,5) / CONSUMED (358,17) | `"%.1f"` | `0x469578..0x46960b` |
 
-**Minimap [I].** The minimap fills the 128×128 top-left area. The sidebar GUIs all sit at
-(0,128), sized 128×352.
+- The text uses the side's `font=console` FNT (side record `+0x22e`).
+- Produced and consumed take entries `+0xa` and `+0xc` of the interface colour table at game
+  `+0xdcb`. Which palette slots those are has not been traced [U]; the engine draws green and
+  red.
+- TOTALUNITS and TOTALTIME are parsed but this routine does not draw them.
+
+**Bottom bar readouts [C]** (`0x46a860..0x46b789`). Every footer rectangle moves down by
+H - `baseheight` (`0x46a86f..0x46a87e`). `baseheight` is a `sidedata.tdf` key, default 480
+(`0x429efc`).
+- Selected unit, own or allied:
+  - LOGO2 (132,455)-(152,475): the owner's emblem (`0x46b105`).
+  - UNITNAME (245,452): the unit's name, centred on x1, in palette colour 0x53
+    (`0x46afcf..0x46b00e`).
+  - DAMAGEBAR (200,463)-(290,465): health, x1 .. x1 + (x2-x1)·hp/maxdamage in colour-table
+    `+0xa`; the rest of the bar in `+0x4` (`0x46b04c..0x46b0f0`).
+  - Under the bar at y2 + 2: `"%d kill(s)"`, with `" - Veteran"` past 4 kills
+    (`0x46b2b8..0x46b3ae`).
+- Shown player's units only, the make and use figures (`0x46b12e..0x46b2b3`):
+  - UNITMETALMAKE (350,458): `"+%.1f"`.
+  - UNITENERGYMAKE (400,458): `"+%.0f"`.
+  - UNITMETALUSE (350,468): `"-%.1f"`.
+  - UNITENERGYUSE (400,468): `"-%.0f"`.
+- The unit under the pointer: UNITNAME2 (555,452) and DAMAGEBAR2 (510,463)-(600,465)
+  (`0x46b492..0x46b55f`).
+- NAME, DESCRIPTION, MISSIONTEXT and RELOAD1-3 are parsed. Their draw paths (`0x46b5cf..`,
+  `0x46b70b` "Unidentified object") are not mapped yet [U].
+
+**Minimap [C]** (`0x466780`). The map is fitted into a 126×126 box at the screen's top-left
+corner:
+- The longer side is 126 pixels, the other is 126 × its share of the longer one, and the
+  short axis is centred (`0x46679f..0x4667fa`).
+- A click maps (mouse - rect origin) × map size / rect size (`0x498d00`).
+- The sidebar GUIs all sit at (0,128), sized 128×352.
+
+**Engine layout.** `gameview_tahud.cpp` follows the rules above.
+- `viewX0()` / `viewY0()` = (128, 32) × UI SCALE. The world is drawn through an SDL viewport
+  there. `mouseX_` / `mouseY_` are view coordinates and `screenMouseX_` / `screenMouseY_` are
+  window coordinates.
+- UI SCALE (default 1.0) multiplies the frame. At 1.0 the side panel is 128 pixels wide at any
+  resolution, as in retail.
+- Engine extras sit inside the view: the stats column (top right), IDLE BUILDERS, the clock
+  and scoreboard column (top left), chat and the replay bar.
 
 **Sidebar GUIs [C/D]** (`0x41aa00..0x41b9c0`). Side prefix = sidedata `nameprefix`
 (ARM / COR).
@@ -376,7 +434,19 @@ space:
 - Movement orders along the bottom.
 
 **Build buttons [D].** Each build button is named after the unit; the name is the unit to
-build. Its art is seq `<UNIT>` in `anims\<UNIT><page>.gaf`, 3 frames. `IGPATCH` (grayed) fills
+build.
+
+**Build button clicks [C]** (handler `0x41aa00`). The gadget's name gives the unit type
+(`0x41aa39` → `0x488b10`).
+- If the type's `bmcode` byte (`+0x22f`, stored at `0x42c422`, default 0) is 0, the click
+  arms the placement: state 0xE with the type at `+0x2cc4`, sound `addbuild`
+  (`0x41ab7f..0x41ab9c`). Either button does this.
+- Anything else is queued in the unit whose menu is shown, through `0x419b00`
+  (`0x41abd9..0x41ac3c`). That covers a mobile unit on a factory's page and the stockpile
+  button MAKENUKE / MAKEANTI, which names no unit.
+  - Left click: +1. Right click: -1. Shift: ±5.
+  - `0x419b00` sends `MOBILEBUILD` or `BUILDINGBUILD` (or `BUILDWEAPON` for the stockpile)
+    and plays `addbuild` / `subbuild`. Its art is seq `<UNIT>` in `anims\<UNIT><page>.gaf`, 3 frames. `IGPATCH` (grayed) fills
 empty slots.
 
 **Add-on units [C/D].** Each `download\*.tdf` holds `[MENUENTRYn]{UNITMENU=builder;
@@ -499,7 +569,6 @@ See §1.5 and §1.6. In short:
 **Open questions [U]:**
 - Whether the retail front end switches to 640×480 or centres the screens. The GUIs are 640×480
   either way, so centre or scale.
-- How the side bars fill at more than 640×480.
 - The exact label alignment bits.
 - The `fontnumber` → font mapping.
 - Front-end states 0xE / 0xF / 0x10 and the credits / intro paths.

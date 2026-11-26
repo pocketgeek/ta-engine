@@ -516,6 +516,13 @@ void TaGuiView::drawSequence(const std::string& gaf, const std::string& seq, int
     if (const Frames* f = sequence(gaf, seq)) drawFrame(*f, frame, {x, y, 0, 0}, L, false);
 }
 
+SDL_Point TaGuiView::sequenceSize(const std::string& gaf, const std::string& seq, int frame) {
+    const Frames* f = sequence(gaf, seq);
+    if (!f || f->geo.empty()) return {0, 0};
+    const auto& g = f->geo[size_t(std::clamp(frame, 0, int(f->geo.size()) - 1))];
+    return {g.w, g.h};
+}
+
 std::string TaGuiView::activate(const std::string& name) {
     tagui::Gadget* g = screen_.find(name);
     if (!g || g->grayedOut) return {};

@@ -1175,6 +1175,7 @@
         s.id = u.id; s.type = u.type; s.player = u.player;
         if (s.scenarioName != u.scenarioName) s.scenarioName = u.scenarioName;
         s.hp = u.hp.toFloat(); s.kills = u.kills;
+        for (int r = 0; r < 2; ++r) { s.make[r] = u.books.r[r].lastProd; s.use[r] = u.books.r[r].lastReq; }
 #ifndef NDEBUG
         s.studyTint = renderStudyTint_.empty() ? 0 : renderStudyTint(u.id);
 #endif
@@ -2633,7 +2634,7 @@
                 initialZoom=std::clamp(float(std::atof(zoom)),0.1f,4.0f);
             mapView_.setZoom(initialZoom);
             mapView_.setOffset(x-terrainLiftX(x,z)-float(mapViewW(winW))*0.5f/mapView_.zoom(),
-                               z-terrainLift(x,z)-12.0f-float(winH-barH())*0.5f/mapView_.zoom());
+                               z-terrainLift(x,z)-12.0f-float(mapViewH(winH))*0.5f/mapView_.zoom());
             initialCamera_.reset();
         }
 
@@ -2652,7 +2653,7 @@
         // runs every frame for SP, net, AND spectator -- update() is skipped on the
         // net/spectator path, so the listener can't live there.
         float zm = std::max(mapView_.zoom(), 1e-3f);
-        float halfW = (mapViewW(winW) / 2.0f) / zm, halfH = (winH / 2.0f) / zm;
+        float halfW = (mapViewW(winW) / 2.0f) / zm, halfH = (mapViewH(winH) / 2.0f) / zm;
         sounds_.setListener(mapView_.offX() + halfW, mapView_.offY() + halfH, halfW, halfH);
     }
 
@@ -2705,9 +2706,9 @@
     }
 
     int GameView::minWindowWidth() const {
-        int n = int(registry_.maxBuildMenu());
-        int rowW = n > 0 ? (n - 1) * 66 + 60 : 0;
-        return rowW + 24 + panelW();
+        // TA's frame is authored at 640 wide: the side panel and the top bar's art
+        // (129 + 513) at UI SCALE.
+        return int(std::lround(642 * uiScale_));
     }
 
     void GameView::loadDamageFlameClasses() {
@@ -4420,7 +4421,7 @@
     bool GameView::onScreen(const UnitR& u) const {
         float sx = (u.x - mapView_.offX()) * mapView_.zoom();
         float sy = (u.z - mapView_.offY()) * mapView_.zoom();
-        return sx >= 0 && sy >= 0 && sx <= float(winW_) && sy <= float(mapViewH(winH_));
+        return sx >= 0 && sy >= 0 && sx <= float(mapViewW(winW_)) && sy <= float(mapViewH(winH_));
     }
 
     bool GameView::lbHot(const SDL_FRect& r) const {

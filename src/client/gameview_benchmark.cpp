@@ -334,7 +334,7 @@
 #ifndef NDEBUG
             if (&r == &save) saveDrawn = std::string(live ? "LIVE " : "GREYED ") + label;
 #endif
-            const bool hot = live && hover && mouseX_ >= r.x && mouseX_ <= r.x + r.w && mouseY_ >= r.y && mouseY_ <= r.y + r.h;
+            const bool hot = live && hover && screenMouseX_ >= r.x && screenMouseX_ <= r.x + r.w && screenMouseY_ >= r.y && screenMouseY_ <= r.y + r.h;
             if (live) SDL_SetRenderDrawColor(ren_, hot ? 90 : 60, hot ? 110 : 66, hot ? 150 : 86, 255);
             else SDL_SetRenderDrawColor(ren_, 34, 38, 46, 255);
             SDL_RenderFillRectF(ren_, &r);

@@ -272,6 +272,13 @@ public:
     std::string taSidebarPage();
     void renderTaHud(int winW, int winH);
     void renderTaTopBar(int winW);
+    void renderTaBottomBar(int winW, int winH);
+    void renderTaFrame(int winW, int winH);   // PANELSIDE, the top and bottom bars' art
+    void loadTaFrame();
+    SDL_Texture* taLogo(int colorSlot);
+    int taFrameSide_ = -1;      // the side whose frame art and sidedata rectangles are loaded
+    int taBaseHeight_ = 480;    // sidedata baseheight (0x429efc): the footer's authored screen height
+    std::map<int, SDL_Texture*> taLogos_;   // textures/logos.gaf 32xlogos by colour
     bool taHudEvent(const SDL_Event& e);
 public:
     // Debug shots: select the local player's first unit (TA_SHOT_SELECT).
@@ -1116,14 +1123,16 @@ public:
     uint64_t debugPickTests_ = 0;   // unitUnderCursor calls (debug builds)
     // The world view at this output size (left of the command panel, above the
     // bottom bar): the region a render capture comparison should cover.
-    std::pair<int,int> renderStudyWorldView(int w, int h) const { return {mapViewW(w), std::max(1, h - barH())}; }
+    std::pair<int,int> renderStudyWorldView(int w, int h) const { return {mapViewW(w), mapViewH(h)}; }
     // The zoom actually in force (the map-fills-window clamp can raise a request).
     float renderStudyZoomNow() const { return mapView_.zoom(); }
 #ifndef NDEBUG
     // Interactive render cases (measurement B): the pointer at renderer-output pixel
     // (x, y), as a mouse motion would leave it, so the frame's cursor classification
     // runs; and FADE's display clock taken from the study frame instead of wall time.
-    void renderStudyMouse(float x, float y) { mouseX_ = x; mouseY_ = y; }
+    void renderStudyMouse(float x, float y) {   // a point in the world view
+        mouseX_ = x; mouseY_ = y; screenMouseX_ = x + float(viewX0()); screenMouseY_ = y + float(viewY0());
+    }
     void renderStudyFadeClock(uint64_t ms) { debugHiddenFadeNowMs_ = ms; }
 #endif
     void renderWork(size_t& vertices,size_t& calls,size_t& images,size_t& bakes,size_t& bakeVertices,
@@ -1177,7 +1186,11 @@ private:
     // unit under the pointer (or null): retail's right-click interface.
     ta::CursorId hoverCursor(float wx, float wz, const UnitR* hovered);
     ta::client::PointerArea pointerArea() const;
-    const UnitR* hoveredUnit(ta::client::PointerArea area) { return hoveredUnitAt(area, mouseX_, mouseY_); }
+    // The minimap is in window coordinates, the world view in view coordinates.
+    const UnitR* hoveredUnit(ta::client::PointerArea area) {
+        return area == ta::client::PointerArea::Minimap ? hoveredUnitAt(area, screenMouseX_, screenMouseY_)
+                                                        : hoveredUnitAt(area, mouseX_, mouseY_);
+    }
     const UnitR* hoveredUnitAt(ta::client::PointerArea area, float mx, float my);
     ta::client::HoverKind cursorHoverKind(const UnitR* u) const;
     bool isCursorAttacker(const UnitR& u) const;
@@ -2165,7 +2178,8 @@ private:
     ta::proc::Sample statsServer_;
     ta::proc::GpuSample statsGpu_;
     std::future<ta::proc::GpuSample> statsGpuPending_;
-    bool statsPanel_ = true;    // Options: live readout in the dead strip under the minimap
+    bool statsPanel_ = true;    // Options: live readout in the world view's top-right corner
+    float statsBottom_ = 0;     // its last drawn bottom edge (view coordinates), 0 when hidden
     // Animation stall gate (see animFrame): the sim tick last observed, and when it
     // last CHANGED. Animation freezes when the sim clock stops, so a network stall looks
     // paused instead of leaving units walking on the spot.
@@ -3711,9 +3725,10 @@ private:
     // retail does (0x526620 keeps the mode and flags it; it disarms once
     // Shift is up). Releasing Shift disarms it.
     bool shiftOrderArmed_ = false;
-    float mouseX_ = -1, mouseY_ = -1;   // -1 until the first real mouse motion, so
-                                        // edge-scroll can't fire from a (0,0) default
-                                        // cursor on launch (before the mouse moves)
+    float mouseX_ = -1, mouseY_ = -1;   // view coordinates (trackMouse); -1 until the
+                                        // first real mouse motion, so edge-scroll can't
+                                        // fire from a (0,0) default cursor on launch
+    float screenMouseX_ = -1e6f, screenMouseY_ = -1e6f;   // window coordinates (chrome, menus, cursor)
     // Retail animated mouse cursors (anims/cursors.gaf). Lazily loaded on the first
     // overlay draw; when it takes over, the OS arrow is hidden (restored in the dtor).
     ta::CursorSet cursors_;
@@ -3883,17 +3898,66 @@ private:
     // scaled by its height, and UI SCALE is the single knob that changes it.
     static constexpr float kHudBase = 1080.0f / 700.0f;
     float guiS() const { return uiScale_ * kHudBase; }
-    // Width of the right-hand command-panel strip (the retail UnitMenu is 128 wide in
-    // 640-space); never narrower than the minimap.
+    // TA's in-game frame (docs/retail-gui.md section 3). TotalA.exe sets the game view
+    // to (128, 32)-(W-1, H-33) at any resolution (0x4981c9..0x498237): the side panel
+    // on the left keeps its width, the top bar and the bottom bar keep their height,
+    // and the view takes everything else. In screen pixels times UI SCALE.
+    int taSideW() const { return int(std::lround(128 * uiScale_)); }
+    int taTopH() const { return int(std::lround(32 * uiScale_)); }
+    // The world view's top-left corner on screen. The world (and every overlay drawn
+    // over it) is drawn in view coordinates through an SDL viewport there; mouseX_ /
+    // mouseY_ are view coordinates, screenMouseX_ / screenMouseY_ the window's.
+    int viewX0() const { return posterFrame_ ? 0 : taSideW(); }   // a poster tile is the world alone
+    int viewY0() const { return posterFrame_ ? 0 : taTopH(); }
+    // Width of the left-hand side panel (retail 128, the PANELSIDE art 129).
     int cmdPanelW() const;
     int mapViewW(int winW) const { return std::max(64, winW - cmdPanelW()); }
-    // Height of the world view: the window above the bottom InfoPanel bar (a spectator
-    // has none). With mapViewW, the area the map is actually seen in -- the zoom-out
-    // floor and the scroll limits are measured against it, so full zoom-out fits the
-    // map to that area rather than running it under the right panel or the bar.
-    // Every watcher's view is the full height, whether or not a selection has put the
-    // bar over it, so the zoom floor and the scroll limits never jump on a click.
-    int mapViewH(int winH) const { return std::max(64, winH - (watchOnly() ? 0 : barH())); }
+    // Height of the world view: the window less the top bar and the bottom bar. With
+    // mapViewW, the area the map is actually seen in -- the zoom-out floor and the
+    // scroll limits are measured against it. Every watcher has the same frame, so the
+    // zoom floor and the scroll limits never jump on a click.
+    int mapViewH(int winH) const { return std::max(64, winH - taTopH() - barH()); }
+    // A window point inside the world view.
+    bool inView(float sx, float sy) const {
+        return sx >= float(viewX0()) && sy >= float(viewY0()) && sx < float(viewX0() + mapViewW(winW_)) &&
+               sy < float(viewY0() + mapViewH(winH_));
+    }
+    // The pointer from a window position (both coordinate spaces).
+    void trackMouse(float sx, float sy) {
+        screenMouseX_ = sx; screenMouseY_ = sy;
+        mouseX_ = sx - float(viewX0()); mouseY_ = sy - float(viewY0());
+    }
+    // Read back the world view's pixels, its top-left at the buffer's (0, 0) (pitch in
+    // bytes): what a probe at a view coordinate (unitScreen, dotCentre) wants.
+    int readViewPixels(void* px, int pitch) {
+        // A fixture may draw a frame larger than the window: read what the output holds.
+        int ow = 0, oh = 0;
+        SDL_GetRendererOutputSize(ren_, &ow, &oh);
+        const SDL_Rect v{viewX0(), viewY0(), std::min(mapViewW(winW_), ow - viewX0()), std::min(mapViewH(winH_), oh - viewY0())};
+        SDL_RenderSetViewport(ren_, &v);
+        const int rc = SDL_RenderReadPixels(ren_, nullptr, SDL_PIXELFORMAT_RGBA32, px, pitch);
+        if (rc != 0) std::fprintf(stderr, "readViewPixels: %s\n", SDL_GetError());
+        SDL_RenderSetViewport(ren_, nullptr);
+        return rc;
+    }
+    // input() for an event whose mouse position is in view coordinates (test fixtures
+    // that aim at unitScreen / dotCentre points).
+    void inputFromView(SDL_Event e, int W, int H) {
+        if (e.type == SDL_MOUSEMOTION) { e.motion.x += viewX0(); e.motion.y += viewY0(); }
+        else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
+            e.button.x += viewX0(); e.button.y += viewY0();
+        }
+        input(e, W, H);
+    }
+    // An event's mouse position in view coordinates (the world's).
+    SDL_Event toView(const SDL_Event& e) const {
+        SDL_Event v = e;
+        if (e.type == SDL_MOUSEMOTION) { v.motion.x -= viewX0(); v.motion.y -= viewY0(); }
+        else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
+            v.button.x -= viewX0(); v.button.y -= viewY0();
+        }
+        return v;
+    }
 
     SDL_FRect minimapRect(int winW, int winH) const;
 
@@ -4097,8 +4161,11 @@ private:
     // Load one GAF sequence frame (anims/<gaf>, sequence seq, frame idx) to a texture.
     SDL_Texture* loadGuiFrame(const std::string& gaf, const std::string& seq, int frame);
 
+    // TA's bottom bar: the PANELBOT strip from H-32 (0x46a8f2), under the view's last
+    // row H-33 (0x498200). UI-scale (Options).
+    int barH() const { return int(std::lround(32 * uiScale_)); }
+    // The engine's portrait size (IDLE BUILDERS column), formerly its bottom bar's height.
     static constexpr int kBarHBase = 72;
-    int barH() const { return int(kBarHBase * uiScale_); }   // UI-scale (Options)
 
     // Retail HUD feedback: every side-panel / build-icon press plays the local
     // faction's click tone (sounds/tone<side>.wav -- the click.hpi overridables).
