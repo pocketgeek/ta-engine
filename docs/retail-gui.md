@@ -258,7 +258,50 @@ and `font=console` set the console / info font [D].
   | SETMOVEORDERS | butnmbl2 |
   | SPECIALORDERS / IMMEDIATEORDERS | button5 |
   | ADDBUILD / SUBBUILD | button9 / button7 |
+  | OKTOBUILD / NOTOKTOBUILD | button10 / button13 |
+  | MORE | button12 |
+  | ALLY | butscro1 |
   | PANEL | servsml6 |
+
+  **How a press picks its sound [C].** No gadget field and no per-type default decide it.
+  Each screen handler tests the press with `0x49fd60(screen, "GADGET")` and then calls
+  `0x47f1a0(entry, 0)` with an entry name that is hard-coded in that branch. Case varies
+  (`smlButton`, `SMLBUTTON`, `Smlbutton`) and does not matter: `0x47f1a0` walks the table
+  loaded from allsound.tdf (`game+0x33e13`, 0x20-byte names, count at `game+0x33a0f`). It
+  compares with the case-insensitive `0x4f8a70`, and the first match wins. An unknown name
+  gives index 0xffff, which plays nothing. `0x47f0c0` plays the sound through the sound
+  object at `game+0x10` (`0x4cf570`). The play is gated by the Options sound mode
+  (`game+0x37f19 & 7`). The engine table is `client/guisound.h`; every press also logs under
+  `TA_GUISOUNDLOG=1`.
+
+  | Screen (handler) | Gadget → entry |
+  |---|---|
+  | MAINMENU (`0x425d80`) | SINGLE, MULTI → BigButton (`0x425dbd`, `0x425dfa`); INTRO, Credits → smlButton (`0x425ee4`, `0x4260b2`); EXIT → exit (`0x426076`) |
+  | SINGLE (`0x4775a0`) | NewCamp, LoadGame, AnyMsn → BigButton; Skirmish → skirmish (`0x477622`); Options → options (`0x4776c1`); PrevMenu → Previous (`0x4776f2`) |
+  | NEWGAME (`0x477ab0`) | Start → bigButton (`0x477b6e`); PrevMenu → Previous; Difficulty → SmlButton (`0x477d0b`); Side0/Arm → SideSelect (`0x47802a`); Side1/Core → SideSelect2 (`0x477def`). Rebuilding the campaign list (`0x477940`, also on open and on a side change) plays smlbutton |
+  | MSNBRIEF (`0x478cb0`) | Start → BigButton; SHUTUP → Options (`0x478d8e`), then SmallButton after the redraw (`0x478de2`); PrevMenu → Previous; MOREBAR → More (`0x478e5f`) |
+  | SKIRMISH (`0x47ae60`) | Start → BigButton (`0x47aee1`); PrevMenu → Previous (`0x47b10b`); every player-row cell (`0x47b16d`..`0x47b5bd`), CommanderDeath, StartLocation, Mapping, LineOfSight, SelectMap and Difficulty → Skirmish. SkirmishCheat (`0x47bb7e`) plays on a branch keyed by values 9 / 0xA, which looks like a cheat [U] |
+  | SELMAP (`0x47a988`) | PREVMENU → Previous (`0x47a9b7`); LOAD → SmallButton (`0x47a9f0`); MAPNAMES none |
+  | ENDMSN (`0x41ed80`) | LoadGame, SaveGame, MainMenu, Start → BigButton; Difficulty → SKirmish (`0x41ee8b`) |
+  | SELPROV / TCP (`0x444634` / `0x442204`) | SELECT/DPLAY → BigButton (`0x4444a4`); SETTINGS → Options; PREVMENU / PREV → Previous; TCP OK → Smlbutton (`0x442106`) |
+  | SELGAME / battle room (`0x443xxx` / `0x447xxx`..`0x448xxx`) | JOINGAME/STARTNEW, START → BigButton (`0x4439dc`, `0x448732`); PREVMENU → Previous; WATCH and every room setting → Multi (`0x443bfa`, `0x4484f1`..`0x4486de`); ally → Ally (`0x448081`); RESTRICTIONS → Options |
+  | Options pages (`0x45d2f7`..`0x45ffe5`) | every toggle, slider button, page radio and OK → Options; CANCEL → Previous (`0x45fd8c`) |
+  | Sidebar orders (`0x419be0`) | MOVE, ATTACK, BLAST, DEFEND, PATROL, LOAD, STOP → immediateorders (both arming and disarming; STOP `0x419cf2` → `0x41a0ea`); REPAIR, RECLAIM, CAPTURE, UNLOAD, CLOAK, ONOFF → specialorders; MOVEORD → setmoveorders (`0x41a5ac`); FIREORD → setfireorders (`0x41a6af`) |
+  | Sidebar pages (`0x41aa60`) | ORDERS → ordersbutton (`0x41aaf8`); BUILD → buildbutton (`0x41ab39`); a mobile builder's build picture → addbuild (`0x41ab97`); PREV / NEXT set a flag (`0x41aa8d` / `0x41aac2`), and the page flip plays nextbuildmenu (`0x41befc`) |
+  | Factory queue / stockpile (`0x419b00`) | add → addbuild, remove → subbuild (own units only) |
+  | Build placement (`0x527eb0`) | placed → oktobuild (`0x498fa0`), refused → notoktobuild (`0x499019`) |
+
+  **Engine [I].** TA's front end (`tafrontend.cpp`) plays the table for each press. The
+  title screen's added CAMPAIGN plays BigButton (as NewCamp), and the added OPTIONS plays
+  Options (as SINGLE's Options). The campaign picker plays the NEWGAME table. Its press plays
+  SideSelect only: the extra smlbutton from the campaign-list rebuild is not played. SHUTUP
+  plays only Options. The sidebar plays the sidebar table, and PREV/NEXT play on the press.
+  The engine's own menus have no .GUI: their Kingdoms click names (`ok.wav`, `cancel.wav`,
+  `menubutton.wav`, `toggle.wav`) are not shipped with TA. They play BigButton, Previous,
+  Options and Options. The lobby buttons play their retail counterparts (START/CREATE →
+  BigButton, BACK/CANCEL → Previous, settings → Multi). All of these go through the
+  MASTER / SOUND EFFECTS levels. A click that leaves the front end gets at most about 300 ms
+  to sound before its device closes.
 
 - **Menu music.** See `docs/retail-music.md`. The front end plays the `BGM` sound
   (`allsound [BGM] sound=drone2`) through `0x47f210` at `0x426453`. There is no CD music in

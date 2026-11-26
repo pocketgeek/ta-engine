@@ -1617,7 +1617,12 @@ std::string defaultGameName(const std::string& player) {
         const float tail = capsCentred ? 0 : ta::uiTextInkDescent(label, px);
         blockText(label, x + (w - tw) / 2, y + (h - 7 * px - tail) / 2, px,
                   enabled ? SDL_Color{225, 230, 240, 255} : SDL_Color{110, 115, 125, 255});
-        if (enabled && action) lobbyHots_.push_back({r, std::move(action)});
+        // The press plays its retail counterpart's sound (client/guisound.h lobby()).
+        if (enabled && action)
+            lobbyHots_.push_back({r, [this, entry = ta::guisound::lobby(label), label, a = std::move(action)] {
+                playGuiSound(entry, "lobby", label);
+                a();
+            }});
     }
 
     std::string GameView::otaField(const std::string& ota, const char* keyLower) {

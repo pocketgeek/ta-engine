@@ -2,6 +2,8 @@
 
 #include "client/campaignscreen.h"
 #include "client/cursors.h"
+#include "client/guisound.h"
+#include "client/menusfx.h"
 #include "client/settings.h"
 #include "client/taguiview.h"
 #include "gaf/gaf.h"
@@ -259,6 +261,17 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     }
     SDL_StartTextInput();
     if (setup.seats.empty()) setup = defaultSkirmish(vfs_);
+    // GUI sounds: each press plays the allsound.tdf entry its retail handler names
+    // (client/guisound.h), at the Options MASTER / SOUND EFFECTS levels. Leaving the
+    // front end lets the last click finish (the device closes with `sfx`).
+    MenuSfx sfx(vfs_);
+    sfx.settings = &cursorSettings_;   // loadSettings(): the saved levels
+    struct Drain { MenuSfx& s; ~Drain() { s.drain(); } } drain{sfx};
+    auto pressSound = [&](const std::string& screen, const std::string& gadget) {
+        const std::string entry = guisound::frontEnd(screen, gadget);
+        if (entry.empty()) return;
+        sfx.play(entry, "front end", guisound::upper(screen) + " " + gadget);
+    };
     std::unique_ptr<TaGuiView> view, popup;
     std::unique_ptr<TaGuiView> skirmArt;   // skirmish.gaf rows
     auto open = [&](const char* screen, const char* backdrop) {
@@ -456,7 +469,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         switch (p) {
         case Page::Campaigns:
             pickerSettings = loadSettings();
-            picker = std::make_unique<CampaignScreen>(ren_, vfs_, pickerSettings, camp.side);
+            picker = std::make_unique<CampaignScreen>(ren_, vfs_, pickerSettings, camp.side,
+                [&sfx](const std::string& entry) { sfx.play(entry, "campaign picker", "NEWGAME"); });
             picker->setDifficulty(camp.difficulty);
             break;
         case Page::NewGame: open("newgame", "newcampaign4x"); syncNewGame(); break;
@@ -546,6 +560,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         bool scriptBusy = false;   // (debug) TA_FRONT_SCRIPT steps still to press
         auto onHit = [&](const std::string& h2) -> std::optional<Choice> {
             message.clear();   // any press dismisses the last message
+            if (popup || view) pressSound((popup ? *popup : *view).screen().name, h2);
             if (popup && page_ == Page::SelProv) {   // TCP address
                 if (h2 == "PREV") popup.reset();
                 else if (h2 == "OK") {
@@ -748,6 +763,9 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 if (my >= kRowY && row >= 0 && row < kRows && row < int(setup.seats.size())) {
                     auto& seat = setup.seats[size_t(row)];
                     auto in = [&](const Col& c) { return mx >= float(c.x) && mx < float(c.x + c.w); };
+                    if (in(kName) || (seat.controller != 0 && (in(kSide) || in(kColor) || in(kAlly) ||
+                                                               in(kMetal) || in(kEnergy))))
+                        pressSound("SKIRMISH", "PLAYERROW");   // 0x47b16d..0x47b5bd: every row cell
                     if (in(kName)) {
                         int next = (seat.controller + 1) % 3;
                         if (next == 1)   // only one human in a skirmish

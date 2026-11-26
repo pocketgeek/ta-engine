@@ -13,6 +13,7 @@
 #include "client/hidpi.h"
 #include "client/font.h"
 #include "client/guiart.h"
+#include "client/guisound.h"
 #include "client/menuclick.h"
 #include "client/gpuvram.h"
 #include "client/settings.h"
@@ -192,6 +193,7 @@ struct CampaignScreen::TaPicker {
     std::vector<std::string> campNames;    // the Choose Campaign rows
     bool picked = false;
     std::string stem, campaign;
+    std::function<void(const std::string&)> playSound;   // an allsound.tdf entry (MenuSfx::play)
     // The plates of playanygame4 (measured on the backdrop, 640x480): Choose Campaign
     // and Choose Game. NEWGAME.GUI's own Campaign list spans both (it is laid out for
     // newcampaign4x, where the one plate is the campaign list), and its GAF font fits
@@ -294,6 +296,9 @@ struct CampaignScreen::TaPicker {
     // A gadget the view fired (or a scripted press); true when the picker is done.
     bool hit(const std::string& name) {
         const std::string h = upperOf(name);
+        // NEWGAME.GUI's press sounds (client/guisound.h, handler 0x477ab0).
+        if (playSound)
+            if (const std::string e = guisound::frontEnd("NEWGAME", h); !e.empty()) playSound(e);
         if (h == "PREVMENU") return true;
         if (h == "START") return choose();
         if (h == "ARM" || h == "SIDE0") selectSide(0);
@@ -434,7 +439,7 @@ CampaignScreen::CampaignScreen(SDL_Renderer* r,const hpi::Vfs& v,const Settings&
                                const std::filesystem::path& install)
 {
     // Total Annihilation data: TA's own screen (no Kingdoms book art to draw).
-    if(!v.has("guis/bod.gui") && v.has("guis/newgame.gui"))ta_=std::make_unique<TaPicker>(r,v,s,tab);
+    if(!v.has("guis/bod.gui") && v.has("guis/newgame.gui")){ta_=std::make_unique<TaPicker>(r,v,s,tab);ta_->playSound=std::move(sound);}
     else {d_=std::make_unique<Impl>(r,v,s,tab,install);d_->playSound=std::move(sound);}
 }
 CampaignScreen::~CampaignScreen()=default;

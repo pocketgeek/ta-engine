@@ -198,7 +198,7 @@ std::string upperStr(std::string s) {
                 const size_t at = name.size() >= 8 ? name.size() - 8 : 0;
                 const std::string tail = name.substr(at);
                 if (tail == "MAKENUKE" || tail == "MAKEANTI") {
-                    playClickTone();
+                    playGuiSound(ta::guisound::sidebar(tail, false, e.button.button == SDL_BUTTON_RIGHT), "sidebar", tail);
                     const bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
                     for (int id : selection_) {
                         ta::net::Command c;
@@ -214,11 +214,12 @@ std::string upperStr(std::string s) {
         }
         const std::string hit = page->handle(e, taHudLayout_);
         if (hit.empty()) return mouse;
-        playClickTone();
         const int side = std::max(0, ta::sides::find(side_));
         const std::string prefix = upperStr(ta::sides::at(side).prefix);
         std::string n = upperStr(hit);
         if (n.rfind(prefix, 0) == 0) n = n.substr(prefix.size());
+        // The press's retail sound (client/guisound.h: 0x419be0 orders, 0x41aa60 tabs/pages/builds).
+        playGuiSound(ta::guisound::sidebar(n, taBuildTab_ && registry_.find(hit)), "sidebar", n);
         if (n == "BUILD") { taBuildTab_ = true; return true; }
         if (n == "ORDERS") { taBuildTab_ = false; return true; }
         if (n == "NEXT") { ++taBuildPage_; return true; }
