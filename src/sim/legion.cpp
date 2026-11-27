@@ -13104,11 +13104,17 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // spots (none left: unchanged) and a refresh plans to them. Then the
     // spots are handed on (below) so that the bodies that can get to a spot
     // own it.
+    //
+    // Staggered (2026-11-27): each group is scanned every kRingScan ticks on
+    // its own tick, (now + id) % kRingScan == kRingScan-1, not every group on
+    // one tick: at +100 the Benchmark's 30-80 ring groups made that tick a
+    // 10-15 ms hitch. The disc list (ringBend) is rebuilt for every group on
+    // the old tick, as before.
     void ringScan() {
         const uint32_t now=w.tickCounter_;
-        if(now%kRingScan!=kRingScan-1)return;
-        pruneShotMemos();
-        ringDiscs.clear();
+        const bool discTick=now%kRingScan==kRingScan-1;
+        auto due=[&](int gid) {return (now+uint32_t(gid))%kRingScan==kRingScan-1;};
+        if(discTick)pruneShotMemos();
         // Round 5 (2026-10-21): a late ring. A fight (attack-move) order's
         // attacks are acquired one body at a time as its column comes into
         // range, so the group's first field starts with one member and
@@ -13126,6 +13132,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         // the battles +13-28% total Legion work (ringClaim's note).
         for(auto& [gid,g]:groups) {
             auto& r=g.ring;
+            if(!due(gid))continue;
             if(g.kind!=Kind::Attack||r.band0!=0||r.late||g.approach||g.reachIds.size()<kLateRingMembers)continue;
             if(!g.field||!g.field->done||g.next||g.stale||g.plane<0)continue;
             const Unit* t=w.unit(g.reachTarget);
@@ -13133,7 +13140,8 @@ struct LegionNavigator::Impl : LegionWorldBinding {
             r.late=true;r.tried=false;
             if(buildRing(g)) {g.stale=true;g.demand=true;++stats.ringReseeds;listGroup(g);}
         }
-        for(const auto& [gid,g]:groups) {
+        if(discTick)ringDiscs.clear();
+        if(discTick)for(const auto& [gid,g]:groups) {
             if(g.ring.band0==0||!g.ring.assigned||g.plane<0)continue;
             // A ring round a target on the move (a chase) stands nowhere for long.
             const Unit* t=w.unit(g.reachTarget);
@@ -13154,6 +13162,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         }
         for(auto& [gid,g]:groups) {
             auto& r=g.ring;
+            if(!due(gid))continue;
             if(r.band0==0||!r.assigned||!g.field||!g.field->done||g.next||g.stale||g.plane<0)continue;
             const Plane& p=planes[size_t(g.plane)];
             const int W=width(),fx=p.footX,fz=p.footZ,foot=std::max(fx,fz),body=16*foot;
