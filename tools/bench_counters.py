@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bench_counters -- the live 8-AI benchmark (Painted Desert)'s Legion counters, per unit-tick.
+"""bench_counters -- the live 8-AI benchmark (Block Wars)'s Legion counters, per unit-tick.
 
 W4 gates B1/B2/B3 on counters of the live benchmark (PLAN 3.0, 4 W4): relaxations
 (field_work) per unit-tick, refresh_idle, the field-quota peg run, churn per
@@ -21,7 +21,7 @@ bins are field_work and the legion work classes' deltas per 1500 ticks.
 How the run is made (tools/desync-hunt.sh pattern; seeds 0/1/2):
   TA_LPROBE=100 taserver --port P --data D --no-auth --local --seed S &
   TA_HEADLESS=1 SDL_VIDEODRIVER=dummy TA_MP_AIS=7 TA_BENCH=4 TA_LEGION=1 TA_LPROBE=100 \\
-      taclient game "Painted Desert" --data D --server 127.0.0.1 --serverport P --mphost --time 240
+      taclient game "Block Wars" --data D --server 127.0.0.1 --serverport P --mphost --time 240
 """
 import json
 import os
