@@ -4884,6 +4884,12 @@ private:
     // The minimap's markers (anims\fx.gaf, TotalA.exe 0x4298f4 / 0x429930): radlogo
     // and nuclogo, a frame per player colour, loaded on first use.
     std::array<SDL_Texture*, 10> radLogo_{}, nucLogo_{};
+    SDL_Texture* radLogoHigh_ = nullptr;
+    // Damaged units' minimap blink: unit id -> the game tick it stops (0x467950).
+    std::unordered_map<int, uint32_t> miniBlink_;   // radlogohigh: the unit under the pointer (game +0x2cba)
+    // The unit under the pointer as retail's 0x48cd80 picks it: in the map view the
+    // nearest pickable unit, over the minimap the dot within 2 px.
+    const UnitR* pointerUnit();
     bool radLogosLoaded_ = false;
     void drawMinimapMarkers(const SDL_FRect& r, float mapW, float mapH);
     ta::FogRemapGL fogRemap_;

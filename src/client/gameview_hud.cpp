@@ -268,7 +268,9 @@ namespace {
                 const UnitR& u = *up;
                 if (radarCode_ ? !u.alive() || u.embarked() || !u.type : !radarVisible(u)) continue;
                 if (!u.alive() || !u.type) continue;
-                const float dx = r.x + u.x / mapW * r.w - mx, dy = r.y + u.z / mapH * r.h - my;
+                // The dot's own point: the projected row, z - (y >> 1) (0x48cee1).
+                const float pz = u.z - float((u.worldPosition[1] >> 16) >> 1);
+                const float dx = r.x + u.x / mapW * r.w - mx, dy = r.y + pz / mapH * r.h - my;
                 const float d = dx * dx + dy * dy;
                 if (d <= 4.0f && d < bestD) { bestD = d; best = &u; }
             }
@@ -655,6 +657,11 @@ namespace {
     //    0xe), a targetable or interceptor weapon's (bits 29-30) a nuclogo in its
     //    owner's colour; a noradar weapon's never shows.
     // Sizes are retail's pixels times the minimap's scale over retail's 128 px box.
+    const UnitR* GameView::pointerUnit() {
+        if (inView(screenMouseX_, screenMouseY_)) return hoveredUnit(ta::client::PointerArea::World);
+        return hoveredUnitAt(ta::client::PointerArea::Minimap, screenMouseX_, screenMouseY_);
+    }
+
     void GameView::drawMinimapMarkers(const SDL_FRect& r, float mapW, float mapH) {
         if (!radLogosLoaded_) {
             radLogosLoaded_ = true;
@@ -662,6 +669,7 @@ namespace {
                 radLogo_[size_t(i)] = ta::gafTexture(ren_, vfs_, "fx", "radlogo", i);
                 nucLogo_[size_t(i)] = ta::gafTexture(ren_, vfs_, "fx", "nuclogo", i);
             }
+            radLogoHigh_ = ta::gafTexture(ren_, vfs_, "fx", "radlogohigh", 0);
         }
         if (!radLogo_[0]) return;
         const float px = std::max(1.0f, std::round(std::min(r.w, r.h) / 128.0f));
@@ -685,11 +693,20 @@ namespace {
         };
         constexpr SDL_Color kGreen{85, 255, 85, 255}, kRed{255, 85, 85, 255}, kYellow{255, 255, 85, 255};
         const auto& f = front();
+        const UnitR* pointed = pointerUnit();
+        // 0x466eb9..0x466eca: a blinking dot shows only in the phase where game
+        // +0x142f1 bit 0 is set; 0x466580 flips it every 8 game ticks.
+        const uint32_t now = f.gameTick;
+        const bool blinkOn = (now >> 3) & 1;
+        std::erase_if(miniBlink_, [&](const auto& e) { return e.second <= now; });
         for (const UnitR* up : f.live) {
             const UnitR& u = *up;
             if (radarCode_ ? !u.alive() || u.embarked() || !u.type : !radarVisible(u)) continue;
             const SDL_FPoint p = toMini(u.x, u.z - float((u.worldPosition[1] >> 16) >> 1));
+            if (!blinkOn && miniBlink_.count(u.id)) continue;
             logo(radLogo_[size_t(std::clamp(playerColorSlot(u.player), 0, 9))], p, 4);
+            // 0x466f18: the unit under the pointer (game +0x2cba) also gets radlogohigh.
+            if (&u == pointed) logo(radLogoHigh_, p, 6);
         }
         for (int id : selection_) {
             const UnitR* u = frameUnitP(id);

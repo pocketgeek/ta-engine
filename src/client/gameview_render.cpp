@@ -4521,6 +4521,7 @@
         kill(miniFogTex_);
         for (auto& t : radLogo_) kill(t);
         for (auto& t : nucLogo_) kill(t);
+        kill(radLogoHigh_);
         radLogosLoaded_ = false;
         kill(mapPreviewTex_);
         distantModelCache_.clear();

@@ -12260,7 +12260,7 @@ void World::tickReclaimArea(Unit& b) {
         TA_PASS();
         for (const auto& u:units_) {
             // Cargo footprints are live too (4f6a60 has no attachment test).
-            if (!u.alive() || !u.type || u.underConstruction || !allied(u.player,b.player)) continue;
+            if (!u.alive() || !u.type || !allied(u.player,b.player)) continue;   // nanoframes too (0x482ac0)
             RetailSightFootprint sight=u.sightFootprint;
             sight.active=false;
             // Before the first exploration pass, initialize the same authored sight.
@@ -15817,8 +15817,10 @@ void World::updateExplorationPlane() {
         for (size_t index=begin;index<end;++index) {
             auto& u=units_[index];
             // 4f6a60..4f6ac0 has no attachment test: transport cargo explores
-            // with its own sight from the attach point its mover committed.
-            if (!u.alive() || !u.type || u.underConstruction) continue;
+            // with its own sight from the attach point its mover committed. A unit
+            // under construction sees too: TotalA.exe stamps its sight when it is
+            // created (0x486178 / 0x486312 -> 0x482ac0, no build-state test).
+            if (!u.alive() || !u.type) continue;
             const int16_t distance=int16_t(sightDistance(*u.type));
             if (u.sightFootprint.distance!=distance || u.sightFootprint.sightHeight!=u.type->sightHeight ||
                 u.sightFootprint.trueLos!=trueLos_) {
@@ -15969,7 +15971,7 @@ void World::updateViewCounts() {
     auto pass=[&](size_t begin,size_t end,auto shared) {
         for (size_t index=begin;index<end;++index) {
             auto& u=units_[index];
-            if (!u.alive() || !u.type || u.underConstruction) continue;
+            if (!u.alive() || !u.type) continue;   // a nanoframe sees (0x482ac0 at creation)
             const uint16_t mask=size_t(u.player)<planes && u.player<16 ? shareMask[size_t(u.player)] : 0;
             // 4c67d0 + 4f5a35: an ownership change moves the footprint; so
             // does a change of the planes it is shared into (4f59c0 re-points

@@ -263,10 +263,9 @@ std::string upperStr(std::string s) {
         if (!taConsole_ || !taTopBar_) return top;
         const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
         if (u && (!u->alive() || !u->type)) u = nullptr;
+        // The unit under the pointer, in the view or on the minimap (0x48cd80).
         const UnitR* h = nullptr;
-        if (inView(screenMouseX_, screenMouseY_))
-            if (const UnitR* hv = hoveredUnit(ta::client::PointerArea::World); hv && hv->alive() && hv->type && hv != u)
-                h = hv;
+        if (const UnitR* hv = pointerUnit(); hv && hv->alive() && hv->type && hv != u) h = hv;
         if (!u && !h) return top;
         const float k = statsScaleEff(), pad = hudColPad();
         ta::GuiLayout F;
@@ -323,9 +322,17 @@ std::string upperStr(std::string s) {
         }
         if (h) {
             if (u) y += 4;
-            y = heading(y, *h);
-            health(y, *h);
-            y += 6;
+            if (!mainViewVisible(*h)) {
+                // 0x46af3d -> 0x46b6f3: a unit the viewed player does not see -- a radar
+                // or sonar dot on the minimap -- is only "S: " (a sonar contact) or "R: "
+                // and "Unidentified object", its name and health withheld.
+                taConsole_->draw(ren_, F, 0, y, std::string(h->sonarSeen ? "S: " : "R: ") + "Unidentified object", nameC);
+                y += fh + 2;
+            } else {
+                y = heading(y, *h);
+                health(y, *h);
+                y += 6;
+            }
         }
         return F.py(y) + pad / 2;
     }

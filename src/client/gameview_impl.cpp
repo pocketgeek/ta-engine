@@ -1053,7 +1053,7 @@
         for (const auto& unit:world_.units()) {
             // Transport cargo keeps a live footprint (4f6a60 has no attachment test).
             // A passive neutral's sight is not the local player's (World::viewShareMask).
-            const bool eligible=unit.type && unit.alive() && !unit.underConstruction &&
+            const bool eligible=unit.type && unit.alive() &&   // nanoframes see (0x482ac0)
                                 sharesSightToLocal(unit.player);
             effectVisibility_->track(unit.id,unit.player,seenAs(),eligible,unit.alive(),
                                      unit.sightFootprint,world_.tickCount());
@@ -1296,7 +1296,7 @@
         s.sightShared = sharesSightToLocal(u.player);
         // The local view's sight of another side's unit, on the plane captureFog
         // just built (a dying or dead unit is tested where it lies).
-        s.losSeen = s.mapSeen = false;
+        s.losSeen = s.mapSeen = s.sonarSeen = false;
         if (!noFog_ && !s.sightShared && !fb.fog.empty()) {
             namespace rf = ta::retailfog;
             const int32_t y = (u.type->canFly ? u.flightY : u.groundY).v;
@@ -1316,6 +1316,7 @@
                                !fogRadarJam_.covers(u.x.v, u.z.v);
             const bool sonar = world_.sonarContact(seenAs(), u);
             s.mapSeen = !cloaked && (radar || sonar || rf::pointInView(fb.fog, fb.fogW, fb.fogH, u.x.v, y, u.z.v));
+            s.sonarSeen = !cloaked && sonar;
         }
         // Pose: prev comes from the previously-published frame's curr for this SAME unit
         // (id live last tick + matching type). Interpolate alive units between ticks;
@@ -1924,6 +1925,9 @@
             lastFireSoundTick_ = std::max(lastFireSoundTick_, sf.gameTick);
         }
         for (const auto& h : hitsToShow) {
+            // TotalA.exe 0x489d8e -> 0x467950: a damaged unit's minimap dot blinks for
+            // 240 ticks (unit +0xfa, counted down each unit tick, 0x48adf0).
+            for (int id : h.hurtUnits) miniBlink_[id] = front().gameTick + 240;
             // A Line-of-Sight weapon with no weaponvelocity (none shipped) still
             // lands at once and spawns no projectile: draw a bolt struck from the
             // firer to the victim, in the weapon's own inner/middle/outer colours.

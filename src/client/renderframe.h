@@ -255,6 +255,7 @@ struct UnitR {
     // mapSeen the minimap's dot rule (0x4f9970: radar or its centre cell in view).
     // Spectators (noFog_) and sight-sharing allies ignore both.
     bool losSeen = false, mapSeen = false;
+    bool sonarSeen = false;   // a sonar contact of the viewed player (+0x110 bit 9): "S:" not "R:"
     std::string scenarioName;
     const std::string& displayName() const { return scenarioName.empty() ? type->name : scenarioName; }
     bool alive() const { return deadFor < 0; }

@@ -79,9 +79,11 @@ on the local player `G+0x2a42`.
   no stamp, and the eye byte is set to 0.
 - Ray table: `r = clamp(sight>>5, 0, numtables−1)`; table `r` is used, since
   0x433500 returns element r−1 (0x481e09..0x481e52). With the shipped
-  `numtables=9` the radius is capped at **8 cells (256 px)** [S for the clamp;
-  [I] that the loader keeps exactly `numtables` tables and mirrors each
-  octant's lines]. sight < 32 indexes element −1 [U].
+  `numtables=9` the radius is capped at **8 cells (256 px)** [S]. The loader
+  (0x433130) reads exactly `numtables` tables, TABLE1..TABLEn. Each line,
+  "count, a, b, …", is stored four times by 0x4336f0 as ray `q·n + i`, with
+  cells (a, −b), (b, a), (−a, b) and (−b, −a) for q = 0..3. A sight under
+  32 px indexes element −1 [U]; the engine stamps the centre alone.
 - Each ray walks its cells in order, starting from the centre. Let `j` be the
   1-based step, and track the steepest horizon `best = (h, d)`, starting at
   `(−1, 0)`. A cell is stamped when `(hi − e)·d > h·j`, i.e. the top of the cell
@@ -138,11 +140,12 @@ instead of the counts: 0x465ac0 → 0x408090, 0x4658e0, 0x49bf2f.
      **desaturated, not darkened** terrain. This needs display flag `+0xf1`
      bit 0. Without it the square is left untouched [I].
 4. There is no animation, wave, tint or alpha in either mode.
-5. Order: the profiler slots are "Render Static", "Render Stuff", "Render Fog",
-   "SFX", "Weapon", "Misc" (0x46a35d..0x46a3b2). So the fog is drawn over
-   terrain, units and features, i.e. over anything that has passed its own
-   visibility test [I for the exact draw order of SFX and shots relative to
-   the fog].
+5. Order [S]: the frame routine draws the features (0x4658e0, 0x46990f /
+   0x469a9c), the units (0x46a610), the shots (0x49be60, 0x469b22) and
+   0x420b00 before the fog (0x4848e0, 0x469d8e); only interface follows. So
+   the fog covers everything in the world that passed its own visibility test,
+   shots included. (The profiler slot names, "Render Fog" before "SFX" and
+   "Weapon", do not give the draw order.)
 
 ### 3.2 Units: 0x465ac0(player, unit) [S]
 - Own unit → visible.
@@ -224,9 +227,15 @@ The minimap is never dithered and has no edge pieces.
   8 or 9, or belongs to `V`.
 - Position: `(x·mmW/mapW, (z − y/2)·mmH/mapH)`.
 - Every dot is a frame of **`radlogo`** from `logos.gaf`, chosen by the owner's
-  colour (`G+0x147df`, info `+0x96`). The unit `G+0x2cba` gets **`radlogohigh`**
-  (`G+0x147e3`) [U: which unit that is]. A unit with `+0xfa ≠ 0` blinks with
-  `G+0x142f1` bit 0.
+  colour (`G+0x147df`, info `+0x96`). The art is `anims\fx.gaf` (`radlogo`
+  4×4, `nuclogo` 7×7, `radlogohigh` 6×6), not logos.gaf. The unit `G+0x2cba`
+  gets **`radlogohigh`** (`G+0x147e3`) over its dot. That unit is the one under
+  the pointer, 0x48cd80: in the map view the nearest unit the cursor hits; over
+  the minimap the dot within 2 px (squared distance < 4, 0x48cee1). A unit
+  with `+0xfa ≠ 0` shows only while `G+0x142f1` bit 0 is set. 0x466580 flips
+  that bit every 8 game ticks. The damage handler (0x489d8e → 0x467950) sets
+  `+0xfa` to 240 for any hit but kind 0xa, and the unit tick counts it down
+  (0x48adf0), so a damaged unit's dot blinks for 8 s.
 - A selected unit (`+0x110` bit 4) draws its radar and sonar circles in
   `G+0xdcb[0xa]` (green) and its jammer circles in `[0xc]` (red), 0x4c0070.
   An onoffable unit draws them only while activated. An `antiweapons` type
@@ -278,7 +287,12 @@ The minimap is never dithered and has no edge pieces.
 - **10:** a submerged enemy is seen only as a sonar contact (`World::playerSees`, hashed).
 - **12:** `nodrawundergray`.
 
-Intentional: 11 (allies share sight, radar and sonar, owner decision D2). Open: 13 (R:/S: hover text), 14 (draw order) and 15 (nanoframe sight). `radlogohigh` (G+0x2cba) and the blinking dot are not drawn.
+- **13:** the R:/S: hover text, with the unit under the pointer from the map view or the minimap.
+- **14:** the draw order already matched retail.
+- **15:** nanoframes see.
+- **Minimap:** `radlogohigh` over the unit under the pointer, and a damaged unit's dot blinks for 240 ticks.
+
+Intentional: 11 (allies share sight, radar and sonar, owner decision D2). Nothing else is open in §7.
 
 1. **The out-of-view look.** Retail desaturates out-of-view terrain through the
    GRAY TABLE, or covers it with a 50% black checkerboard (DitheredFog), with no
@@ -344,13 +358,15 @@ Intentional: 11 (allies share sight, radar and sonar, owner decision D2). Open: 
     (`gameview_render.cpp:239`). Retail hides `nodrawundergray` features
     (dragon's teeth, fortifications) out of LOS. *Fix:* test LOS for those
     features.
-13. **Radar-contact hover.** Retail shows "R:/S: Unidentified object". The
-    engine has no such text.
-14. **Draw order.** The engine draws the fog last, over effects and aircraft
-    (`gameview_render.cpp:2515`). Retail appears to draw the fog before SFX and
-    shots [I]. This matters little, since those are filtered by visibility.
-15. **Nanoframes.** The engine skips sight for units under construction. In
-    retail, 0x482ac0 runs at creation, so a nanoframe probably sees [I].
+13. **Radar-contact hover.** When the unit under the pointer fails 0x465ac0
+    (0x46af3d), retail's footer shows "S: " (sonar bit 9) or "R: " plus
+    "Unidentified object" (0x46b6f3), and withholds the unit's name and health.
+14. **Draw order.** Retail draws the fog after the world, shots included
+    (§3.1 item 5). The engine does the same: it draws the fog after
+    every world op, flyers and their effects included. No difference.
+15. **Nanoframes.** 0x482ac0 stamps the type's sight when a unit is created
+    (0x486178, 0x486312), with no build-state test [S], so a unit under
+    construction sees.
 
 These already match retail: the projected 32-px plane and the corner test of
 `playerSees`; the True-LOS height plane `{(l+2h)/3, (h+2l)/3}`; the 60-tick,
@@ -359,11 +375,6 @@ z − y/2; the minimap-only `+Radar`; and the |Δeye| ≤ 5 re-stamp rule.
 
 ## 8. Not determined
 - Explosion, smoke and sound visibility (§3.4).
-- Retail ally LOS sharing and ShareMapping.
-- What `G+0x2cba` is (the radlogohigh unit).
-- How los.tdf lines are mirrored, and whether TABLE10..12 are ever read.
-  Unicorn-checking 0x433130 plus one 0x482270 call would settle the True
-  radius.
-- The exact draw order of the fog against SFX and shots.
+- Retail's ShareMapping reader (allies share no sight in retail; the engine's sharing is D2, §7 item 11).
 - The `+0x110` bit-12 proximity rule.
 - Whether the GRAY TABLE is ever replaced (0x4bab60 has no static caller).
