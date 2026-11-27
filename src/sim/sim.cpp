@@ -12266,8 +12266,9 @@ void World::tickReclaimArea(Unit& b) {
             // Before the first exploration pass, initialize the same authored sight.
             if (sight.x<0 || sight.z<0) {
                 sight.distance=int16_t(sightDistance(*u.type));sight.sightHeight=u.type->sightHeight;
-                sight.x=int16_t(u.x.floorInt()/32);sight.z=int16_t(u.z.floorInt()/32);
                 const Fixed y=u.type->canFly?u.flightY:u.groundY;
+                int cx,cz;retailSightCentre(u.x,y,u.z,cx,cz);
+                sight.x=int16_t(cx);sight.z=int16_t(cz);
                 sight.eyeHeight=std::max(y.floorInt(),seaLevel_+1)+sight.sightHeight;
             }
             retailSightFootprint(sight,true,false,width,height,uint8_t(b.player),

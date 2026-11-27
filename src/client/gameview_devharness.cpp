@@ -542,11 +542,11 @@
         }
         if (ta::devFlag("TA_RETAIL_FOG_TEST")) {
             // The display fog is retail's single sight plane (World::viewCounts) seen
-            // through LosOn: on flat ground an enemy at 0.9x our unit's sight is drawn
-            // and at 1.1x is not; from a hill the cone reaches 1.5x; radar puts an
-            // enemy on the minimap but never in the main view. Fixtures are found on
-            // the loaded map. TA_RETAIL_FOG_CAPTURE=<prefix> writes
-            // <prefix>-flat/-hill/-radar.png (the whole frame, minimap included).
+            // through LosOn: an enemy at 0.9x our unit's sight is drawn and at 1.1x is
+            // not (Circular sight, docs/retail-fog.md 2.2); radar puts an enemy on the
+            // minimap but never in the main view. Fixtures are found on the loaded map.
+            // TA_RETAIL_FOG_CAPTURE=<prefix> writes <prefix>-flat/-radar.png (the whole
+            // frame, minimap included).
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("retail fog: "+what);
                 std::fprintf(stderr,"PASS: retail fog: %s\n",what.c_str());
@@ -566,29 +566,8 @@
                 return int(m.heights[size_t(std::clamp(z,0,m.height-1))*size_t(m.width)+size_t(std::clamp(x,0,m.width-1))]);
             };
             const float S=float(world_.sightDistance(*sword)),R=float(world_.radarDistance(*keep));
-            const auto heights=ta::sim::retailExplorationHeights(m.width,m.height,uint8_t(sea),h16);
-            const int pw=m.width/2,ph=m.height/2;
-            // Would retail's cone (4c6800) admit a target unit standing on (tx,tz)
-            // for a swordsman on (x,z)? Its LosOn corners, as World::playerSees.
-            const auto admits=[&](float x,float z,float tx,float tz) {
-                ta::sim::RetailSightFootprint f;
-                f.x=int16_t(int(x)/32);f.z=int16_t(int(z)/32);f.distance=int16_t(S);f.sightHeight=sword->sightHeight;
-                f.eyeHeight=std::max(h16(int(x)/16,int(z)/16),sea+1)+sword->sightHeight;
-                const int radius=ta::sim::retailSightRadius(f);
-                const float slope=ta::sim::retailSightSlope(f);
-                auto at=[&](int cx,int cz){return heights[size_t(cz)*size_t(pw)+size_t(cx)];};
-                const int y=h16(int(tx)/16,int(tz)/16),top=y+(sword->modelTop>>16);
-                for (const auto& [cx,cy,cz]:{std::array<float,3>{tx-8*sword->footX,float(top),tz-8*sword->footZ},
-                        {tx+8*sword->footX,float(top),tz-8*sword->footZ},{tx+8*sword->footX,float(y),tz+8*sword->footZ},
-                        {tx-8*sword->footX,float(y),tz+8*sword->footZ}}) {
-                    const int px=int(cx)>>5,pz=(int(cz)-(int(cy)>>1))>>5;
-                    if (px<0 || pz<0 || px>=pw || pz>=ph) continue;
-                    if (ta::sim::retailSightAdmits(f,px,pz,radius*radius,slope,at)) return true;
-                }
-                return false;
-            };
             // Flat: one height over 1.4 sight distances either way along x.
-            float fx=-1,fz=-1,hx=-1,hz=-1,hdx=0;
+            float fx=-1,fz=-1;
             const int reach=int(1.4f*S/16)+2;
             for (int z=m.height/2,step=0;fx<0 && step<m.height;++step,z=m.height/2+((step&1)?1:-1)*(step/2)*2) {
                 if (z<8 || z>=m.height-8) continue;
@@ -602,20 +581,6 @@
                 }
             }
             check(fx>0,"found flat ground for 1.4 sight distances");
-            // A hill: our unit high, the target 1.5x away (east or west) on lower ground
-            // that retail's cone still reaches -- far from the flat fixture.
-            for (int z=8;z<m.height-8 && hx<0;z+=2)
-                for (int x=8;x<m.width-8 && hx<0;x+=2) {
-                    const float ox=float((x/2)*32+16),oz=float((z/2)*32+16);
-                    if (std::hypot(ox-fx,oz-fz)<4*S) continue;
-                    for (float dir:{1.0f,-1.0f}) {
-                        const float tx=ox+dir*1.5f*S;
-                        if (tx<64 || tx>float(m.width*16-64)) continue;
-                        if (h16(int(tx)/16,int(oz)/16)<=sea+2 || h16(x,z)<=sea+2) continue;
-                        if (admits(ox,oz,tx,oz)) {hx=ox;hz=oz;hdx=dir;break;}
-                    }
-                }
-            check(hx>0,"found a hill whose cone reaches 1.5 sight distances");
             // Radar: a keep, and an enemy at 0.9x its radar distance -- beyond twice its
             // sight (the footprint's cap) -- far from both other fixtures.
             float kx=-1,kz=-1;
@@ -624,8 +589,8 @@
             for (int z=8;z<m.height-8 && kx<0;z+=4)
                 for (int x=8;x<m.width-8 && kx<0;x+=4) {
                     const float ox=float(x*16),oz=float(z*16);
-                    if (ox+rd>float(m.width*16-64) || std::hypot(ox-fx,oz-fz)<rd+4*S || std::hypot(ox-hx,oz-hz)<rd+4*S ||
-                        std::hypot(ox+rd-fx,oz-fz)<4*S || std::hypot(ox+rd-hx,oz-hz)<4*S) continue;
+                    if (ox+rd>float(m.width*16-64) || std::hypot(ox-fx,oz-fz)<rd+4*S ||
+                        std::hypot(ox+rd-fx,oz-fz)<4*S) continue;
                     if (!world_.canPlace(keep,ox,oz) || h16(int(ox+rd)/16,z)<=sea+2) continue;
                     // Nor in sight of the units the local match opened with (the commanders).
                     bool seen=false;
@@ -635,16 +600,13 @@
                     kx=ox;kz=oz;
                 }
             check(kx>0,"found room for the radar fixture");
-            std::fprintf(stderr,"retail fog: sight %.0f radar %.0f flat %.0f,%.0f hill %.0f,%.0f (h %d -> %d) keep %.0f,%.0f\n",
-                S,R,fx,fz,hx,hz,h16(int(hx)/16,int(hz)/16),h16(int(hx+hdx*1.5f*S)/16,int(hz)/16),kx,kz);
+            std::fprintf(stderr,"retail fog: sight %.0f radar %.0f flat %.0f,%.0f keep %.0f,%.0f\n",S,R,fx,fz,kx,kz);
             const int own=spawn("armpw",fx,fz,0,0);
             const int inside=spawn("armpw",fx+0.9f*S,fz,0,1);
             const int outside=spawn("armpw",fx-1.1f*S,fz,0,1);
-            const int high=spawn("armpw",hx,hz,0,0);
-            const int below=spawn("armpw",hx+hdx*1.5f*S,hz,0,1);
             const int tower=spawn("armrad",kx,kz,0,0);
             const int blip=spawn("armpw",kx+rd,kz,0,1);
-            check(own>0 && inside>0 && outside>0 && high>0 && below>0 && tower>0 && blip>0,"fixture spawned");
+            check(own>0 && inside>0 && outside>0 && tower>0 && blip>0,"fixture spawned");
             for (int i=0;i<30;++i) writableWorld().tick(1.f/30);
             const char* capture=ta::devEnv("TA_RETAIL_FOG_CAPTURE");
             const auto frame=[&](float cx,float cz,const char* tag,float zoom=1.0f) {
@@ -667,8 +629,6 @@
             check(drawn(own),"own unit drawn");
             check(drawn(inside),"flat ground: an enemy at 0.9x sight is drawn");
             check(!drawn(outside),"flat ground: an enemy at 1.1x sight is not");
-            frame(hx+hdx*0.75f*S,hz,"hill");
-            check(drawn(high) && drawn(below),"from a hill: an enemy at 1.5x sight is drawn");
             frame(kx+rd*0.5f,kz,"radar",0.6f);   // both on screen: not drawn is the fog, not the cull
             const auto* dot=frameUnitP(blip);
             check(dot && radarVisible(*dot),"radar: the enemy is a minimap dot");

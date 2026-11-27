@@ -46,6 +46,15 @@ public:
             if(kind_==Kind::Overlay) retailfog::writeTexels(plane,w,h,x0,z0,x1,z1,out,pitch);
             else for(int z=z0;z<z1;++z) {
                 uint8_t* p=out+size_t(z-z0)*pitch;
+                if(colours_.size()==size_t(w)*h*3) {   // the grey-table colours (setMinimapColours)
+                    for(int x=x0;x<x1;++x,p+=4) {
+                        const uint8_t v=plane[size_t(z)*w+x];
+                        const uint8_t* c=colours_.data()+(size_t(z)*w+x)*3;
+                        if(v==retailfog::kExplored) {p[0]=c[0];p[1]=c[1];p[2]=c[2];p[3]=255;}
+                        else {p[0]=p[1]=p[2]=0;p[3]=v==retailfog::kInView ? 0 : 255;}
+                    }
+                    continue;
+                }
                 for(int x=x0;x<x1;++x,p+=4) {
                     const uint8_t v=plane[size_t(z)*w+x];
                     p[0]=p[1]=p[2]=0;p[3]=minimapAlpha(v);
@@ -64,9 +73,11 @@ public:
         if(uploadedBytes_) {previous_.assign(plane.begin(),plane.end());++generation_;}
         width_=w;return true;
     }
-    // The minimap (0x4f93a0): an unexplored cell is palette 0 (black); an explored
-    // one out of view is the map pixel through a darkening remap table, drawn here
-    // as half-opaque black; a cell in view is the map as it is.
+    // The minimap (TotalA.exe 0x466c20): an unexplored cell is palette 0 (black);
+    // an explored one out of view is the map pixel through the GRAY TABLE -- the
+    // colours setMinimapColours gives, one RGB per cell -- or, without them,
+    // half-opaque black; a cell in view is the map as it is.
+    void setMinimapColours(std::vector<uint8_t> rgb) { colours_=std::move(rgb); clear(); }
     static constexpr uint8_t minimapAlpha(uint8_t v) {
         return v==retailfog::kInView ? 0 : v==retailfog::kExplored ? 128 : 255;
     }
@@ -75,7 +86,7 @@ public:
     size_t uploadedBytes() const { return uploadedBytes_; }
 private:
     Kind kind_;
-    std::vector<uint8_t> previous_;
+    std::vector<uint8_t> previous_, colours_;
     uint32_t generation_=0;
     int width_=0;
     size_t uploadedBytes_=0;

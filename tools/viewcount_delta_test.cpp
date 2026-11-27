@@ -1,3 +1,4 @@
+#include <algorithm>
 // Current-view count deltas (src/sim/retailviewcounts.h): a counted footprint
 // that moves changes only the cells whose admission differs, and the counts
 // must end exactly as after retail's full removal and re-add
@@ -94,25 +95,27 @@ void auditProbe() {
     a.distance=b.distance=320;a.sightHeight=b.sightHeight=24;
     const Fixed x=Fixed::fromInt(32*32+16),z=Fixed::fromInt(32*32+16);
     p.update(a,b,x,Fixed::fromInt(100),z,0);
-    check(p.rebuildVisits==1257 && p.deltaVisits==1257 && p.rebuild==p.delta,
-          "probe: a new footprint adds the 1257-cell disc either way");
+    const RetailVisMask& mask=retailSightMask(a);
+    const size_t maskCells=size_t(std::count(mask.on.begin(),mask.on.end(),uint8_t(1)));
+    check(p.rebuildVisits==maskCells && p.deltaVisits==maskCells && p.rebuild==p.delta,
+          "probe: a new footprint adds its vismask's cells either way");
     auto before=p.delta;
     p.rebuildVisits=p.deltaVisits=0;
     p.update(a,b,x+Fixed::fromInt(32),Fixed::fromInt(100),z,0);
     const size_t moved=changedCells(before,p.delta);
     std::printf("probe one-cell move: rebuild %zu counter updates, delta %zu, cells changed %zu\n",
                 p.rebuildVisits,p.deltaVisits,moved);
-    check(p.rebuildVisits==2514 && p.deltaVisits==82 && moved==82 && p.rebuild==p.delta && sameSight(a,b),
-          "probe: a one-cell move is 2514 counter updates rebuilt, 82 as deltas, same counts");
+    check(p.rebuildVisits==2*maskCells && p.deltaVisits==moved && moved>0 && moved<maskCells &&
+          p.rebuild==p.delta && sameSight(a,b),
+          "probe: a one-cell move is the mask twice rebuilt, only the changed cells as deltas");
     before=p.delta;
     p.rebuildVisits=p.deltaVisits=0;
     p.update(a,b,x+Fixed::fromInt(32),Fixed::fromInt(106),z,0);
     const size_t lifted=changedCells(before,p.delta);
     std::printf("probe eye 100->106: rebuild %zu counter updates, delta %zu, cells changed %zu\n",
                 p.rebuildVisits,p.deltaVisits,lifted);
-    check(p.rebuildVisits==2514 && p.deltaVisits==0 && lifted==0 && p.rebuild==p.delta &&
-          sameSight(a,b) && a.eyeHeight==130,
-          "probe: an eye change of 6 is 2514 counter updates rebuilt, none as deltas");
+    check(p.rebuildVisits==0 && p.deltaVisits==0 && lifted==0 && p.rebuild==p.delta && sameSight(a,b),
+          "probe: Circular sight ignores the eye height (TotalA.exe 0x48272e: the corner cell only)");
     p.rebuildVisits=p.deltaVisits=0;
     p.update(a,b,x+Fixed::fromInt(32+15),Fixed::fromInt(110),z,0);   // cell 33 still, eye 134
     check(p.rebuildVisits==0 && p.deltaVisits==0,"probe: the same cell within 5 of the eye is no update");
@@ -190,82 +193,6 @@ void moves() {
     check(same,"moves: counts and cached footprints equal the rebuild after every update");
     check(once,"moves: each delta cell visited at most once per update, with +-1");
     check(deltaVisits*3<rebuildVisits,"moves: deltas make well under a third of the rebuild's counter updates");
-}
-
-// The per-cell admission against its pieces: the rebuild's traversal is the
-// reference, the row spans may not drop a cell it admits.
-void spans() {
-    Rng r{0xbb67ae8584caa73bull};
-    bool ok=true;
-    for (int i=0;i<4000 && ok;++i) {
-        const int width=r.range(1,40),height=r.range(1,40);
-        std::vector<RetailExplorationHeight> heights(size_t(width)*height);
-        for (auto& h:heights) h={uint8_t(r.below(256)),uint8_t(r.below(256))};
-        RetailSightFootprint s;
-        s.x=int16_t(r.range(-3,width+2));s.z=int16_t(r.range(-3,height+2));
-        s.distance=int16_t(r.range(-40,400));s.sightHeight=uint8_t(r.below(3) ? r.below(256) : 0);
-        s.eyeHeight=r.range(-20,500);
-        const int radius=retailSightRadius(s);
-        std::vector<uint8_t> admitted(size_t(width)*height,0),spanned(size_t(width)*height,0);
-        auto heightAt=[&](int x,int z){return heights[size_t(z)*width+x];};
-        retailSightFootprint(s,true,false,width,height,0,heightAt,
-            [&](int x,int z,int,uint16_t){admitted[size_t(z)*width+x]=1;});
-        // Rows in order, and again in a scrambled order: the half-width is
-        // corrected from whatever row came before.
-        RetailSightRows rows(s,radius,width),scrambled(s,radius,width);
-        for (int z=0;z<height;++z) {
-            int lo,hi,lo2,hi2;
-            rows.span(z,lo,hi);
-            scrambled.span((z*7+3)%height,lo2,hi2);
-            scrambled.span(z,lo2,hi2);
-            ok=ok && lo==lo2 && hi==hi2;
-            for (int x=lo;x<=hi;++x) spanned[size_t(z)*width+x]=1;
-        }
-        for (size_t c=0;c<admitted.size();++c) ok=ok && (!admitted[c] || spanned[c]);
-    }
-    check(ok,"spans: every cell the traversal admits lies in its row span");
-    bool roots=true;
-    for (int v=0;v<5000000 && roots;v+=v<100000 ? 1 : 997) {
-        const int s=retailIsqrt(v);
-        roots=s*s<=v && (s+1)*(s+1)>v;
-    }
-    check(roots,"spans: retailIsqrt is the exact floor square root");
-}
-
-// The per-height limit tables against retailSightAdmits, for every terrain
-// height and every squared distance a cell of the row spans can have.
-void limits() {
-    bool ok=true;
-    size_t tested=0;
-    const int distances[]={0,15,16,17,31,32,48,100,180,320,401,800};
-    const int sightHeights[]={0,1,24,60,255};
-    const int eyes[]={-40,0,1,5,30,99,100,101,180,255,256,300,511};
-    for (int distance:distances)
-        for (int sightHeight:sightHeights)
-            for (int eye:eyes) {
-                RetailSightFootprint s;
-                s.x=0;s.z=0;s.distance=int16_t(distance);s.sightHeight=uint8_t(sightHeight);s.eyeHeight=eye;
-                const int radius=retailSightRadius(s),radiusSquared=radius*radius;
-                const float slope=retailSightSlope(s);
-                RetailSightLimits limit;
-                retailSightLimits(s,radiusSquared,slope,limit);
-                for (int m=0;m<256;++m) {
-                    // Either corner the lower one.
-                    const RetailExplorationHeight h=m%2 ? RetailExplorationHeight{uint8_t(m),255}
-                                                        : RetailExplorationHeight{255,uint8_t(m)};
-                    auto at=[&](int,int){return h;};
-                    for (int dx=0;dx<=radius;++dx)
-                        for (int dz=0;dz<=dx;++dz) {
-                            const int d2=dx*dx+dz*dz;
-                            // In the row span: inside the disc, or the box below radius 2.
-                            if (radius>=2 && d2>radiusSquared) continue;
-                            ok=ok && (d2<=limit[size_t(m)])==retailSightAdmits(s,dx,dz,radiusSquared,slope,at);
-                            ++tested;
-                        }
-                }
-            }
-    std::printf("limits: %zu cell admissions compared\n",tested);
-    check(ok,"limits: the per-height limits admit exactly what retailSightAdmits does");
 }
 
 // World level: four worlds -- delta and rebuild, serial and workers -- driven
@@ -368,7 +295,7 @@ void world() {
 int main(int argc,char** argv) {
     const std::string part=argc>1 ? argv[1] : "all";
     if (part=="probe" || part=="all") auditProbe();
-    if (part=="moves" || part=="all") {spans();limits();moves();}
+    if (part=="moves" || part=="all") moves();
     if (part=="world" || part=="all") world();
     if (part!="all" && part!="probe" && part!="moves" && part!="world") {
         std::fprintf(stderr,"usage: viewcount_delta_test [probe|moves|world]\n");return 2;

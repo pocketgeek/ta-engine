@@ -364,10 +364,10 @@
         loadScreen_->setPart(ta::LoadPart::Animation, 100);
         // client-only presentation
         localPlayer_ = room.mySlot < 0 ? 0 : room.mySlot;
-        // FOG OF WAR: EXPLORED (and a mission's mapping=1) reach the display through the
-        // World's room vision (mapRevealedFor). A mission overrides the room's rule with
-        // its own: lineofsight=0 plays revealed.
-        if (missionFullVision_) noFog_ = true;
+        // FOG OF WAR: EXPLORED (and a mission's mapping=0) reach the display through the
+        // World's room vision (mapRevealedFor, roomLosOff). A mission with both the
+        // shroud and LOS off (mapping=0, lineofsight=0) shows everything.
+        if (missionFullVision_ && missionPreMapped_) noFog_ = true;
         if (room.opts.fogExplored == 2) noFog_ = true;       // FULL VISION: no fog at all --
                                                              // the spectator path, so
                                                              // captureFog does no work

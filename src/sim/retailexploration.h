@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <cstdlib>
 
 namespace ta::sim {
 
@@ -25,7 +26,8 @@ int32_t retailModelTop(const Object& object) {
     return top;
 }
 
-// 50ea58..50ed53: the projected coarse height plane consumed by exploration.
+// TotalA.exe 0x482c20 (0x4831a6..0x483205): the projected coarse height plane
+// True LOS reads (docs/retail-fog.md section 1). Circular sight does not.
 // Input samples are the map record's height byte, on the original 16px grid.
 template<class HeightAt>
 std::vector<RetailExplorationHeight> retailExplorationHeights(
@@ -65,10 +67,41 @@ std::vector<RetailExplorationHeight> retailExplorationHeights(
     return result;
 }
 
+// TotalA.exe's Circular sight (docs/retail-fog.md section 2.2): a unit stamps
+// one of the ten masks of anims\vismasks.gaf sequence `vismask` (loaded at
+// 0x429b9e; 11x11 .. 29x29 cells of 32 px, transparent index 9), frame
+// clamp(sightdistance/32 - 5, 0, 9), with no terrain test (0x482580 /
+// 0x481cc5). The masks are drawn by hand -- the larger ones are not circles of
+// any formula -- so match setup loads them (setRetailVisMasks); the fallback,
+// for worlds built without game data, is the disc dx^2 + dz^2 <= r^2 + r.
+struct RetailVisMask {
+    int16_t width=0,height=0,xoff=0,yoff=0;   // xoff/yoff: the centre cell within the mask
+    std::vector<uint8_t> on;                  // width*height, 1 = stamped
+    bool at(int i,int j) const {
+        return uint32_t(i)<uint32_t(width) && uint32_t(j)<uint32_t(height) && on[size_t(j)*width+i];
+    }
+};
+using RetailVisMasks=std::array<RetailVisMask,10>;
+inline RetailVisMasks retailDefaultVisMasks() {
+    RetailVisMasks masks;
+    for (int k=0;k<10;++k) {
+        const int r=5+k,n=2*r+1;
+        RetailVisMask& m=masks[size_t(k)];
+        m.width=m.height=int16_t(n);m.xoff=m.yoff=int16_t(r);m.on.assign(size_t(n)*n,0);
+        for (int j=0;j<n;++j) for (int i=0;i<n;++i)
+            m.on[size_t(j)*n+i]=(i-r)*(i-r)+(j-r)*(j-r)<=r*r+r;
+    }
+    return masks;
+}
+// The process's masks: every World reads the same game data, so every peer
+// stamps alike (they are part of the install, like the unit files).
+inline RetailVisMasks& retailVisMaskTable() { static RetailVisMasks table=retailDefaultVisMasks(); return table; }
+inline void setRetailVisMasks(const RetailVisMasks& masks) { retailVisMaskTable()=masks; }
+
 struct RetailSightFootprint {
-    int16_t x=-1,z=-1;
+    int16_t x=-1,z=-1;      // the centre cell (projected, 32 px)
     int32_t eyeHeight=0;
-    int16_t distance=0;
+    int16_t distance=0;     // sightdistance, px
     uint8_t sightHeight=0;
     bool active=false;
 };
@@ -77,87 +110,91 @@ struct RetailSightVisitAll {
     bool operator()(int, int, bool) const { return true; }
 };
 
+// 0x481840..0x481868: the mask frame for a sight distance.
+inline const RetailVisMask& retailSightMask(const RetailSightFootprint& sight) {
+    return retailVisMaskTable()[size_t(std::clamp(int(sight.distance)/32-5,0,9))];
+}
+// The farthest the mask reaches from its centre cell, for dirty rectangles.
 inline int retailSightRadius(const RetailSightFootprint& sight) {
-    return int(sight.distance)*2/32;
+    const RetailVisMask& m=retailSightMask(sight);
+    return std::max({int(m.xoff),int(m.width)-1-m.xoff,int(m.yoff),int(m.height)-1-m.yoff});
 }
-inline float retailSightSlope(const RetailSightFootprint& sight) {
-    return sight.sightHeight ? float(double(sight.distance)/(int(sight.sightHeight)*32)) : 0;
-}
-
-// 4c6800's per-cell admission: the 3x3 centre is always seen; beyond it a
-// cell must lie in the disc and below the eye's sight cone.
+// Kept for callers of the old cone: Circular sight has no slope.
+inline float retailSightSlope(const RetailSightFootprint&) { return 0; }
+// Is cell (x, z) under the footprint's mask? (The other arguments are the old
+// cone's; Circular reads no terrain.)
 template<class HeightAt>
-inline bool retailSightAdmits(const RetailSightFootprint& sight,int x,int z,
-        int radiusSquared,float slope,HeightAt& heightAt) {
-    const int dx=x-sight.x,dz=z-sight.z,distanceSquared=dx*dx+dz*dz;
-    if (distanceSquared<=2) return true;
-    if (distanceSquared>radiusSquared) return false;
-    const auto heights=heightAt(x,z);
-    const int delta=sight.eyeHeight-std::min(heights[0],heights[1]);
-    if (delta<0) return false;
-    const double reach=double(delta)*slope;
-    return !(sight.sightHeight && distanceSquared>reach*reach);
+inline bool retailSightAdmits(const RetailSightFootprint& sight,int x,int z,int,float,HeightAt&) {
+    const RetailVisMask& m=retailSightMask(sight);
+    return m.at(x-sight.x+m.xoff,z-sight.z+m.yoff);
 }
 
-// 4c6800: changing a sight footprint adds/removes current-view reference
-// counts. Exploration is persistent: only the reveal path ORs owner bits.
+// Adds (or removes) a footprint's current-view counts over its mask's cells
+// in the map. Exploration is persistent: only the reveal path ORs owner bits.
 template<class HeightAt,class Visit,class Needed=RetailSightVisitAll>
 void retailSightFootprint(RetailSightFootprint& sight,bool active,bool explore,
         int width,int height,uint8_t player,HeightAt heightAt,Visit visit,Needed needed={}) {
+    (void)heightAt;
     if (sight.active==active) return;
-    const int radius=retailSightRadius(sight);
-    const int radiusSquared=radius*radius;
-    const float slope=retailSightSlope(sight);
+    const RetailVisMask& m=retailSightMask(sight);
     const uint16_t mask=explore?uint16_t(uint32_t(1)<<(player&31)):0;
-    for (int z=std::max(0,int(sight.z)-radius);z<=std::min(height-1,int(sight.z)+radius);++z)
-        for (int x=std::max(0,int(sight.x)-radius);x<=std::min(width-1,int(sight.x)+radius);++x) {
-            if (!needed(x,z,active)) continue;
-            if (!retailSightAdmits(sight,x,z,radiusSquared,slope,heightAt)) continue;
-            visit(x,z,active?1:-1,mask);
+    const int x0=sight.x-m.xoff,z0=sight.z-m.yoff;
+    for (int j=std::max(0,-z0);j<m.height && z0+j<height;++j)
+        for (int i=std::max(0,-x0);i<m.width && x0+i<width;++i) {
+            if (!m.on[size_t(j)*m.width+i]) continue;
+            if (!needed(x0+i,z0+j,active)) continue;
+            visit(x0+i,z0+j,active?1:-1,mask);
         }
     sight.active=active;
 }
 
-// 4c6c00 / 4c6a70: update the cached footprint only after changing cells or
-// moving its eye height by more than five. Current sight and exploration
-// use the same admitted cells, but exploration is never removed.
+// The footprint's centre cell for a unit at (x, y, z): its position projected
+// onto the map art, (x >> 21, (z >> 21) - y/64) (0x48186b..0x4818d1).
+inline void retailSightCentre(Fixed x,Fixed y,Fixed z,int& cx,int& cz) {
+    cx=x.floorInt()>>5;
+    cz=(z.floorInt()>>5)-(y.floorInt()>>6);
+}
+
+// 0x4827b0 -> 0x48272e..0x482746: a footprint is re-stamped only when its
+// centre cell moves (the mask follows the sight distance, whose change resets
+// the footprint). A centre off the map stamps nothing.
 template<class HeightAt,class Visit,class Needed=RetailSightVisitAll>
 void retailUpdateSight(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z,
         uint8_t sea,bool explore,int width,int height,uint8_t player,
         HeightAt heightAt,Visit visit,Needed needed={}) {
-    const int cx=x.floorInt()/32,cz=z.floorInt()/32;
+    int cx,cz;retailSightCentre(x,y,z,cx,cz);
     const int eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
-    if (cx==sight.x && cz==sight.z && std::abs(sight.eyeHeight-eye)<=5) return;
+    if (cx==sight.x && cz==sight.z) return;
     retailSightFootprint(sight,false,false,width,height,player,heightAt,visit,needed);
     sight.x=int16_t(cx);sight.z=int16_t(cz);sight.eyeHeight=eye;
     if (uint32_t(cx)<uint32_t(width) && uint32_t(cz)<uint32_t(height))
         retailSightFootprint(sight,true,explore,width,height,player,heightAt,visit,needed);
 }
 
-// The exploration-only form of 4c6c00 for callers that keep no current-view
-// counts. Dropping a footprint only decrements those counts in 4c6800 and
-// exploration is never removed, so the removal traversal is skipped. Revealing
-// visits the same admitted cells, grouped into square blocks of
-// (1<<blockShift) cells: covered(bx,bz) may skip a whole block whose cells
+// 0x481930, exploration for callers that keep no current-view counts: the
+// same trigger and cells as retailUpdateSight, but exploration is never
+// removed, so only the reveal is walked. Its cells are grouped into square
+// blocks of (1<<blockShift): covered(bx,bz) may skip a block whose cells
 // already hold every bit the reveal would add, and needed(x,z) one cell. The
-// reveal only ORs bits, so the skipped visits and the visit order cannot
-// change the result. blockDone(bx,bz) follows each block that was scanned.
+// reveal only ORs bits, so skips and order cannot change the result.
+// blockDone(bx,bz) follows each block that revealed something.
 template<class HeightAt,class Covered,class Needed,class Reveal,class BlockDone>
 void retailUpdateExploration(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z,
         uint8_t sea,int width,int height,int blockShift,HeightAt heightAt,
         Covered covered,Needed needed,Reveal reveal,BlockDone blockDone) {
-    const int cx=x.floorInt()/32,cz=z.floorInt()/32;
+    (void)heightAt;
+    int cx,cz;retailSightCentre(x,y,z,cx,cz);
     const int eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
-    if (cx==sight.x && cz==sight.z && std::abs(sight.eyeHeight-eye)<=5) return;
+    if (cx==sight.x && cz==sight.z) return;
     sight.active=false;
     sight.x=int16_t(cx);sight.z=int16_t(cz);sight.eyeHeight=eye;
     if (uint32_t(cx)>=uint32_t(width) || uint32_t(cz)>=uint32_t(height)) return;
     sight.active=true;
-    const int radius=retailSightRadius(sight);
-    const int radiusSquared=radius*radius;
-    const float slope=retailSightSlope(sight);
-    const int x0=std::max(0,cx-radius),x1=std::min(width-1,cx+radius);
-    const int z0=std::max(0,cz-radius),z1=std::min(height-1,cz+radius);
+    const RetailVisMask& m=retailSightMask(sight);
+    const int mx0=cx-m.xoff,mz0=cz-m.yoff;
+    const int x0=std::max(0,mx0),x1=std::min(width-1,mx0+m.width-1);
+    const int z0=std::max(0,mz0),z1=std::min(height-1,mz0+m.height-1);
+    if (x0>x1 || z0>z1) return;
     const int block=1<<blockShift;
     for (int bz=z0>>blockShift;bz<=z1>>blockShift;++bz)
         for (int bx=x0>>blockShift;bx<=x1>>blockShift;++bx) {
@@ -167,8 +204,8 @@ void retailUpdateExploration(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z
             bool changed=false;
             for (int cellZ=zl;cellZ<=zh;++cellZ)
                 for (int cellX=xl;cellX<=xh;++cellX) {
+                    if (!m.on[size_t(cellZ-mz0)*m.width+(cellX-mx0)]) continue;
                     if (!needed(cellX,cellZ)) continue;
-                    if (!retailSightAdmits(sight,cellX,cellZ,radiusSquared,slope,heightAt)) continue;
                     reveal(cellX,cellZ);changed=true;
                 }
             if (changed) blockDone(bx,bz);

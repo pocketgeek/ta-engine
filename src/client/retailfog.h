@@ -9,11 +9,10 @@
 #include <span>
 #include <vector>
 
-// The local display's fog of war, as retail shows it (KINGDOMS.icd; see
-// docs/retail-engine.md, "Fog of war display"). Retail keeps ONE sight plane per
-// player -- the view counts at player+0x88, stamped by 0x4c6800 on 32 px cells
-// of the projected map (x>>5, (z - y/2)>>5) -- and both the game logic and the
-// display read it. The simulation already maintains that plane for every player
+// The local display's fog of war, as TotalA.exe shows it (docs/retail-fog.md).
+// Retail keeps ONE sight plane per player -- the view counts at player +0x7c,
+// stamped on 32 px cells of the projected map (x>>5, (z - y/2)>>5) -- and both
+// the game logic and the display read it. The simulation already maintains that plane for every player
 // (World::viewCounts, hashed); this header only turns it into what the local
 // screen shows: the fog overlay, which other players' units the main view draws
 // and lets the cursor pick, and the minimap's dots. Display only: nothing here
@@ -201,14 +200,15 @@ private:
     int cell_ = 64, range_ = 1, x0_ = 0, z0_ = 0, bw_ = 0, bh_ = 0;
 };
 
-// ---- the overlay (Glide path, 0x498270) ------------------------------------
-// One byte per cell, alpha in the high nibble and intensity in the low one:
-// unexplored 0xf0 (opaque black), explored but out of view 0x8f (fog colour
-// at 8/15), in view 0x0f (clear). With LOS off retail writes 0x0f for every
-// explored cell; buildPlane has already made those cells kInView.
-constexpr uint8_t cellByte(uint8_t v) { return v == kInView ? 0x0f : v == kExplored ? 0x8f : 0xf0; }
+// ---- the fallback overlay ----------------------------------------------------
+// TotalA.exe draws the fog with fog.gaf pieces and a grey remap (client/
+// fogremap.h). Where that program cannot run, a plane overlay stands in: one
+// byte per cell, alpha in the high nibble and intensity in the low one --
+// unexplored 0xf0 (opaque black), out of view 0x80 (half black, the density of
+// retail's DitheredFog checkerboard), in view 0x00 (clear).
+constexpr uint8_t cellByte(uint8_t v) { return v == kInView ? 0x00 : v == kExplored ? 0x80 : 0xf0; }
 
-// 0x498b60: one ARGB4444 texel of the 2x upsampled overlay, from its own cell
+// One ARGB4444 texel of the 2x smoothed overlay of the 2x upsampled overlay, from its own cell
 // (weight 19/32), the two edge neighbours toward that corner (5/32 each) and the
 // diagonal one (3/32), each nibble separately, rounded down.
 constexpr uint8_t blendTexel(uint8_t own, uint8_t side1, uint8_t side2, uint8_t diagonal) {
@@ -242,29 +242,5 @@ inline void writeTexels(std::span<const uint8_t> plane, int w, int h, int x0, in
             put(tx + 1, tz + 1, blendTexel(c, r, d, at(x + 1, z + 1)));
         }
 }
-
-// RollingFog and WavyFog (both on by default; console toggles at 0x425ef0 /
-// 0x425f10, constants set by 0x497900). `t` is real time in seconds (0x5ba760,
-// QueryPerformanceCounter); X and P are the vertex's projected map position in
-// pixels (retail: screen position + camera). The overlay is drawn as a grid of
-// quads whose vertices carry the colour (fog colour times brightness) and,
-// inside the grid, are displaced by the wave.
-struct Wave {
-    double t = 0;
-    float rollingPhase = 0, wavyPhase = 0;
-    explicit Wave(double seconds) : t(seconds),
-        rollingPhase(float(std::sin(0.5f * seconds))),
-        wavyPhase(float(std::sin((seconds + 1.2) * 0.5f))) {}
-    // sin(P/32*0.31 + 0.17t) * sin(X/32*0.11 - 0.4t), the shared spatial term.
-    float field(float X, float P) const {
-        return float(std::sin(double(P) * 0.03125 * 0.31f + 0.17f * t) *
-                     std::sin(double(X) * 0.03125 * 0.11f + -0.4f * t));
-    }
-    // 0x498c70: (field * sin(0.5t) + 1) / 2, multiplied into the fog colour.
-    float brightness(float X, float P) const { return (field(X, P) * rollingPhase + 1.0f) * 0.5f; }
-    // 0x498d40 / 0x498db0: 10 px * field * sin((t + 1.2) * 0.5), added to x
-    // and then (from the displaced x) to y.
-    float wave(float X, float P) const { return 10.0f * field(X, P) * wavyPhase; }
-};
 
 }  // namespace ta::retailfog

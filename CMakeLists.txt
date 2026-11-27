@@ -2929,8 +2929,8 @@ if(TA_BUILD_CLIENT)
       set_tests_properties(hidden_units PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: hidden units \\(")
       # The display fog is retail's sight plane through LosOn: an enemy at 0.9x
-      # sight on flat ground is drawn and at 1.1x is not, from a hill at 1.5x it is,
-      # and radar makes a minimap dot only (client/retailfog.h).
+      # sight is drawn and at 1.1x is not (Circular sight), and radar makes a
+      # minimap dot only (client/retailfog.h, docs/retail-fog.md).
       add_test(NAME retail_fog COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_RETAIL_FOG_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/retail-fog-profile

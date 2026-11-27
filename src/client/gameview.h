@@ -165,6 +165,7 @@
 
 #include "client/shadowopaque.h"
 #include "client/geometrysubmit.h"
+#include "client/fogremap.h"
 #include "client/vertexarena.h"
 #include "client/fogupload.h"
 #include "client/shadowmask.h"
@@ -4158,6 +4159,9 @@ private:
         bool low = false;
         // TDF height, the byte retail keeps (feature +0xfa): the nano spray's box.
         uint8_t tdfHeight = 0;
+        // TDF nodrawundergray (dragon's teeth, fortification walls): drawn only in
+        // view, never from memory under grey (TotalA.exe 0x4658e0).
+        bool noDrawUnderGray = false;
     };
     std::vector<FeatureInst> features_;
     ta::FeatureIndex featureIndex_;
@@ -4872,13 +4876,20 @@ private:
     std::vector<SDL_Vertex> fogVerts_;
     uint32_t fogTexGen_ = ~0u;        // Frame::fogGen last uploaded to fogTex_
     uint32_t miniFogTexGen_ = ~0u;    // ... and to miniFogTex_
-    // The local side's FogColor (gamedata/sidedata.tdf; retail 0x4c2e0c, default
-    // white), loaded for side_ on first use.
-    SDL_Color fogColor_{255, 255, 255, 255};
-    std::string fogColorSide_;
-    uint64_t fogClock0_ = 0;          // performance counter at the first fog draw
-    double fogSeconds();              // RollingFog/WavyFog time (TA_FOG_STILL freezes it)
-    bool fogStill_ = false;           // fixtures that compare frames hold it at t = 0 too
+    // TotalA.exe's fog on the OpenGL backend (client/fogremap.h): the fog.gaf
+    // pieces and the grey table, loaded on first use; fogDummy_ is the SDL
+    // texture its native draw is primed with (BLENDMODE_NONE: the program's
+    // colour replaces the view's).
+    ta::FogRemapGL fogRemap_;
+    std::vector<uint8_t> fogGreyLut_;   // the grey table as RGB, 256 levels (CPU copy)
+    std::vector<uint8_t> miniRgb_;      // the minimap picture (RGBA, a pixel per cell), for its grey
+    bool miniGreySet_ = false;
+    SDL_Texture* fogDummy_ = nullptr;
+    bool fogArtLoaded_ = false;
+    void loadFogArt();
+    uint64_t fogClock0_ = 0;          // kept for fixtures (fogSeconds); the fog does not move
+    double fogSeconds();
+    bool fogStill_ = false;
     // Capture side (sim thread): the local plane, its generation, and the minimap
     // radar. captureFog fills them for the frame being written.
     void captureFog(Frame& fb);

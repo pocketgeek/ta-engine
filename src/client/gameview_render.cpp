@@ -237,6 +237,11 @@
             if (!f.tex) continue;   // burnt away to a stage with no art
             if (!f.aliveVis) continue;   // reclaimed away by a builder (snapshotted)
             if (fogCellR(f.x, f.z) == ta::retailfog::kUnexplored) continue;   // unexplored
+            // TotalA.exe 0x4658e0: a nodrawundergray feature shows only while either
+            // footprint corner, (x, z) or (x + fx*16, z + fz*16), is in view.
+            if (f.noDrawUnderGray &&
+                fogCellR(f.x - float(f.fx) * 8, f.z - float(f.fz) * 8) != ta::retailfog::kInView &&
+                fogCellR(f.x + float(f.fx) * 8 - 1, f.z + float(f.fz) * 8 - 1) != ta::retailfog::kInView) continue;
             // Cull on the LIFTED position (features lift onto the relief like units).
             float sx = (f.x - mapView_.offX()) * zm0 - terrainLiftX(f.x, f.z) * zm0;
             float sy = (f.z - mapView_.offY()) * zm0 - terrainLift(f.x, f.z) * zm0;
@@ -4510,6 +4515,8 @@
         effectAnims_.clear();
         explosionsLoaded_ = false;
         fogSubmit_.clear();fogUpload_.clear();miniFogUpload_.clear();
+        fogRemap_.release();fogArtLoaded_=false;
+        kill(fogDummy_);
         kill(fogTex_);
         kill(miniFogTex_);
         kill(mapPreviewTex_);
@@ -6286,6 +6293,7 @@
         inst.tree = (cat == "trees");
         inst.low = ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
         inst.tdfHeight = uint8_t(int(di->second.numberOr("height", 0)));
+        inst.noDrawUnderGray = di->second.numberOr("nodrawundergray", 0) != 0;
         features_.push_back(inst);
         featureIndexDirty_=true;
         // NO NAV BLOCKING HERE. Feature blocking belongs to the SIM, and
@@ -6312,6 +6320,7 @@
         fi.low = di != featureDefs_.end() &&
                  ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
         fi.tdfHeight = di != featureDefs_.end() ? uint8_t(int(di->second.numberOr("height", 0))) : 0;
+        fi.noDrawUnderGray = di != featureDefs_.end() && di->second.numberOr("nodrawundergray", 0) != 0;
         FeatArt* a = di != featureDefs_.end() ? featureArtFor(di->second) : nullptr;
         if (!a) { fi.tex = nullptr; fi.frames = nullptr; fi.art = nullptr;
                   fi.shadow = nullptr; return; }   // no art: vanish (draw skips)
@@ -6696,90 +6705,120 @@
         return true;
     }
 
-    // Retail's Glide fog (0x497a40 -> 0x498270; the device's capability 4, which
-    // Glide reports, selects it over the vertex-alpha twin 0x497ae0). The plane's
-    // cells become ARGB4444 texels two per cell each way (0x498b60), the texture
-    // is bilinear-filtered (render state 0x11 = 2; only the FogDebug toggle makes
-    // it point-sampled), alpha-blended and modulated by the vertex colour, and
-    // drawn as a grid of quads: RollingFog colours every vertex with the side's
-    // FogColor times a brightness that rolls in time and space, WavyFog moves the
-    // inner vertices by up to 10 px. Retail's grid is the screen cut 6 x 6; ours is
-    // anchored to the map so the waves do not slide when the camera pans.
+    // The pieces of anims\fog.gaf and the grey table (docs/retail-fog.md 1, 3.1)
+    // for FogRemapGL. Gray1..4 / Black1..4 (0x429bcb..0x429c61), frame m-1 the
+    // piece for mask m, palette 0 fog and 9 clear, each placed at its offset in
+    // a 32x32 square. The grey table (0x4bad30): for each grey level, the
+    // palette.pal entry nearest (g, g, g), the first on a tie.
+    void GameView::loadFogArt() {
+        fogArtLoaded_ = true;
+        constexpr int P = ta::FogRemapGL::kPiece;
+        std::vector<uint8_t> atlas(size_t(ta::FogRemapGL::kAtlasW) * ta::FogRemapGL::kAtlasH, 0);
+        std::vector<uint8_t> lut(256 * 3, 0);
+        try {
+            const std::string palPath = "palettes/palette.pal";
+            const auto pal = ta::gaf::Palette::fromBytes(vfs_.read(palPath), palPath);
+            for (int g = 0; g < 256; ++g) {
+                int best = 0; long bestD = -1;
+                for (int i = 0; i < 256; ++i) {
+                    const long dr = pal.rgba[i][0] - g, dg = pal.rgba[i][1] - g, db = pal.rgba[i][2] - g;
+                    const long d = dr * dr + dg * dg + db * db;
+                    if (bestD < 0 || d < bestD) { bestD = d; best = i; }
+                }
+                for (int c = 0; c < 3; ++c) lut[size_t(g) * 3 + size_t(c)] = pal.rgba[best][c];
+            }
+            ta::gaf::Palette mark{};   // a distinct colour per index: the loader keys index 9 by colour
+            for (int i = 0; i < 256; ++i) { mark.rgba[i][0] = mark.rgba[i][1] = mark.rgba[i][2] = uint8_t(i); mark.rgba[i][3] = 255; }
+            const std::string gafPath = "anims/fog.gaf";
+            for (const auto& seq : ta::gaf::load(vfs_.read(gafPath), mark, 9, gafPath)) {
+                std::string n = seq.name;
+                for (char& ch : n) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+                int group = -1;
+                if (n.rfind("gray", 0) == 0) group = 0; else if (n.rfind("black", 0) == 0) group = 1;
+                if (group < 0 || n.size() != (group ? 6u : 5u)) continue;
+                const int v = n.back() - '1';
+                if (v < 0 || v > 3) continue;
+                for (size_t k = 0; k < seq.frames.size() && k < size_t(ta::FogRemapGL::kMasks); ++k) {
+                    const auto& f = seq.frames[k];
+                    const int bandY = (group * 4 + v) * P, bandX = int(k) * P;
+                    for (int y = 0; y < f.height; ++y)
+                        for (int x = 0; x < f.width; ++x) {
+                            const int px = x - f.xoff, py = y - f.yoff;
+                            if (px < 0 || py < 0 || px >= P || py >= P) continue;
+                            if (f.rgba[(size_t(y) * size_t(f.width) + size_t(x)) * 4 + 3])
+                                atlas[size_t(bandY + py) * ta::FogRemapGL::kAtlasW + size_t(bandX + px)] = 1;
+                        }
+                }
+            }
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "fog: retail art unavailable (%s)\n", e.what());
+            return;
+        }
+        fogGreyLut_ = lut;
+        std::fprintf(stderr, "fog: retail pieces loaded, %zu fog pixels\n",
+                     size_t(std::count(atlas.begin(), atlas.end(), uint8_t(1))));
+        fogRemap_.setArt(std::move(atlas), std::move(lut));
+    }
+
+    // TotalA.exe's fog over the map view (0x4848e0, docs/retail-fog.md 3.1):
+    // unexplored black, out of view through the grey table (or the DitheredFog
+    // checkerboard, TA_FOG_DITHER), edges from fog.gaf -- FogRemapGL, one native
+    // draw over the view. It is drawn after the units, features and shots that
+    // passed their own view tests, so what lies under grey is greyed with the
+    // terrain, as retail's "Render Fog" pass does.
+    //
+    // Without the OpenGL backend (the software renderer, headless captures) the
+    // plane's overlay stands in, still: black over unexplored cells and a half
+    // black over the rest out of view, the ARGB4444 cells smoothed 2x.
     //
     // The plane is in PROJECTED coordinates (x, z - y/2): its rows already are
-    // the rows of the tile art units are drawn on, so the overlay is flat -- no
-    // per-corner terrain lift. Units draw at z - h/2 too, so no offset either.
+    // the rows of the tile art units are drawn on, so the fog is flat -- no
+    // per-corner terrain lift.
     void GameView::drawFog() {
         if (noFog_) return;
         const Frame& f = front();
         if (f.fog.empty() || f.fogW <= 0 || f.fogH <= 0) return;
-        if (!syncFogTexture(fogTex_, fogUpload_, fogTexGen_)) return;
-        SDL_SetTextureScaleMode(fogTex_, ta::devFlag("TA_FOG_DEBUG") ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
-        if (fogColorSide_ != side_) {   // the local side's FogColor (sidedata.tdf, default white)
-            fogColorSide_ = side_;
-            fogColor_ = {255, 255, 255, 255};
-            if (const auto data = vfs_.tryRead("gamedata/sidedata.tdf")) try {
-                const auto sides = ta::tdf::parseText(std::string(data->begin(), data->end()), "gamedata/sidedata.tdf");
-                for (const auto& [key, node] : sides.children) {
-                    if (ta::hpi::MountSet::key(node.valueOr("nameprefix", "")) != ta::hpi::MountSet::key(side_)) continue;
-                    int r = 255, g = 255, b = 255;
-                    if (std::sscanf(node.valueOr("fogcolor", "255 255 255").c_str(), "%d %d %d", &r, &g, &b) == 3)
-                        fogColor_ = {Uint8(std::clamp(r, 0, 255)), Uint8(std::clamp(g, 0, 255)),
-                                     Uint8(std::clamp(b, 0, 255)), 255};
-                }
-            } catch (const std::exception&) {}
-        }
         const float zm = mapView_.zoom();
-        // The plane and the bodies share retail's projection, so no offset.
-        const float lift = 0.0f;
         const float ox = mapView_.offX(), oy = mapView_.offY();
         const float mapW = float(f.fogW) * 32.0f, planeH = float(f.fogH) * 32.0f;
-        // The map's art rows [0, planeH] show the projected rows [-lift, planeH - lift];
-        // the band above row 0 repeats row 0 (clamped texture rows, as retail's edges).
-        const float pTop = -lift, pBottom = planeH - lift;
-        const float step = std::max(160.0f, 80.0f / std::max(zm, 1e-3f));
-        constexpr float kMargin = 24.0f;   // past the view: more than the 10 px wave
-        auto lines = [&](float lo, float hi, float view0, float view1, std::vector<float>& out) {
-            out.clear();
-            const float a = std::max(lo, view0 - kMargin - step), b = std::min(hi, view1 + kMargin + step);
-            if (a >= b) return;
-            out.push_back(a);
-            for (float v = (std::floor(a / step) + 1) * step; v < b; v += step)
-                if (v > a) out.push_back(v);
-            out.push_back(b);
+        const float x0 = std::max(0.0f, ox), x1 = std::min(mapW, ox + float(winW_) / zm);
+        const float p0 = std::max(0.0f, oy), p1 = std::min(planeH, oy + float(winH_) / zm);
+        if (x0 >= x1 || p0 >= p1) return;
+        if (!fogArtLoaded_) loadFogArt();
+        static const bool forceOverlay = ta::devFlag("TA_FOG_OVERLAY");
+        if (!forceOverlay && fogRemap_.ready(ren_) && fogRemap_.setCells(f.fog, f.fogW, f.fogH, f.fogGen)) {
+            if (!fogDummy_) {
+                fogDummy_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, 1, 1);
+                if (fogDummy_) SDL_SetTextureBlendMode(fogDummy_, SDL_BLENDMODE_NONE);
+            }
+            static const bool dither = ta::devFlag("TA_FOG_DITHER");
+            fogRemap_.setDithered(dither);
+            if (fogDummy_) {
+                const auto corner = [&](float X, float P) {
+                    SDL_Vertex v;
+                    v.position = {(X - ox) * zm, (P - oy) * zm};
+                    v.color = {255, 255, 255, 255};
+                    v.tex_coord = {X, P};   // map pixels: the program's own reckoning
+                    return v;
+                };
+                const SDL_Vertex a = corner(x0, p0), b = corner(x1, p0), c = corner(x1, p1), d = corner(x0, p1);
+                fogVerts_.assign({a, b, c, a, c, d});
+                if (fogSubmit_.draw(ren_, fogDummy_, fogVerts_, true, 0, {}, &fogRemap_) == 0) return;
+            }
+        }
+        // The fallback overlay.
+        if (!syncFogTexture(fogTex_, fogUpload_, fogTexGen_)) return;
+        SDL_SetTextureScaleMode(fogTex_, ta::devFlag("TA_FOG_DEBUG") ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+        SDL_SetTextureColorMod(fogTex_, 255, 255, 255);
+        const auto corner = [&](float X, float P) {
+            SDL_Vertex v;
+            v.position = {(X - ox) * zm, (P - oy) * zm};
+            v.color = {255, 255, 255, 255};
+            v.tex_coord = {X / mapW, P / planeH};
+            return v;
         };
-        static thread_local std::vector<float> xs, ps;
-        lines(0.0f, mapW, ox, ox + float(winW_) / zm, xs);
-        lines(pTop, pBottom, oy - lift, oy - lift + float(winH_) / zm, ps);
-        if (xs.size() < 2 || ps.size() < 2) return;
-        static const bool rolling = !ta::devFlag("TA_FOG_NO_ROLLING"), wavy = !ta::devFlag("TA_FOG_NO_WAVY");
-        const ta::retailfog::Wave wave(fogSeconds());
-        const size_t nx = xs.size(), np = ps.size();
-        static thread_local std::vector<SDL_Vertex> grid;
-        grid.resize(nx * np);
-        for (size_t j = 0; j < np; ++j)
-            for (size_t i = 0; i < nx; ++i) {
-                const float X = xs[i], P = ps[j];
-                float dx = 0, dy = 0;
-                if (wavy) {
-                    if (X > 0.0f && X < mapW) dx = wave.wave(X, P);
-                    if (P > pTop && P < pBottom) dy = wave.wave(X + dx, P);
-                }
-                const float b = rolling ? wave.brightness(X, P) : 1.0f;
-                SDL_Vertex& v = grid[j * nx + i];
-                v.position = {(X + dx - ox) * zm, (P + dy + lift - oy) * zm};
-                v.tex_coord = {X / mapW, std::clamp(P, 0.0f, planeH) / planeH};
-                v.color = {Uint8(float(fogColor_.r) * b), Uint8(float(fogColor_.g) * b),
-                           Uint8(float(fogColor_.b) * b), 255};
-            }
-        fogVerts_.clear();
-        fogVerts_.reserve((nx - 1) * (np - 1) * 6);
-        for (size_t j = 0; j + 1 < np; ++j)
-            for (size_t i = 0; i + 1 < nx; ++i) {
-                const SDL_Vertex &a = grid[j * nx + i], &b = grid[j * nx + i + 1],
-                                 &c = grid[(j + 1) * nx + i + 1], &d = grid[(j + 1) * nx + i];
-                fogVerts_.insert(fogVerts_.end(), {a, b, c, a, c, d});
-            }
+        const SDL_Vertex a = corner(x0, p0), b = corner(x1, p0), c = corner(x1, p1), d = corner(x0, p1);
+        fogVerts_.assign({a, b, c, a, c, d});
         fogSubmit_.draw(ren_, fogTex_, fogVerts_, !ta::devFlag("TA_FOG_SDL_SUBMIT"));
     }
 

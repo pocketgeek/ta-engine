@@ -379,6 +379,8 @@ namespace {
                                          SDL_TEXTUREACCESS_STATIC, bw, bh);
             SDL_UpdateTexture(miniTex_, nullptr, miniPix_.data(), bw * 4);
             SDL_SetTextureScaleMode(miniTex_, SDL_ScaleModeLinear);
+            miniRgb_ = std::move(miniPix_);
+            miniGreySet_ = false;
             miniPix_.clear();
             miniBuilding_ = false;
             if (miniThread_.joinable()) miniThread_.join();
@@ -590,7 +592,22 @@ namespace {
             SDL_RenderFillRectF(ren_, &frame);
         }
         if (miniTex_) SDL_RenderCopyF(ren_, miniTex_, nullptr, &r);
-        // 0x4f93a0: the minimap shows the local plane cell by cell, unblended.
+        // TotalA.exe 0x466c20: the minimap shows the local plane cell by cell,
+        // unblended; out of view each cell's pixel through the grey table.
+        if (!miniGreySet_ && !front().fog.empty()) {
+            if (!fogArtLoaded_) loadFogArt();
+            const int cw = front().fogW, ch = front().fogH;
+            if (fogGreyLut_.size() == 256 * 3 && miniRgb_.size() == size_t(cw) * size_t(ch) * 4) {
+                std::vector<uint8_t> grey(size_t(cw) * size_t(ch) * 3);
+                for (size_t i = 0; i < size_t(cw) * size_t(ch); ++i) {
+                    const int level = (int(miniRgb_[i * 4]) + miniRgb_[i * 4 + 1] + miniRgb_[i * 4 + 2]) / 3;
+                    for (int c = 0; c < 3; ++c) grey[i * 3 + size_t(c)] = fogGreyLut_[size_t(level) * 3 + size_t(c)];
+                }
+                miniFogUpload_.setMinimapColours(std::move(grey));
+                miniFogTexGen_ = ~0u;
+                miniGreySet_ = true;
+            }
+        }
         if (!noFog_ && !front().fog.empty() && syncFogTexture(miniFogTex_, miniFogUpload_, miniFogTexGen_)) {
             SDL_SetTextureScaleMode(miniFogTex_, SDL_ScaleModeNearest);
             SDL_RenderCopyF(ren_, miniFogTex_, nullptr, &r);

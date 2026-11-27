@@ -25,12 +25,11 @@ static bool checkRevealShortcut() {
             return RetailExplorationHeight{uint8_t((cx*7+cz*3)%180),
                                            uint8_t((cx*3+cz*11)%150)};
         };
-        retailUpdateSight(a,x,y,z,30,true,width,height,0,
-            [&](int cx,int cz){++fullReads;return heights(cx,cz);},
-            [&](int cx,int cz,int delta,uint16_t){if(delta>0) full[cz*width+cx]|=viewers;});
-        retailUpdateSight(b,x,y,z,30,true,width,height,0,
-            [&](int cx,int cz){++skipReads;return heights(cx,cz);},
-            [&](int cx,int cz,int delta,uint16_t){if(delta>0) skip[cz*width+cx]|=viewers;},
+        // Circular sight reads no terrain: the shortcut shows in the cells visited.
+        retailUpdateSight(a,x,y,z,30,true,width,height,0,heights,
+            [&](int cx,int cz,int delta,uint16_t){++fullReads;if(delta>0) full[cz*width+cx]|=viewers;});
+        retailUpdateSight(b,x,y,z,30,true,width,height,0,heights,
+            [&](int cx,int cz,int delta,uint16_t){++skipReads;if(delta>0) skip[cz*width+cx]|=viewers;},
             [&](int cx,int cz,bool active){return active && (skip[cz*width+cx]&viewers)!=viewers;});
         if (full!=skip || a.x!=b.x || a.z!=b.z || a.eyeHeight!=b.eyeHeight ||
             a.active!=b.active) return false;
@@ -59,14 +58,13 @@ static bool checkBlockExploration() {
         const auto z=Fixed::fromInt(((step*11)%44-2)*32+step%17);
         const auto y=Fixed::fromInt((step*13)%180);
         const uint16_t viewers=uint16_t((1u<<(step%5)) | (step<1500 ? 3 : 12));
-        retailUpdateSight(a[i],x,y,z,30,true,width,height,0,
-            [&](int cx,int cz){++fullReads;return heights(cx,cz);},
-            [&](int cx,int cz,int delta,uint16_t){if(delta>0) full[cz*width+cx]|=viewers;});
-        retailUpdateExploration(b[i],x,y,z,30,width,height,shift,
-            [&](int cx,int cz){++fastReads;return heights(cx,cz);},
+        // Circular sight reads no terrain: the shortcut shows in the cells touched.
+        retailUpdateSight(a[i],x,y,z,30,true,width,height,0,heights,
+            [&](int cx,int cz,int delta,uint16_t){++fullReads;if(delta>0) full[cz*width+cx]|=viewers;});
+        retailUpdateExploration(b[i],x,y,z,30,width,height,shift,heights,
             [&](int bx,int bz){return (blocks[bz*bw+bx]&viewers)==viewers;},
             [&](int cx,int cz){return (fast[cz*width+cx]&viewers)!=viewers;},
-            [&](int cx,int cz){fast[cz*width+cx]|=viewers;},
+            [&](int cx,int cz){++fastReads;fast[cz*width+cx]|=viewers;},
             [&](int bx,int bz) {
                 uint16_t all=0xffff;
                 for (int cz=bz<<shift;cz<std::min(height,(bz+1)<<shift);++cz)

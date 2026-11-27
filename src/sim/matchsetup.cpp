@@ -4,6 +4,7 @@
 
 #include "sim/detmath.h"
 #include "gaf/featureburntiming.h"
+#include "gaf/gaf.h"
 #include "sim/footprint.h"
 #include "sim/retailflyerspread.h"
 #include "sim/retailpiecepose.h"
@@ -788,6 +789,31 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
 // movement class flood-filled the whole map inside the tick it left the
 // factory: 82-110 ms on a 2048-cell map, four times in the first three minutes,
 // on every peer. A cache: the simulation is unchanged.
+// anims\vismasks.gaf `vismask` (TotalA.exe 0x429b9e): the ten Circular sight
+// masks, transparent index 9 (retailexploration.h). Missing or short: the
+// built-in discs stay.
+static void loadVisMasks(const hpi::Vfs& vfs) {
+    RetailVisMasks masks = retailDefaultVisMasks();
+    const std::string path = "anims/vismasks.gaf";
+    if (vfs.has(path)) try {
+        gaf::Palette pal{};   // a distinct colour per index: the loader keys index 9 by colour
+        for (int i = 0; i < 256; ++i) { pal.rgba[i][0] = pal.rgba[i][1] = pal.rgba[i][2] = uint8_t(i); pal.rgba[i][3] = 255; }
+        for (const auto& seq : gaf::load(vfs.read(path), pal, 9, path)) {
+            if (ta::hpi::MountSet::key(seq.name) != ta::hpi::MountSet::key("vismask")) continue;
+            for (size_t k = 0; k < seq.frames.size() && k < masks.size(); ++k) {
+                const auto& f = seq.frames[k];
+                if (f.width <= 0 || f.height <= 0) continue;
+                RetailVisMask& m = masks[k];
+                m.width = int16_t(f.width); m.height = int16_t(f.height);
+                m.xoff = int16_t(f.xoff); m.yoff = int16_t(f.yoff);
+                m.on.assign(size_t(f.width) * size_t(f.height), 0);
+                for (size_t i = 0; i < m.on.size(); ++i) m.on[i] = f.rgba[i * 4 + 3] != 0;
+            }
+        }
+    } catch (const std::exception&) {}
+    setRetailVisMasks(masks);
+}
+
 // The schema's meteor storm (TotalA.exe 0x436732..0x436813; docs/retail-campaign.md
 // section 2.3): a MeteorWeapon name (31 chars at most) arms it; if any of
 // MeteorRadius, Density, Duration or Interval is 0 it still does, with every
@@ -849,6 +875,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     hpi::Vfs generatedData(cfg.vfs, true);
     const hpi::Vfs& vfs = ta::mapgen::isGeneratedMapId(cfg.mapPath) ? generatedData : *cfg.vfs;
     world.setGameSeed(cfg.startSeed);
+    loadVisMasks(*cfg.vfs);
     // A "~gen1~" mapPath is a random-map recipe: generate it in memory (identically
     // on client and referee -- the params ride the mapId, generation is integer-only).
     const bool generated = ta::mapgen::isGeneratedMapId(cfg.mapPath);
@@ -1610,10 +1637,8 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
     world.setBallisticGravityRaw(retailBallisticGravityRaw(gh->numberOr("gravity", 112.0)));
     world.setMapGravity(int32_t(gh->numberOr("gravity", 112.0)));
     world.setPowerCodes(false);
-    {
-        const bool fullVision = gh->numberOr("lineofsight", 1) == 0;
-        world.setRoomVision(fullVision || gh->numberOr("mapping", 0) != 0, fullVision);
-    }
+    // TotalA.exe 0x4363d9 / 0x497468: mapping=1 is the shroud ON, lineofsight=0 LOS off.
+    world.setRoomVision(gh->numberOr("mapping", 1) == 0, gh->numberOr("lineofsight", 1) == 0);
     const tdf::Node* units = schema->child("units");
     // A side per player from its placed units' name prefixes (ARM / COR).
     int sideOf[2] = {0, sides::count() > 1 ? 1 : 0};
@@ -1714,8 +1739,8 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
         out->aiProfile = schema->valueOr("aiprofile", "");
         std::transform(out->aiProfile.begin(), out->aiProfile.end(), out->aiProfile.begin(), ::tolower);
         out->playerDefs = {"", "strategic opponent"};
-        out->fullVision = gh->numberOr("lineofsight", 1) == 0;
-        out->preMapped = gh->numberOr("mapping", 0) != 0;
+        out->fullVision = gh->numberOr("lineofsight", 1) == 0;   // LOS off (Permanent)
+        out->preMapped = gh->numberOr("mapping", 1) == 0;        // the shroud off: map revealed
         out->slotPos.assign(size_t(kMaxPlayers), {0.0f, 0.0f});
         std::vector<int> n(size_t(kMaxPlayers), 0);
         for (const auto& u : world.units()) {
@@ -1778,12 +1803,10 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     world.setBallisticGravityRaw(retailBallisticGravityRaw(gh->numberOr("gravity",112.0)));
     world.setMapGravity(int32_t(gh->numberOr("gravity",112.0)));
     world.setPowerCodes(false);   // TotalA.exe 0x497462: never in a campaign
-    // The mission's own vision: lineofsight=0 plays with LosOn off and the map
-    // revealed, mapping=1 starts with the terrain explored (area clear's fog test).
-    {
-        const bool fullVision = gh->numberOr("lineofsight", 1) == 0;
-        world.setRoomVision(fullVision || gh->numberOr("mapping", 0) != 0, fullVision);
-    }
+    // The mission's own vision (TotalA.exe 0x4363d9 / 0x497468; docs/retail-fog.md
+    // section 6): mapping=1 plays with the shroud on, 0 with the map revealed;
+    // lineofsight=0 plays with LOS off (Permanent: explored cells stay in view).
+    world.setRoomVision(gh->numberOr("mapping", 1) == 0, gh->numberOr("lineofsight", 1) == 0);
 
     // Map the .ota's sparse, 1-based Player<N> ids to compact 0-based World slots in
     // ascending N order, so gaps (e.g. Player1,2,9,10) don't collide when clamped into
@@ -1908,12 +1931,11 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     // instead of a start position a mission never declares. The centroid of a
     // slot's placed units is the closest thing a mission has to a "start".
     if (out) {
-        // Fog: retail presents some missions fully revealed (lineofsight=0, 6 of
-        // them) and others with the terrain already mapped but units still hidden
-        // (mapping=1, 30). Both start blacked out for us, which changes how a
-        // scripted reveal reads and hides set-pieces the designer meant you to see.
-        out->fullVision = gh->numberOr("lineofsight", 1) == 0;
-        out->preMapped = gh->numberOr("mapping", 0) != 0;
+        // Fog, as TotalA.exe reads the header (docs/retail-fog.md section 6):
+        // mapping=1 is the shroud on (most missions), 0 the map revealed;
+        // lineofsight=0 is LOS off.
+        out->fullVision = gh->numberOr("lineofsight", 1) == 0;   // LOS off (Permanent)
+        out->preMapped = gh->numberOr("mapping", 1) == 0;        // the shroud off: map revealed
         if (const tdf::Node* md = gh->child("map data"))
             {
                 out->aiProfile = md->valueOr("aiprofile", "");

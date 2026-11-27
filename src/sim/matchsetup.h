@@ -197,8 +197,8 @@ struct MissionSetup {
     // Per world slot, the .ota Player<N> value as written (empty for none): the
     // Classic AI reads a computer player's `massattack` keyword from it.
     std::vector<std::string> playerDefs;
-    bool fullVision = false;   // .ota lineofsight=0: the mission is played revealed
-    bool preMapped = false;    // .ota mapping=1: terrain starts explored (units still fogged)
+    bool fullVision = false;   // .ota lineofsight=0: LOS off (explored cells stay in view)
+    bool preMapped = false;    // .ota mapping=0: the shroud off, the map starts revealed
     int difficulty = 1;        // a TA campaign mission's difficulty (0 Easy, 1 Medium, 2 Hard)
 };
 
