@@ -10049,6 +10049,76 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         bool inside(int x,int z) const {return x>=bx0&&z>=bz0&&x<=bx1&&z<=bz1;}
         int at(int x,int z) const {return (z-bz0)*bw+(x-bx0);}
     };
+    // A deep ring's sight tests round its target, by origin (ringShot) and by
+    // a step's doubled midpoint (ringShotAt): 0 unknown, 1 no shot, 2 the
+    // shot. They depend on the ring and the sight grid alone, so every
+    // member's walk reads the same ones; kept while the ring and the grid's
+    // version are what they were filled for, and dropped kShotMemoIdle ticks
+    // after their last use (a memo only: nothing of the sim reads it but
+    // ringWalk, which would compute the same value).
+    struct ShotMemo {
+        uint64_t ver=0;int64_t tx=0,tz=0;int R=0;float tfx=0,tfz=0;int tskip=0,fx=0,fz=0;bool naval=false;
+        int x0=0,z0=0,w=0,h=0;uint32_t used=0;
+        std::vector<uint8_t> shot,mid;
+    };
+    static constexpr uint32_t kShotMemoIdle=2*kRingScan;
+    static constexpr int kShotMemoSide=320;   // a box past this (artillery's) walks unmemoised
+    std::map<int,ShotMemo> shotMemos;
+    ShotMemo* shotMemo(const Group& g,int fx,int fz) {
+        const auto& r=g.ring;
+        const NavGrid& sight=r.naval?w.navalSight_:w.nav_;
+        const int body=16*std::max(fx,fz);
+        // Every ringWalk box of this ring: ringDeepClaim's reach is at most
+        // kRingWaitReach bodies past the edge plus one; ringScan's and
+        // spotRoute's two bodies.
+        const int span=int((int64_t(r.R)+(kRingWaitReach+2)*body)/16)+std::max(fx,fz)+1,cx=int(r.tx/16),cz=int(r.tz/16);
+        const int x0=std::max(0,cx-span),z0=std::max(0,cz-span),x1=std::min(width()-1,cx+span),z1=std::min(height()-1,cz+span);
+        if(x1<x0||z1<z0||x1-x0+1>kShotMemoSide||z1-z0+1>kShotMemoSide)return nullptr;
+        ShotMemo& m=shotMemos[g.id];
+        if(m.ver!=sight.version()||m.tx!=r.tx||m.tz!=r.tz||m.R!=r.R||m.tfx!=r.tfx||m.tfz!=r.tfz||m.tskip!=r.tskip||
+           m.fx!=fx||m.fz!=fz||m.naval!=r.naval||m.x0!=x0||m.z0!=z0||m.w!=x1-x0+1||m.h!=z1-z0+1) {
+            m.ver=sight.version();m.tx=r.tx;m.tz=r.tz;m.R=r.R;m.tfx=r.tfx;m.tfz=r.tfz;m.tskip=r.tskip;m.fx=fx;m.fz=fz;m.naval=r.naval;
+            m.x0=x0;m.z0=z0;m.w=x1-x0+1;m.h=z1-z0+1;
+            m.shot.assign(size_t(m.w)*size_t(m.h),0);m.mid.assign(size_t(2*m.w)*size_t(2*m.h),0);
+        }
+        m.used=w.tickCounter_;
+        return &m;
+    }
+    // buildRing's sight tests from an origin's centre to a target, by target and
+    // footprint: groups ringing the same target ask the same ones. Kept while
+    // the target stands where it stood and the sight grid's version is what
+    // it was, over the union of the boxes asked for; dropped kShotMemoIdle
+    // ticks after their last use (a memo only, as ShotMemo).
+    struct LosMemo {
+        uint64_t ver=0;float tx=0,tz=0;int tskip=0;
+        int x0=0,z0=0,w=0,h=0;uint32_t used=0;
+        std::vector<uint8_t> v;   // 0 unknown, 1 no sight, 2 sight
+    };
+    std::map<std::tuple<int,int,int,bool>,LosMemo> losMemos;
+    LosMemo& losMemo(const Unit& t,int fx,int fz,bool naval,int x0,int z0,int x1,int z1) {
+        const NavGrid& sight=naval?w.navalSight_:w.nav_;
+        const float tx=t.x.toFloat(),tz=t.z.toFloat();
+        const int tskip=std::max(t.type->footX,t.type->footZ)/2;
+        LosMemo& m=losMemos[{t.id,fx,fz,naval}];
+        m.used=w.tickCounter_;
+        if(m.ver!=sight.version()||m.tx!=tx||m.tz!=tz||m.tskip!=tskip||m.v.empty()) {
+            m.ver=sight.version();m.tx=tx;m.tz=tz;m.tskip=tskip;
+            m.x0=x0;m.z0=z0;m.w=x1-x0+1;m.h=z1-z0+1;m.v.assign(size_t(m.w)*size_t(m.h),0);
+        } else if(x0<m.x0||z0<m.z0||x1>=m.x0+m.w||z1>=m.z0+m.h) {   // grow to the union, keeping what is known
+            const int nx0=std::min(x0,m.x0),nz0=std::min(z0,m.z0),nx1=std::max(x1,m.x0+m.w-1),nz1=std::max(z1,m.z0+m.h-1);
+            std::vector<uint8_t> v(size_t(nx1-nx0+1)*size_t(nz1-nz0+1),0);
+            for(int z=0;z<m.h;++z)std::copy_n(m.v.begin()+std::ptrdiff_t(size_t(z)*size_t(m.w)),m.w,
+                                            v.begin()+std::ptrdiff_t(size_t(z+m.z0-nz0)*size_t(nx1-nx0+1)+size_t(m.x0-nx0)));
+            m.v=std::move(v);m.x0=nx0;m.z0=nz0;m.w=nx1-nx0+1;m.h=nz1-nz0+1;
+        }
+        return m;
+    }
+    void pruneShotMemos() {
+        for(auto it=shotMemos.begin();it!=shotMemos.end();)
+            it=w.tickCounter_-it->second.used>kShotMemoIdle||!groups.count(it->first)?shotMemos.erase(it):std::next(it);
+        for(auto it=losMemos.begin();it!=losMemos.end();)
+            it=w.tickCounter_-it->second.used>kShotMemoIdle?losMemos.erase(it):std::next(it);
+    }
     // With block >= 0, the origins a body standing on origin `block` would
     // cover are closed too (see ringDeepClaim). With `goals` (box-local
     // origins, each with the farthest walk it may have), the walk stops once
@@ -10071,6 +10141,22 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         }
         if(!wk.inside(ox,oz))return false;
         const int comp=groupComp(g,p);
+        ShotMemo* const sm=shotMemo(g,fx,fz);
+        auto shotAt=[&](int x,int z) {
+            if(!sm||x<sm->x0||z<sm->z0||x>=sm->x0+sm->w||z>=sm->z0+sm->h)return ringShot(r,fx,fz,x,z);
+            uint8_t& s=sm->shot[size_t(z-sm->z0)*size_t(sm->w)+size_t(x-sm->x0)];
+            if(!s)s=ringShot(r,fx,fz,x,z)?2:1;
+            return s==2;
+        };
+        // A step's half-way test, by the doubled midpoint (x+nx, z+nz) of its origins.
+        auto midShot=[&](int mx,int mz) {
+            uint8_t* h=nullptr;
+            if(sm&&mx>=2*sm->x0&&mz>=2*sm->z0&&mx<2*(sm->x0+sm->w)&&mz<2*(sm->z0+sm->h))
+                h=&sm->mid[size_t(mz-2*sm->z0)*size_t(2*sm->w)+size_t(mx-2*sm->x0)];
+            else h=&wk.mid[size_t(mz-2*wk.bz0)*size_t(2*wk.bw)+size_t(mx-2*wk.bx0)];
+            if(!*h)*h=ringShotAt(r,foot,int64_t(mx)*16+fx*16,int64_t(mz)*16+fz*16)?2:1;
+            return *h==2;
+        };
         auto still=[&](int cx,int cz) {
             if(cx<0||cz<0||cx>=w.occW_||cz>=w.occH_)return false;
             const int32_t o=occAt(size_t(cz)*w.occW_+cx);
@@ -10086,7 +10172,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
             k=1;
             if(!legal(p,x,z)||(comp>=0&&compAt(p,z*W+x)!=comp))return k;
             for(int j=0;j<fz;++j)for(int i=0;i<fx;++i)if(still(x+i,z+j))return k;
-            k=ringShot(r,fx,fz,x,z)?4:2;
+            k=shotAt(x,z)?4:2;
             return k;
         };
         wk.parent.assign(wk.kind.size(),-1);wk.dist.assign(wk.kind.size(),-1);wk.queue.clear();
@@ -10136,11 +10222,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                 }
                 // ... nor half way there (sight changes within a cell: a
                 // diagonal step round a wall's corner had the shot).
-                if(!through&&k==2) {
-                    uint8_t& h=wk.mid[size_t(z+nz-2*wk.bz0)*size_t(2*wk.bw)+size_t(x+nx-2*wk.bx0)];
-                    if(!h)h=ringShotAt(r,foot,int64_t(x+nx)*16+fx*16,int64_t(z+nz)*16+fz*16)?2:1;
-                    if(h==2)continue;
-                }
+                if(!through&&k==2&&midShot(x+nx,z+nz))continue;
                 wk.parent[size_t(next)]=local;wk.dist[size_t(next)]=wk.dist[size_t(local)]+1;
                 wk.queue.push_back(next);
                 if(goals&&goalsLeft)for(const WalkGoal& q:*goals)if(q.at==next) {goalScan();break;}
@@ -12558,6 +12640,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // becomes the group's seeds. Without a band-0 spot (none in reach and
     // line of sight in the members' component) the group keeps its point
     // seed. Returns whether the seeds changed.
+    static constexpr uint64_t kPhaseCells=65536;
     bool buildRing(Group& g) {
         auto& r=g.ring;
         r.tried=true;
@@ -12614,13 +12697,56 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                     if(hi<=lo)continue;
                     const int span=int(hi/16)+foot+1;
                     const int cx=int(tx/16),cz=int(tz/16);
+                    const int x0=std::max(0,cx-span),x1=std::min(W-1,cx+span),z0=std::max(0,cz-span),z1=std::min(H-1,cz+span);
+                    // A band whose distances the box cannot hold (an artillery
+                    // reach wider than the map) takes no spot: the scan below
+                    // would visit every origin of the map for none.
+                    {
+                        // The least and greatest |offset| of an origin's centre along one axis.
+                        auto range=[](int a0,int a1,int f,int64_t t,int64_t& lo2,int64_t& hi2) {
+                            const int64_t e0=int64_t(a0)*16+f*8-t,e1=int64_t(a1)*16+f*8-t;
+                            const int64_t far=std::max(std::abs(e0),std::abs(e1));
+                            int64_t near=std::min(std::abs(e0),std::abs(e1));
+                            if(e0<=0&&e1>=0) {   // the target lies between: the nearest origin either side of it
+                                const int64_t k=std::clamp<int64_t>((t-f*8)/16,a0,a1);
+                                for(int64_t c=std::max<int64_t>(a0,k-1);c<=std::min<int64_t>(a1,k+1);++c)near=std::min(near,std::abs(c*16+f*8-t));
+                            }
+                            lo2=near*near;hi2=far*far;
+                        };
+                        int64_t nx2,fx2,nz2,fz2;
+                        range(x0,x1,fx,tx,nx2,fx2);range(z0,z1,fz,tz,nz2,fz2);
+                        if(x0>x1||z0>z1||nx2+nz2>=hi*hi||fx2+fz2<lo*lo) {
+                            if(x0<=x1&&z0<=z1)scanned+=uint64_t(x1-x0+1)*uint64_t(z1-z0+1);   // charged as the scan was
+                            if(b==0&&cells.empty())break;
+                            continue;
+                        }
+                    }
+                    LosMemo* lm=b<2&&los?&losMemo(*t,fx,fz,naval,x0,z0,x1,z1):nullptr;
+                    scanned+=uint64_t(x1-x0+1)*uint64_t(z1-z0+1);   // the box, charged whole (as one pass over it was)
+                    // The spots are taken in (angle, cell) order. A cell's angle
+                    // range follows from the signs of its offsets: along < 0 and
+                    // across <= 0 lie in [-2Q,-Q), across < 0 and along >= 0 in
+                    // [-Q,0), the rest in [0,2Q). A box past kPhaseCells (an
+                    // artillery reach: the whole map) is scanned a range at a
+                    // time, so the ranges the walk never reaches are never read;
+                    // a smaller box in one pass. The order taken is the same.
+                    const bool phased=uint64_t(x1-x0+1)*uint64_t(z1-z0+1)>kPhaseCells;
+                    for(int phase=phased?0:-1;phase<(phased?3:0)&&cells.size()<kRingCells;++phase) {
                     std::vector<std::pair<int64_t,int>> order;
-                    for(int z=std::max(0,cz-span);z<=std::min(H-1,cz+span);++z)for(int x=std::max(0,cx-span);x<=std::min(W-1,cx+span);++x) {
-                        ++scanned;
+                    for(int z=z0;z<=z1;++z)for(int x=x0;x<=x1;++x) {
                         const int64_t dx=int64_t(x)*16+fx*8-tx,dz=int64_t(z)*16+fz*8-tz,d2=dx*dx+dz*dz;
+                        if(phase>=0) {
+                            const int64_t along=dx*ax+dz*az,across=dx*az-dz*ax;
+                            const int in=along<0&&across<=0?0:across<0&&along>=0?1:2;
+                            if(in!=phase)continue;
+                        }
                         if(d2<lo*lo||d2>=hi*hi||!legal(p,x,z)||compAt(p,z*W+x)!=comp)continue;
-                        if(b<2&&los&&sight.losBetween(float(x*16+fx*8),float(z*16+fz*8),t->x.toFloat(),t->z.toFloat(),foot/2,
-                                                     std::max(t->type->footX,t->type->footZ)/2)!=(b==0))continue;
+                        if(lm) {
+                            uint8_t& s=lm->v[size_t(z-lm->z0)*size_t(lm->w)+size_t(x-lm->x0)];
+                            if(!s)s=sight.losBetween(float(x*16+fx*8),float(z*16+fz*8),t->x.toFloat(),t->z.toFloat(),foot/2,
+                                                     std::max(t->type->footX,t->type->footZ)/2)?2:1;
+                            if((s==2)!=(b==0))continue;
+                        }
                         const int64_t angle=pseudoAngle(dx*ax+dz*az,dx*az-dz*ax);
                         // The waiting bands keep to the approach side: waiting
                         // round the far side, they stood across the lanes to the
@@ -12628,8 +12754,18 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                         if(b>=2&&std::abs(angle)>kQuarterTurn)continue;
                         order.push_back({angle,z*W+x});
                     }
-                    std::sort(order.begin(),order.end());
-                    for(const auto& [angle,cell]:order) {
+                    // Taken in angle order until kRingCells: sorted a slice at a time
+                    // (partial_sort leaves the rest no smaller), as far as the
+                    // walk reads -- round an artillery target the band is the
+                    // whole map and the walk reads a few hundred of it.
+                    size_t sorted=0,slice=4*kRingCells;
+                    for(size_t k=0;k<order.size();++k) {
+                        if(k==sorted) {
+                            const size_t to=std::min(order.size(),sorted+slice);
+                            std::partial_sort(order.begin()+std::ptrdiff_t(sorted),order.begin()+std::ptrdiff_t(to),order.end());
+                            sorted=to;slice*=2;
+                        }
+                        const auto [angle,cell]=order[k];
                         if(cells.size()>=kRingCells)break;
                         const int x=cell%W,z=cell/W;
                         bool clear=true;
@@ -12637,6 +12773,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                         if(!clear)continue;
                         for(int j=0;j<fz;++j)for(int i=0;i<fx;++i)used.insert((z+j)*W+x+i);
                         cells.push_back(cell);band.push_back(uint8_t(b));
+                    }
                     }
                     if(b==0&&cells.empty())break;
                 }
@@ -12970,6 +13107,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     void ringScan() {
         const uint32_t now=w.tickCounter_;
         if(now%kRingScan!=kRingScan-1)return;
+        pruneShotMemos();
         ringDiscs.clear();
         // Round 5 (2026-10-21): a late ring. A fight (attack-move) order's
         // attacks are acquired one body at a time as its column comes into
@@ -13075,7 +13213,30 @@ struct LegionNavigator::Impl : LegionWorldBinding {
             const NavGrid& sightGrid=r.naval?w.navalSight_:w.nav_;   // as buildRing
             std::vector<uint8_t> open(size_t(std::max(0,bw))*size_t(std::max(0,bh)),0);
             std::vector<int> flood;
-            for(int z=bz0;z<=bz1;++z)for(int x=bx0;x<=bx1;++x) {
+            // The flood starts only from origins a body or more beyond the
+            // reach edge. When the box (the farthest of its corners) holds
+            // none -- a reach wider than the map, artillery's -- there is no
+            // flood and nothing below reads `open`: the full-box pass (a
+            // whole 640x640 map, a sight test an origin) is skipped.
+            bool seedable=false;
+            for(const int z:{bz0,bz1})for(const int x:{bx0,bx1}) {
+                const int64_t dx=int64_t(x)*16+fx*8-r.tx,dz=int64_t(z)*16+fz*8-r.tz;
+                seedable|=dx*dx+dz*dz>=(int64_t(r.R)+body)*(int64_t(r.R)+body);
+            }
+            // The sight tests are buildRing's own (losMemo), while the target
+            // stands where the ring was planned round it.
+            LosMemo* lm=nullptr;
+            if(seedable&&r.sight)
+                if(const Unit* t=w.unit(g.reachTarget);t&&t->type&&t->x.toFloat()==r.tfx&&t->z.toFloat()==r.tfz&&
+                   std::max(t->type->footX,t->type->footZ)/2==r.tskip)
+                    lm=&losMemo(*t,fx,fz,r.naval,bx0,bz0,bx1,bz1);
+            auto sees=[&](int x,int z) {
+                if(!lm)return sightGrid.losBetween(float(x*16+fx*8),float(z*16+fz*8),r.tfx,r.tfz,foot/2,r.tskip);
+                uint8_t& s=lm->v[size_t(z-lm->z0)*size_t(lm->w)+size_t(x-lm->x0)];
+                if(!s)s=sightGrid.losBetween(float(x*16+fx*8),float(z*16+fz*8),r.tfx,r.tfz,foot/2,r.tskip)?2:1;
+                return s==2;
+            };
+            if(seedable)for(int z=bz0;z<=bz1;++z)for(int x=bx0;x<=bx1;++x) {
                 const int64_t dx=int64_t(x)*16+fx*8-r.tx,dz=int64_t(z)*16+fz*8-r.tz,d2=dx*dx+dz*dz;
                 const size_t at=size_t(z-bz0)*size_t(bw)+size_t(x-bx0);
                 if(d2>outer*outer||!legal(p,x,z)||compAt(p,z*W+x)!=comp)continue;
@@ -13084,8 +13245,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                 if(!free)continue;
                 // A thick ring's band (2026-11-08): the bodies bound for its
                 // inner spots walk on through it (walkInRing).
-                const bool walk=!r.sight||d2>int64_t(r.R)*r.R||(r.thick&&d2>=int64_t(r.thick)*r.thick)||
-                    !sightGrid.losBetween(float(x*16+fx*8),float(z*16+fz*8),r.tfx,r.tfz,foot/2,r.tskip);
+                const bool walk=!r.sight||d2>int64_t(r.R)*r.R||(r.thick&&d2>=int64_t(r.thick)*r.thick)||!sees(x,z);
                 open[at]=walk?2:1;
                 if(d2>=(int64_t(r.R)+body)*(int64_t(r.R)+body)) {open[at]|=4;flood.push_back(int(at));}
             }
