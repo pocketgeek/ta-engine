@@ -363,6 +363,14 @@ public:
     // data, so a game-mod mismatch is caught
     // before the game starts, not as a mid-game desync.
     void reportLoaded(uint64_t dataHash = 0);
+    // How far this client's load has got (0..100), for the other players' loading
+    // screens (Msg::LoadProgress). Sent at once: the load blocks the poll loop.
+    void reportLoadProgress(int percent);
+    // A peer's load progress as last relayed (0..100); 100 once it has loaded.
+    int slotLoadPercent(int slot) const {
+        if (slot < 0 || slot >= kMaxSlots) return 0;
+        return slotLoaded_[size_t(slot)] ? 100 : int(slotLoadPct_[size_t(slot)]);
+    }
     // ---- the disconnect wait --------------------------------------------------
     // The seated players the server is waiting for, each with the local time its seat
     // goes to an AI (Msg::Waiting). Empty while the game runs.
@@ -554,6 +562,7 @@ private:
     SlotInfo startSlots_[kMaxSlots] = {};
     uint32_t replayTicks_ = 0;   // history the server replays after a spectate
     std::array<bool, kMaxSlots> slotLoaded_{};   // per-slot "reported Loaded"
+    std::array<uint8_t, kMaxSlots> slotLoadPct_{};   // per-slot LoadProgress, as relayed
     uint64_t resumeToken_ = 0;
     bool catchUp_ = false;
     bool spectator_ = false;

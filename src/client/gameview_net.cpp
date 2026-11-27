@@ -210,10 +210,12 @@
             if (room.slots[i].type == 1 || room.slots[i].type == 2) maxSlot = i;
         // Retail's loading screen covers the whole start: everything below blocks the
         // render loop for a second or more, and the wait on the other players after it.
+        // Retail hides the map line in a campaign (0x498639).
         loadScreen_ = std::make_unique<ta::LoadScreen>(
-            ren_, vfs_, room.mission.empty() ? room.mapId : room.mission, settings_);
+            ren_, vfs_, room.mission.empty() ? room.mapId : std::string(), settings_);
         {
             std::array<std::string, ta::sim::kMaxPlayers> names{};
+            bool otherHuman = false;
             for (int i = 0; i <= maxSlot && i < ta::sim::kMaxPlayers; ++i) {
                 if (room.slots[i].type != 1 && room.slots[i].type != 2) continue;
                 names[size_t(i)] = !room.slots[i].name.empty()
@@ -222,10 +224,19 @@
                 // An AI slot has nothing to load and never reports in, so its bar is
                 // full from the start -- only humans are worth waiting on.
                 if (room.slots[i].type == 2) loadScreen_->setSlotDone(i);
+                else if (i != room.mySlot) otherHuman = true;
             }
-            loadScreen_->setPlayers(names, room.mySlot);
+            // The player strip is retail's network-game view (0x498c99, mode 3).
+            loadScreen_->setPlayers(names, room.mySlot, otherHuman);
+            // Our percent goes to the other players' strips (Msg::LoadProgress).
+            if (otherHuman && mp_) loadScreen_->onProgress = [this](int pct) { mp_->reportLoadProgress(pct); };
         }
-        loadScreen_->step("MOUNTING GAME DATA", 5);
+        // The six bars (0x4984dd) map onto our start as: Units -- the registry
+        // (remountMods) then the world's units; Textures and Terrain -- the map
+        // (mapView_.reload); Animation -- feature and cursor art. Models and
+        // explosion art load on first use here, so 3D Data and Explosions fill
+        // with the interface at the end.
+        loadScreen_->setPart(ta::LoadPart::Textures, 0);
         logSimThreads(simThreadMode_);   // what this game's simulation runs on (latchSimThreads)
         // Build the world through the SHARED setup so the server's referee sim and
         // every client produce a bit-identical world (and hash). Client-only bits
@@ -244,6 +255,7 @@
         // may still be running. READY and START do not wait for them; this does.
         stopPreviewReaders();
         remountMods();
+        loadScreen_->setPart(ta::LoadPart::Units, 50);
         vfs_.setMapFiles(mp_ && mp_->mapPackage() && room.mission.empty() &&
             !ta::mapgen::isGeneratedMapId(room.mapId) ? mp_->mapPackage()->files : room.mission.empty()
                 ? std::make_shared<const ta::hpi::Vfs::Files>() : nullptr);
@@ -262,8 +274,9 @@
         if (!room.mission.empty()) {
             mapPath_ = ta::sim::missionMapPath(vfs_, room.mission);
             resetMinimap();   // its thread reads the map being swapped
-            loadScreen_->step("LOADING TERRAIN", 30);
             mapView_.reload(vfs_, mapPath_);
+            loadScreen_->setPartQuiet(ta::LoadPart::Textures, 100);
+            loadScreen_->setPart(ta::LoadPart::Terrain, 100);
             int human = 0;
             ta::sim::MissionSetup ms;
             // (Debug) TA_FORCE_WIN / TA_FORCE_LOSE: the outcome forced by the mission's
@@ -272,9 +285,11 @@
             ta::sim::setupMission(writableWorld(), registry_, forced ? *forced : vfs_, room.mission, human, &ms);
             missionFullVision_ = ms.fullVision;
             missionPreMapped_ = ms.preMapped;
+            loadScreen_->setPartQuiet(ta::LoadPart::Units, 100);
             loadFeatures();
-            if (loadScreen_) loadScreen_->step("LOADING CURSORS", 35);
-            warmCursors();   // cursor art + hardware reconstruction, off the frame path
+            loadScreen_->setPart(ta::LoadPart::Animation, 50);
+            warmCursors();
+            loadScreen_->setPart(ta::LoadPart::Animation, 100);   // cursor art + hardware reconstruction, off the frame path
             // Per-mission unit restriction: missions/<stem>.tdf lists the unit ids this
             // mission allows; the human's conjure menu is filtered to it (UI only).
             missionAllowed_.clear();
@@ -296,8 +311,8 @@
                 std::fprintf(stderr, "mission %s: conjure menu restricted to %zu allowed unit types\n",
                              room.mission.c_str(), missionAllowed_.size());
             if (room.mySlot >= 0) side_ = ta::sides::lowerPrefix(room.slots[room.mySlot].faction);
-            loadScreen_->step("LOADING INTERFACE", 90);
-            loadScreen_->step("WAITING FOR PLAYERS", 100);
+            loadScreen_->setPartQuiet(ta::LoadPart::Model3D, 100);
+            loadScreen_->setPart(ta::LoadPart::Explosions, 100);
             startAtCommander();
             beginGameRecording();
             return;
@@ -311,9 +326,9 @@
             ? mp_->mapPackage()->mapPath : ta::hpi::findMap(vfs_, room.mapId);
         if (mapPath_.empty()) throw std::runtime_error("selected map is missing: " + room.mapId);
         resetMinimap();   // its thread reads the map being swapped
-        loadScreen_->step("LOADING TERRAIN", 30);
         mapView_.reload(vfs_, mapPath_);
-        loadScreen_->step("BUILDING THE WORLD", 65);
+        loadScreen_->setPartQuiet(ta::LoadPart::Textures, 100);
+        loadScreen_->setPart(ta::LoadPart::Terrain, 100);
         // The referee's own builder (net/matchconfig.h) -- the same seed, slot table,
         // Absurd AI income and player count -- so hashed state matches (lockstep).
         ta::sim::MatchConfig cfg = ta::net::matchConfigFor(room.opts, room.slots, seed);
@@ -341,8 +356,11 @@
         // That mismatch made right-drag reclaim miss (the box covered the wrong stuff).
         // setupMatch is authoritative for the sim; loadFeatures only re-adds the same
         // map's metal/nav idempotently (setTerrain already rebuilt the nav).
+        loadScreen_->setPart(ta::LoadPart::Units, 100);
         loadFeatures();
+        loadScreen_->setPart(ta::LoadPart::Animation, 50);
         warmCursors();   // cursor art + hardware reconstruction, off the frame path
+        loadScreen_->setPart(ta::LoadPart::Animation, 100);
         // client-only presentation
         localPlayer_ = room.mySlot < 0 ? 0 : room.mySlot;
         // FOG OF WAR: EXPLORED (and a mission's mapping=1) reach the display through the
@@ -356,8 +374,8 @@
         for (auto& u : world_.units())
             if (u.player == localPlayer_ && u.type) { playerCommanderId_ = u.id; builderId_ = u.id; break; }
         side_ = ta::sides::lowerPrefix(room.slots[localPlayer_].faction);
-        loadScreen_->step("LOADING INTERFACE", 90);
-        loadScreen_->step("WAITING FOR PLAYERS", 100);
+        loadScreen_->setPartQuiet(ta::LoadPart::Model3D, 100);
+        loadScreen_->setPart(ta::LoadPart::Explosions, 100);
         startAtCommander();
         beginGameRecording();
     }

@@ -2899,6 +2899,16 @@ void Server::gameMsg(Client& c, const Frame& f) {
             }
             break;
         }
+        case Msg::LoadProgress: {
+            // A seated player still loading: pass its percent to the room's loading
+            // screens (PlayerStatus status 3). Presentation only.
+            Reader rd(f.payload.data(), f.payload.size());
+            const uint8_t pct = rd.u8();
+            if (!rd.ok || !r->running || c.loaded || c.slot < 0) break;
+            Writer ps; ps.u8(uint8_t(c.slot)); ps.u8(3 /*loading*/); ps.u32(std::min<uint32_t>(pct, 100));
+            broadcastRoom(*r, Msg::PlayerStatus, ps, c.id);
+            break;
+        }
         case Msg::LeaveGame: leaveRoom(c, "left"); break;
         case Msg::Chat: {
             Reader rd(f.payload.data(), f.payload.size());

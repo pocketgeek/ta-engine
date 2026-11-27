@@ -561,7 +561,7 @@ std::string defaultGameName(const std::string& player) {
     }
 
     void GameView::buildMapList(ta::LoadScreen* progress) {
-        if (progress) progress->step("Finding maps",70);
+        if (progress) progress->step("Finding maps");
         resetMinimap(); mapView_.quiesce(); stopPreviewReaders();
         vfs_.refreshMapCache(ta::hpi::userMapRoot());
         mapList_.clear();
@@ -632,8 +632,7 @@ std::string defaultGameName(const std::string& player) {
             mapList_.push_back(std::move(mi));
             ++completed;
             if (progress && (completed==maps.size() || SDL_GetTicks64()-lastProgress>=100)) {
-                progress->step("Reading maps "+std::to_string(completed)+" / "+std::to_string(maps.size()),
-                               70+int(28*completed/maps.size()));
+                progress->step("Reading maps "+std::to_string(completed)+" / "+std::to_string(maps.size()));
                 lastProgress=SDL_GetTicks64();
             }
         }

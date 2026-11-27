@@ -460,7 +460,9 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         const bool won = outcome_ > 0;
         const bool canContinue = !won || camp.cur + 1 < int(camp.missions.size());
         view->setBackdrop(std::string("bitmaps/") + (canContinue ? "outcome1" : "outcome0") + ".pcx");
-        for (const char* g : {"Start", "Missions", "KNOB", "Difficulty", "AdjustDiff"}) view->setVisible(g, canContinue);
+        // 0x41f400: outcome0 keeps MainMenu only.
+        for (const char* g : {"Start", "LoadGame", "SaveGame", "Missions", "KNOB", "Difficulty", "AdjustDiff"})
+            view->setVisible(g, canContinue);
         view->setGrayed("LoadGame", true);   // save games are not implemented yet
         view->setGrayed("SaveGame", true);
         fillMissions(*view, camp, true);

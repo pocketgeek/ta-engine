@@ -63,8 +63,9 @@
         // as well as during world setup; never expose the multiplayer lobby.
         if (!missionStem_.empty() && inLobbyPhase()) {
             if (!loadScreen_) {
-                loadScreen_ = std::make_unique<ta::LoadScreen>(ren_, vfs_, missionStem_, settings_);
-                loadScreen_->step("PREPARING MISSION", 0);
+                // A campaign: no map line (0x498639); the bars wait at 0.
+                loadScreen_ = std::make_unique<ta::LoadScreen>(ren_, vfs_, std::string(), settings_);
+                loadScreen_->setPartQuiet(ta::LoadPart::Textures, 0);
             }
             loadScreen_->draw();
             if (!netError_.empty()) {
@@ -83,7 +84,7 @@
                 loadScreen_.reset();
             else {
                 for (int i = 0; i < ta::net::kMaxSlots; ++i)
-                    if (mp_->slotLoaded(i)) loadScreen_->setSlotDone(i);
+                    loadScreen_->setSlotPercent(i, mp_->slotLoadPercent(i));
                 loadScreen_->draw();   // main owns the present + the AA resolve
                 return;
             }

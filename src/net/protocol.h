@@ -208,7 +208,8 @@ enum class Msg : uint8_t {
     TickBundle,         // S->C: tick, commands (sorted), events
     StateHash,          // C->S: tick, hash
     Desynced,           // S->C: tick, reason
-    PlayerStatus,       // S->C: slot, status, ping (informational)
+    PlayerStatus,       // S->C: u8 slot, u8 status, u32 value (informational). status 0 connected,
+                        // 1 dropped, 2 loaded, 3 loading (value = its percent, from LoadProgress)
     // durability (M5)
     Rejoin,             // C->S: u32 gameId, u64 resume token, u32 fromTick (the first tick whose
                         // bundle this client does not have). Only a seat still held for the
@@ -318,6 +319,12 @@ enum class Msg : uint8_t {
                         // result with no human seated (one team left, or nobody), or when the
                         // last seated player has gone with a watcher still there. Never recorded
                         // and no sim state: the replay simply ends at that tick.
+    // The loading screen's player strip (TotalA.exe 0x497ce0; retail's packet 0x2a).
+    LoadProgress,       // C->S: u8 percent (0..100), the mean of the six load parts. Seated
+                        // players only, between GameStarting and Loaded; relayed to the room
+                        // as PlayerStatus status 3. Presentation only, never recorded. Added
+                        // without a version bump: an older server ignores it (no case), an
+                        // older client reads only status 2.
 };
 
 // Room editing (323). MoveSeat to kWatchSeat: the host leaves its seat and watches.

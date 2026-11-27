@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -24,6 +25,7 @@
 #include "client/menusfx.h"
 #include "client/hotkeys.h"
 #include "client/settings.h"
+#include "client/taguiview.h"
 #include "gui/gui.h"
 
 namespace ta {
@@ -167,7 +169,28 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     int faction = stats ? stats->faction : 0;
     Geom g = loadGeom(vfs, victory, faction);
     SDL_Texture* bg = nullptr;
-    if (!g.bgPcx.empty()) {
+    // Retail TA's plate (no plate .gui): ENDMSN.GUI over outcome0.pcx with everything
+    // but MainMenu hidden (TotalA.exe 0x41f0a0 / 0x41f400, docs/retail-campaign.md
+    // section 4.3) -- one button, Main Menu, which also has the focus. The GUI runtime
+    // draws the backdrop and that button as the front end's ENDMSN does.
+    std::unique_ptr<TaGuiView> endmsn;
+    if (g.headersInArt && !g.bgPcx.empty()) {
+        try {
+            tagui::Screen s = tagui::load(vfs, "endmsn");
+            if (const tagui::Gadget* b = s.find("MainMenu")) {
+                g.menuBtn = {float(b->x), float(b->y), float(b->w), float(b->h)};
+                std::vector<std::string> hide;
+                for (const auto& w : s.gadgets)
+                    if (w.index != 0 && w.name != b->name) hide.push_back(w.name);
+                endmsn = std::make_unique<TaGuiView>(ren, vfs, std::move(s), true);
+                for (const auto& n : hide) endmsn->setVisible(n, false);
+                endmsn->setBackdrop(g.bgPcx);
+            }
+        } catch (...) { endmsn.reset(); }
+    }
+    const bool oneButton = endmsn != nullptr;
+    if (oneButton) {
+    } else if (!g.bgPcx.empty()) {
         try {
             const auto img = gaf::loadPcx(vfs.read(g.bgPcx), g.bgPcx);
             bg = art::makeTexture(ren, img.rgba, img.width, img.height);
@@ -218,8 +241,8 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                                                                        : "Retry";
     const std::string cancelTip = menuTip.empty() ? "Title Screen" : menuTip;
     // A campaign's last win, or a replay's result, has no next step: the right door is inert.
-    const bool canProceed = hasNext || skirmishNext != ResultChoice::Menu ||
-                            (!victory && !title.empty());
+    const bool canProceed = !oneButton && (hasNext || skirmishNext != ResultChoice::Menu ||
+                                           (!victory && !title.empty()));
 
     // A choice plays its button's click on the press, as the title menu's doors do,
     // and leaves at once: the shared click device plays it to the end.
@@ -304,7 +327,10 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             if (e.type == SDL_KEYDOWN) {
                 SDL_Keycode k = e.key.keysym.sym;
                 if (k == SDLK_ESCAPE) choose(ResultChoice::Menu, g.menuSound);
-                if (k == SDLK_RETURN || k == SDLK_KP_ENTER) choose(proceed, g.proceedSound);
+                if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
+                    if (oneButton) choose(ResultChoice::Menu, g.menuSound);   // MainMenu has the focus
+                    else choose(proceed, g.proceedSound);
+                }
                 // Replaying a mission you just won isn't on retail's plate; the key is
                 // here because the campaign screen is the only other way back in.
                 if (k == SDLK_r) choose(ResultChoice::Retry, g.proceedSound);
@@ -320,7 +346,9 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
-        if (bg) {
+        if (endmsn) {
+            endmsn->draw(lay);
+        } else if (bg) {
             SDL_FRect r = lay.rect(0, 0, 640, 480);
             SDL_RenderCopyF(ren, bg, nullptr, &r);
         } else {
@@ -495,7 +523,8 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                 text(body, above, {(640 - ttw / lay.scale) / 2, g.title.y - 26, ttw / lay.scale, 20}, dim, false, true);
             }
         }
-        text(body, cancelHover ? cancelTip : okHover ? proceedTip : std::string(), g.help, dim, false, true, true);
+        if (!oneButton)
+            text(body, cancelHover ? cancelTip : okHover ? proceedTip : std::string(), g.help, dim, false, true, true);
 
         auto button = [&](SDL_Texture** tex, const SDL_FRect& r, bool hover, const char* fallback) {
             SDL_Texture* t = tex[hover && tex[1] ? 1 : 0];
@@ -508,8 +537,10 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             uiText(ren, fallback, r.x + (r.w - uiTextWidth(fallback, px)) / 2,
                           r.y + (r.h - 7 * px) / 2, px, gold);
         };
-        button(cancelTex, cancelR, cancelHover, "TITLE");
-        button(okTex, okR, okHover, "GO");
+        if (!oneButton) {
+            button(cancelTex, cancelR, cancelHover, "TITLE");
+            button(okTex, okR, okHover, "GO");
+        }
 
         // Honour the hardware-cursor option here too -- see BriefingScreen.
         if (cursors.ok()) {

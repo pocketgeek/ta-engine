@@ -1621,10 +1621,9 @@ int main(int argc, char** argv) {
     // screen of its own the window kept showing the title until the lobby drew.
     const bool menuMultiplayer = fromMenu && origin == ta::LaunchOrigin::Multiplayer;
     if (fromMenu && (menuInteractive || menuMultiplayer) && campaignStem.empty() && !benchmarkLaunch) {
-        // Titled as the door that opened it: PlayComputer "Play the Machine", PlayPlayer
-        // "Play an Opponent" (the doors' captions in guis/mainmenu.gui).
-        lobbyLoading=std::make_unique<ta::LoadScreen>(ren,vfs,menuMultiplayer ? "Play an Opponent" : "Play the Machine",&settings);
-        lobbyLoading->step(menuMultiplayer ? "Connecting..." : "Starting...",5);
+        // The loading backdrop with a status line: no map yet, so no map line.
+        lobbyLoading=std::make_unique<ta::LoadScreen>(ren,vfs,std::string(),&settings);
+        lobbyLoading->step(menuMultiplayer ? "Connecting..." : "Starting...");
     }
 
     // PIN SIMULATION THREADS (Options > GAME, OFF by default), for this session and its
@@ -1698,7 +1697,7 @@ int main(int argc, char** argv) {
         // mods are agreed later, at load. The install is
         // immutable while the game runs, so the fingerprint (a mount + a read of
         // every gameplay file) is computed once and reused across menu->Play loops.
-        if (lobbyLoading) lobbyLoading->step("Checking game data",20);
+        if (lobbyLoading) lobbyLoading->step("Checking game data");
         if (!dataRoot.empty()) {
             if (!retailHash)
                 retailHash = ta::hpi::gameplayHash(
@@ -1721,7 +1720,7 @@ int main(int argc, char** argv) {
                                                                : "Connecting to " + serverHost;
         const std::string signingIn = localServer.started() || loginUser.empty() ? connectingTo
                                                                                 : "Signing in to " + serverHost;
-        if (lobbyLoading) lobbyLoading->step(connectingTo,35);
+        if (lobbyLoading) lobbyLoading->step(connectingTo);
         uint64_t lobbyProgressAt=SDL_GetTicks64();
         bool ok = false;
         std::string serverDied;   // the local server exited before it would answer
@@ -1736,7 +1735,7 @@ int main(int argc, char** argv) {
                 const std::string first = mp->error();
                 const bool unreachable = first.starts_with("cannot resolve") || first.starts_with("connect failed");
                 if (serverPlainFallback && serverHost.starts_with("tls://") && !unreachable) {
-                    if (lobbyLoading) lobbyLoading->step("Connecting to " + shown + " unencrypted", 35);
+                    if (lobbyLoading) lobbyLoading->step("Connecting to " + shown + " unencrypted");
                     ok = mp->connect(shown, uint16_t(serverPort), playerName);
                     if (ok) serverHost = shown;
                     else transportWhy = "could not connect to " + at + " with TLS (" + first +
@@ -1756,7 +1755,7 @@ int main(int argc, char** argv) {
                     break;
                 }
                 if (lobbyLoading && SDL_GetTicks64()-lobbyProgressAt>=100) {
-                    lobbyLoading->step("Waiting for local server",35);lobbyProgressAt=SDL_GetTicks64();
+                    lobbyLoading->step("Waiting for local server");lobbyProgressAt=SDL_GetTicks64();
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
@@ -1787,7 +1786,7 @@ int main(int argc, char** argv) {
             while (!mp->handshakeSettled() && SDL_GetTicks64() < deadline) {
                 if (!mp->poll()) break;
                 if (lobbyLoading && SDL_GetTicks64()-lobbyProgressAt>=100) {
-                    lobbyLoading->step(signingIn,40);lobbyProgressAt=SDL_GetTicks64();
+                    lobbyLoading->step(signingIn);lobbyProgressAt=SDL_GetTicks64();
                 }
                 SDL_PumpEvents();          // keep the window responsive while we wait
                 SDL_Delay(5);
@@ -1897,7 +1896,7 @@ int main(int argc, char** argv) {
             // later, so it constructs "bare" (no single-player 2-commander spawn).
             // When looping back to the menu, keep this function's vfs alive for the
             // next session (+ its findMap); hand the game its own fresh mount.
-            if (lobbyLoading) lobbyLoading->step("Preparing the game room",50);
+            if (lobbyLoading) lobbyLoading->step("Preparing the game room");
             gameView = std::make_unique<GameView>(ren,
                                                   // Campaign result/progression and the next
                                                   // session still need the front-end catalog.
@@ -1959,7 +1958,7 @@ int main(int argc, char** argv) {
             }
             if (lobbyLoading) {
                 gameView->prepareLobbyMaps(*lobbyLoading);
-                lobbyLoading->step("Ready",100);
+                lobbyLoading->step("Ready");
                 lobbyLoading.reset();
             }
             // Normal windows keep the widest build-icon row visible. An explicit
@@ -3446,9 +3445,9 @@ int main(int argc, char** argv) {
         // Menu -> pendingCampaign stays empty -> the outer loop re-shows the front-end.
     } else if (campaignStem.empty() && gameView && !quitApp && fromMenu &&
                (gameView->outcomePublic() != 0 || gameView->watchOverPublic())) {
-        // Skirmish / multiplayer: retail shows the same victory/defeat plate here,
-        // with the match's statistics table. No next mission and nothing to retry,
-        // so both buttons come back to the front end. A watcher gets the plate too,
+        // Skirmish / multiplayer: retail shows ENDMSN's outcome0 plate here, with the
+        // match's statistics table and Main Menu as its only button (0x41f400). The
+        // proceed door below only exists on a data set's own plate .gui. A watcher gets the plate too,
         // the winner's (GameView::resultStats), also when the server ended a watched
         // game that nobody won.
         const bool victory = gameView->resultVictory();

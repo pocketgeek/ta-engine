@@ -1,165 +1,218 @@
 #include "client/loadscreen.h"
-#include "client/videofilter.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdlib>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-
 #include <vector>
 
 #include "util/png.h"
 #include "client/appquit.h"
+#include "client/artscale.h"
 #include "client/dev.h"
-#include "client/uitext.h"
-#include "client/font.h"
 #include "client/gpuvram.h"
-#include "client/appglobals.h"
-#include "client/settings.h"
-#include "gui/gui.h"
+#include "client/guiart.h"
+#include "client/tabeamdraw.h"
+#include "client/taguiview.h"
+#include "gaf/gaf.h"
 #include "hpi/hpi.h"
 
 namespace ta {
 
 namespace {
 
-// The gadget rects we care about, in the .gui's 640x480 space. Parsed from
-// guis/loadscreen.gui at construction; these are the shipped values, used when the
-// file is missing (a cosmetic-mods-only install, say) so the screen still works.
-struct Rect { float x, y, w, h; };
-
-struct Geom {
-    Rect loadText{17, 422, 490, 20};
-    Rect loadMap{401, 4, 227, 20};
-    Rect percent{520, 422, 94, 20};
-    Rect mainBar{19, 444, 597, 10};
-    Rect name[7] = {{8, 4, 102, 20},  {8, 42, 102, 20},  {8, 80, 102, 20}, {8, 118, 102, 20},
-                    {8, 156, 102, 20}, {8, 194, 102, 20}, {8, 232, 102, 20}};
-    Rect bar[7] = {{10, 26, 137, 10},  {10, 64, 137, 10},  {10, 102, 137, 10}, {10, 140, 137, 10},
-                   {10, 178, 137, 10}, {10, 216, 137, 10}, {10, 254, 137, 10}};
-    std::string bgGaf = "loadingbg", bgSeq = "LoadingBG";
-};
-
-Geom loadGeom(const hpi::Vfs& vfs) {
-    Geom g;
-    try {
-        gui::Gui ui = gui::parse(vfs.read("guis/loadscreen.gui"), "guis/loadscreen.gui");
-        auto take = [&](const char* n, Rect& r) {
-            if (const gui::Gadget* w = ui.find(n))
-                r = {float(w->x), float(w->y), float(w->w), float(w->h)};
-        };
-        take("LoadText", g.loadText);
-        take("LoadMap", g.loadMap);
-        take("Percent", g.percent);
-        take("MainProgress", g.mainBar);
-        for (int i = 0; i < 7; ++i) {
-            take(("PlayerName" + std::to_string(i)).c_str(), g.name[i]);
-            take(("PlayerProgress" + std::to_string(i)).c_str(), g.bar[i]);
-        }
-        if (!ui.gadgets.empty() && !ui.gadgets[0].imgs.empty()) {
-            const gui::ImgRef& im = ui.gadgets[0].imgs[0];
-            std::string base = im.gaf;
-            if (base.size() >= 4 && base.substr(base.size() - 4) == ".gaf")
-                base = base.substr(0, base.size() - 4);
-            g.bgGaf = base;
-            g.bgSeq = im.seq;
-        }
-    } catch (...) {}
-    return g;
-}
-
-const Geom& geom(const hpi::Vfs& vfs) {
-    static Geom g = loadGeom(vfs);
-    return g;
-}
-
-// The retail bars are plain filled rectangles over the plate art. Two tones so an
-// empty bar still reads as a bar rather than a hole in the background.
-void drawBar(SDL_Renderer* ren, const SDL_FRect& r, float frac) {
-    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(ren, 18, 14, 8, 190);
-    SDL_RenderFillRectF(ren, &r);
-    SDL_FRect fill = r;
-    fill.w = r.w * std::clamp(frac, 0.0f, 1.0f);
-    SDL_SetRenderDrawColor(ren, 214, 176, 92, 255);
-    SDL_RenderFillRectF(ren, &fill);
-    SDL_SetRenderDrawColor(ren, 92, 74, 40, 255);
-    SDL_RenderDrawRectF(ren, &r);
-}
-
-// The plate's arch aperture, measured from LoadingBG frame 0 (the stone frames a
-// 422x351 window). Loadscreen.bik is authored at exactly that size.
-constexpr float kArchX = 168, kArchY = 45, kArchW = 422, kArchH = 351;
-
-// Case-insensitive lookup of <install>/Movies/Gui/<name>: the retail folder ships
-// a mix of "Loadscreen.bik" and "SNORT4.BIK", and Linux cares.
-std::filesystem::path findMovie(const std::string& name) {
-    namespace fs = std::filesystem;
-    if (gInstallRoot.empty()) return {};
-    std::error_code ec;
-    auto lower = [](std::string v) {
-        for (char& c : v) c = char(std::tolower((unsigned char)c));
-        return v;
-    };
-    fs::path dir = fs::path(gInstallRoot);
-    for (const char* part : {"Movies", "Gui"}) {
-        fs::path found;
-        for (auto& e : fs::directory_iterator(dir, ec))
-            if (lower(e.path().filename().string()) == lower(part)) { found = e.path(); break; }
-        if (found.empty()) return {};
-        dir = found;
-    }
-    for (auto& e : fs::directory_iterator(dir, ec))
-        if (e.is_regular_file() && lower(e.path().filename().string()) == lower(name))
-            return e.path();
-    return {};
-}
+// TotalA.exe 0x4984dd..0x498c79: per part, the label at (90, y) and a bar from x 205,
+// 20 px high, 3.5 px per percent (pct * 7 / 2), with LIGHTBAR frame 0 over it at
+// (205, y). The y of each part, in LoadPart order.
+constexpr int kPartY[kLoadParts] = {135, 177, 218, 262, 304, 347};
+constexpr const char* kPartLabel[kLoadParts] = {"Textures", "Terrain", "Units",
+                                                "Animation", "3D Data", "Explosions"};
+constexpr float kLabelX = 90, kBarX = 205, kBarH = 20;
 
 }  // namespace
+
+// TotalA.exe's GAF text (0x4a50e0): the current GAF font -- anims\hattfont12.gaf, made
+// current at startup (0x491558..0x491592) -- in its own colours; the colour the caller
+// set applies only to the .FNT fallback. A non-zero `light` draws each opaque pixel as
+// PALETTE.LHT[light][pixel] (0x4b8310 -> 0x4cc3d0), the 32-row light table loaded at
+// startup (0x42e260). Glyphs are kept as palette indices and turned into textures per
+// light row on first use.
+struct LitFont {
+    struct Glyph { int w = 0, h = 0, xoff = 0, yoff = 0; std::vector<int16_t> idx; };   // -1 transparent
+    std::array<Glyph, 256> glyphs;
+    std::vector<uint8_t> lht;   // 32 x 256
+    gaf::Palette pal{};
+    std::array<std::array<SDL_Texture*, 256>, 32> tex{};
+    int baseline = 12;          // the font loader's yoff shift: 'I''s height (0x4aee56)
+
+    ~LitFont() {
+        for (auto& row : tex)
+            for (auto* t : row)
+                if (t) gpuvram::destroy(t);
+    }
+    bool load(const hpi::Vfs& vfs, const gaf::Palette& screen) {
+        gaf::Palette index{};
+        for (int i = 0; i < 256; ++i) {
+            index.rgba[i][0] = uint8_t(i); index.rgba[i][1] = 0;
+            index.rgba[i][2] = 0; index.rgba[i][3] = 255;
+        }
+        const auto seqs = gaf::load(vfs.read("anims/hattfont12.gaf"), index, -1, "anims/hattfont12.gaf");
+        if (seqs.empty()) return false;
+        const auto& s = seqs.front();
+        for (size_t ch = 0; ch < s.frames.size() && ch < 256; ++ch) {
+            const auto& f = s.frames[ch];
+            Glyph& g = glyphs[ch];
+            g.w = f.width; g.h = f.height; g.xoff = f.xoff; g.yoff = f.yoff;
+            g.idx.resize(size_t(f.width) * size_t(f.height));
+            for (size_t p = 0; p < g.idx.size(); ++p)
+                g.idx[p] = f.rgba[p * 4 + 3] ? int16_t(f.rgba[p * 4]) : int16_t(-1);
+        }
+        if (glyphs['I'].h > 0) baseline = glyphs['I'].h;
+        try { lht = vfs.read("palettes/palette.lht"); } catch (...) { lht.clear(); }
+        if (lht.size() < 32 * 256) {   // no table: every row is the identity (no flash)
+            lht.resize(32 * 256);
+            for (size_t p = 0; p < lht.size(); ++p) lht[p] = uint8_t(p & 255);
+        }
+        pal = screen;
+        return true;
+    }
+    SDL_Texture* glyph(SDL_Renderer* ren, unsigned char c, int light) {
+        light = std::clamp(light, 0, 31);
+        SDL_Texture*& t = tex[size_t(light)][c];
+        const Glyph& g = glyphs[c];
+        if (t || g.w <= 0 || g.h <= 0) return t;
+        std::vector<uint8_t> rgba(g.idx.size() * 4, 0);
+        for (size_t p = 0; p < g.idx.size(); ++p) {
+            if (g.idx[p] < 0) continue;
+            const uint8_t i = light ? lht[size_t(light) * 256 + size_t(g.idx[p])] : uint8_t(g.idx[p]);
+            rgba[p * 4] = pal.rgba[i][0]; rgba[p * 4 + 1] = pal.rgba[i][1];
+            rgba[p * 4 + 2] = pal.rgba[i][2]; rgba[p * 4 + 3] = 255;
+        }
+        t = art::makeTexture(ren, rgba, g.w, g.h);
+        return t;
+    }
+    int width(const std::string& s) const {
+        int w = 0;
+        for (unsigned char c : s) if (c >= 0x20) w += glyphs[c].w;
+        return w;
+    }
+    // y is the top of the line: each glyph at (x - xoff, y + baseline - yoff).
+    void draw(SDL_Renderer* ren, const GuiLayout& L, float x, float y, const std::string& s, int light) {
+        for (unsigned char c : s) {
+            if (c < 0x20) continue;
+            const Glyph& g = glyphs[c];
+            if (c != ' ')
+                if (SDL_Texture* t = glyph(ren, c, light)) {
+                    const SDL_FRect r = L.rect(x - float(g.xoff), y + float(baseline - g.yoff), float(g.w), float(g.h));
+                    SDL_RenderCopyF(ren, t, nullptr, &r);
+                }
+            x += float(g.w);
+        }
+    }
+};
 
 LoadScreen::LoadScreen(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::string& mapName,
                        Settings* settings)
     : ren_(ren), vfs_(&vfs), settings_(settings), map_(mapName) {
-    if (settings_) ta::video::setDeblock(settings_->videoDeblock);
-    const Geom& g = geom(vfs);
-    bg_ = gafTexture(ren, vfs, g.bgGaf, g.bgSeq, 0, /*keyBlack=*/true);
     const char* drv = SDL_GetCurrentVideoDriver();
-    headless_ = drv && !std::strcmp(drv, "dummy");
-    done_.fill(false);
-    if (!headless_) {
-        if (std::filesystem::path mv = findMovie("Loadscreen.bik"); !mv.empty()) {
-            std::ifstream f(mv, std::ios::binary);
-            std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),
-                                      std::istreambuf_iterator<char>());
-            if (!data.empty() && movie_.open(std::move(data))) {
-                movieTex_ = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
-                                            SDL_TEXTUREACCESS_STREAMING,
-                                            movie_.width(), movie_.height());
-                if (movieTex_) SDL_SetTextureBlendMode(movieTex_, SDL_BLENDMODE_NONE);
-                movieStartMs_ = SDL_GetTicks64();
+    headless_ = drv && !std::strcmp(drv, "dummy") && !devEnv("TA_SHOT_LOAD");
+    part_.fill(0);
+    if (headless_) return;
+    // 0x498170: loadgame2bg.pcx is the backdrop, and in 8-bit its palette is the
+    // screen's: the guipal colour map (0x4ac7d0) and LIGHTBAR resolve through it.
+    gaf::Palette pal{};
+    bool havePal = false;
+    try {
+        const std::string pcx = "bitmaps/loadgame2bg.pcx";
+        const auto bytes = vfs.read(pcx);
+        const auto img = gaf::loadPcx(bytes, pcx);
+        bg_ = art::makeTexture(ren, img.rgba, img.width, img.height);
+        pal = gaf::Palette::fromBytes(bytes, pcx);
+        havePal = true;
+    } catch (...) {}
+    if (havePal) {
+        try {
+            const auto gui = gaf::Palette::fromBytes(vfs.read("palettes/guipal.pal"), "palettes/guipal.pal");
+            const auto map = taGuiColourMap(gui.rgba, pal.rgba);
+            auto colour = [&](int i) {
+                const auto& c = pal.rgba[map[size_t(i)]];
+                return SDL_Color{c[0], c[1], c[2], 255};
+            };
+            darkRed_ = colour(4);
+            green_ = colour(10);
+            red_ = colour(12);
+            white_ = colour(15);
+        } catch (...) {}
+        try {
+            for (auto& sq : gaf::load(vfs.read("anims/commongui.gaf"), pal, -1, "anims/commongui.gaf")) {
+                if (sq.name != "LIGHTBAR" || sq.frames.empty()) continue;
+                const auto& f = sq.frames[0];
+                if (f.width > 0 && f.height > 0) {
+                    lightbar_ = art::makeTexture(ren, f.rgba, f.width, f.height);
+                    lightW_ = f.width;
+                    lightH_ = f.height;
+                }
+                break;
             }
-        }
+        } catch (...) {}
     }
+    // Text goes through 0x4a50e0: hattfont12.gaf while there is a current GAF font
+    // (always, in retail). fonts\smlfont.fnt (0x42a375, selected at 0x498603) is the
+    // .FNT font; its height places the map line, and it draws if the GAF is missing.
+    lit_ = std::make_unique<LitFont>();
+    try { if (!havePal || !lit_->load(vfs, pal)) lit_.reset(); } catch (...) { lit_.reset(); }
+    try {
+        const auto fnt = vfs.read("fonts/smlfont.fnt");
+        if (fnt.size() >= 2) fntHeight_ = fnt[0] | (fnt[1] << 8);
+        if (!lit_) {
+            font_ = std::make_unique<TaFont>();
+            if (!font_->loadFnt(ren, fnt, SDL_Color{255, 255, 255, 255})) font_.reset();
+        }
+    } catch (...) { font_.reset(); }
+    if (!fntHeight_) fntHeight_ = lit_ ? lit_->baseline : 12;
 }
 
 LoadScreen::~LoadScreen() {
     if (bg_) gpuvram::destroy(bg_);
-    if (movieTex_) gpuvram::destroy(movieTex_);
+    if (lightbar_) gpuvram::destroy(lightbar_);
 }
 
-void LoadScreen::setPlayers(const std::array<std::string, ta::net::kMaxSlots>& names, int you) {
+void LoadScreen::setPlayers(const std::array<std::string, ta::net::kMaxSlots>& names, int you,
+                            bool network) {
     names_ = names;
     you_ = you;
+    network_ = network;
 }
 
-void LoadScreen::setSlotDone(int slot) {
-    if (slot >= 0 && slot < ta::net::kMaxSlots) done_[size_t(slot)] = true;
+void LoadScreen::setSlotPercent(int slot, int pct) {
+    if (slot >= 0 && slot < ta::net::kMaxSlots)
+        slotPct_[size_t(slot)] = std::max(slotPct_[size_t(slot)], std::clamp(pct, 0, 100));
 }
 
-void LoadScreen::step(const std::string& status, int pct) {
-    status_ = status;
-    pct_ = std::clamp(pct, 0, 100);
+void LoadScreen::setPartQuiet(LoadPart part, int pct) {
+    part_[size_t(part)] = std::clamp(pct, 0, 100);
+    partsShown_ = true;
+    if (const int now = localPercent(); now != reported_ && onProgress) {
+        reported_ = now;
+        onProgress(now);
+    }
+}
+
+void LoadScreen::setPart(LoadPart part, int pct) {
+    setPartQuiet(part, pct);
     present();
+}
+
+void LoadScreen::step(const std::string& status) {
+    status_ = status;
+    present();
+}
+
+// 0x456de0: a player's own progress is the mean of the six parts.
+int LoadScreen::localPercent() const {
+    int sum = 0;
+    for (int p : part_) sum += p;
+    return sum / kLoadParts;
 }
 
 void LoadScreen::present() {
@@ -177,7 +230,11 @@ void LoadScreen::present() {
     SDL_SetRenderTarget(ren_, nullptr);
     SDL_RenderSetScale(ren_, 1.0f, 1.0f);
     draw();
-    if (const char* sp = devEnv("TA_SHOT_LOAD")) {
+    // TA_SHOT_LOAD=<png>: the screen as last presented; TA_SHOT_LOAD_AT=<n> keeps the
+    // n-th present (1-based) instead, to see a part mid-load.
+    ++presents_;
+    const char* at = devEnv("TA_SHOT_LOAD_AT");
+    if (const char* sp = devEnv("TA_SHOT_LOAD"); sp && (!at || std::atoi(at) == presents_)) {
         int w = 0, h = 0;
         SDL_GetRendererOutputSize(ren_, &w, &h);
         std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
@@ -190,102 +247,93 @@ void LoadScreen::present() {
 }
 
 void LoadScreen::draw() {
+    if (headless_) return;
     int w = 0, h = 0;
     SDL_GetRendererOutputSize(ren_, &w, &h);
+    // Retail switches to 640x480 for the load (0x49802b); we scale that screen up.
     GuiLayout lay(w, h);
-    const Geom& g = geom(*vfs_);
 
+    SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
     SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
     SDL_RenderClear(ren_);
-    // The clip goes in the arch first; the stone plate then draws over it, so the
-    // rounded aperture masks the rectangular video exactly the way retail's did.
-    if (movieTex_ && movie_.isOpen()) {
-        // The clip is driven by BOTH the wall clock and the load progress, taking
-        // whichever is further along:
-        //   * wall clock, so it plays at its own speed while there is time;
-        //   * progress, so a FAST load still shows the whole arc of the clip
-        //     instead of its first second. The screen only advances the movie when
-        //     it is drawn, and a load fires as few as four step() calls, so a quick
-        //     start used to get about four frames of video.
-        // It never runs backwards, so the two can only ever pull it forward.
-        double fps = movie_.fps() > 1 ? movie_.fps() : 15.0;
-        int want = int(double(SDL_GetTicks64() - movieStartMs_) * fps / 1000.0);
-        if (int total = movie_.frameCount(); total > 1) {
-            int byPct = int(double(std::clamp(pct_, 0, 100)) / 100.0 * double(total - 1));
-            want = std::max(want, byPct);
-        }
-        // Decoding is forward-only, so catching up on a big jump costs real time.
-        // Measured on the shipped Loadscreen.bik (422x351, 234 frames, 20fps =
-        // 11.7s of video): 0.39 ms/frame, the whole clip in 91 ms. 96 frames is
-        // therefore ~37 ms of catch-up in the worst draw, and four step() calls
-        // can cover the entire clip -- while still bounding the cost if someone
-        // drops a much longer video in.
-        constexpr int kMaxCatchUp = 96;
-        if (want > movieFrame_ + kMaxCatchUp) want = movieFrame_ + kMaxCatchUp;
-        while (movieFrame_ < want) {
-            if (!movie_.nextFrame(movieRgba_)) { movie_.rewind(); movieStartMs_ = SDL_GetTicks64();
-                                                 movieFrame_ = -1; want = 0; continue; }
-            // Filter the freshly DECODED frame only. The upload below runs every frame,
-            // including ones where no new frame was decoded, so filtering there would
-            // smear a held frame progressively.
-            if (ta::video::g_deblock)
-                ta::video::deblock(movieRgba_, movie_.width(), movie_.height(), 3);
-            ++movieFrame_;
-        }
-        if (!movieRgba_.empty())
-            SDL_UpdateTexture(movieTex_, nullptr, movieRgba_.data(), movie_.width() * 4);
-        SDL_FRect r = lay.rect(kArchX, kArchY, kArchW, kArchH);
-        SDL_RenderCopyF(ren_, movieTex_, nullptr, &r);
-    }
     if (bg_) {
-        SDL_FRect r = lay.rect(0, 0, 640, 480);
+        const SDL_FRect r = lay.rect(0, 0, 640, 480);
         SDL_RenderCopyF(ren_, bg_, nullptr, &r);
     }
-
-    // The retail screen sets every label in Times New Roman; fall back to the built-in
-    // block font so a missing font GAF costs legibility, not the whole screen.
-    if (!fontTried_) {
-        fontTried_ = true;
-        try { font_ = Font(ren_, *vfs_, "fonts/b_times new roman (100).gaf", FontRole::Text); } catch (...) {}
-        if (!font_.ok())
-            try { font_ = Font(ren_, *vfs_, "fonts/times new roman (100).gaf", FontRole::Text); } catch (...) {}
-    }
-    const Font& font = font_;
-    // Font::draw lifts each glyph by its own y-offset, so a naive y clips the text
-    // off the top of a gadget sitting at the screen edge. Centre it in the rect using
-    // the font's real vertical bounds instead.
-    auto label = [&](const std::string& s, const Rect& r, SDL_Color c) {
+    auto fill = [&](float x, float y, float fw, float fh, SDL_Color c) {
+        if (fw <= 0 || fh <= 0) return;
+        SDL_SetRenderDrawColor(ren_, c.r, c.g, c.b, 255);
+        const SDL_FRect r = lay.rect(x, y, fw, fh);
+        SDL_RenderFillRectF(ren_, &r);
+    };
+    auto text = [&](const std::string& s, float x, float y, SDL_Color c, int light = 0) {
         if (s.empty()) return;
-        if (font.ok()) {
-            float sc = lay.scale * (r.h / 20.0f);
-            float top = 0, th = 0;
-            font.vbounds(s, sc, top, th);
-            float y = lay.py(r.y) + (r.h * lay.scale - th) / 2 - top;
-            font.draw(ren_, s, lay.px(r.x), y, sc, c);
-        } else {
-            float px = std::max(1.0f, lay.scale * 1.6f);
-            uiText(ren_, s, lay.px(r.x), lay.py(r.y) + (r.h * lay.scale - 7 * px) / 2, px, c);
-        }
+        if (lit_) lit_->draw(ren_, lay, x, y, s, light);
+        else if (font_) font_->draw(ren_, lay, x, y, s, c);
+    };
+    auto textWidth = [&](const std::string& s) {
+        return lit_ ? lit_->width(s) : font_ ? font_->width(s) : 0;
     };
 
-    const SDL_Color gold{236, 214, 160, 255};
-    label(map_, g.loadMap, gold);
-    label(status_, g.loadText, gold);
-    label(std::to_string(pct_) + "%", g.percent, gold);
-    drawBar(ren_, lay.rect(g.mainBar.x, g.mainBar.y, g.mainBar.w, g.mainBar.h), pct_ / 100.0f);
-
-    // One row per player in the game (retail's plate has seven), so a multiplayer
-    // start shows exactly who is still loading. Our own row tracks the real
-    // percentage; a peer's fills when the server says they reported in. Rows pack
-    // upward -- an open slot in the middle doesn't leave a gap.
-    int row = 0;
-    for (int i = 0; i < ta::net::kMaxSlots && row < 7; ++i) {
-        if (names_[size_t(i)].empty()) continue;   // open/closed slot: no row
-        label(names_[size_t(i)], g.name[row], gold);
-        float frac = (i == you_) ? pct_ / 100.0f : (done_[size_t(i)] ? 1.0f : 0.0f);
-        drawBar(ren_, lay.rect(g.bar[row].x, g.bar[row].y, g.bar[row].w, g.bar[row].h), frac);
-        ++row;
+    // The flash clock: one -2 step a frame at most, when the 30 Hz tick has moved.
+    if (const uint64_t now = SDL_GetTicks64() * 30 / 1000; flashTick_ < now) {
+        flashTick_ = now;
+        for (auto& f : flash_) if (f) f = uint8_t(f - 2);
     }
+
+    // The six parts. Label and bar share one colour: guipal 12 (red) while the part
+    // loads, guipal 10 (green) once it reaches 100.
+    if (partsShown_) {
+        for (int i = 0; i < kLoadParts; ++i) {
+            const int pct = part_[size_t(i)];
+            const SDL_Color c = pct < 100 ? red_ : green_;
+            const float y = float(kPartY[i]);
+            // A part reaching 100 lights its label from row 30 (0x498786..0x498796).
+            if (pct == 100 && shownPct_[size_t(i)] != 100) flash_[size_t(i)] = 30;
+            shownPct_[size_t(i)] = pct;
+            text(kPartLabel[i], kLabelX, y, c, flash_[size_t(i)]);
+            fill(kBarX, y, float(pct * 7 / 2), kBarH, c);
+            if (lightbar_) {
+                const SDL_FRect r = lay.rect(kBarX, y, float(lightW_), float(lightH_));
+                SDL_RenderCopyF(ren_, lightbar_, nullptr, &r);
+            }
+        }
+    }
+
+    // 0x498647: "Map: <name>", centred, 1.5 font heights above the bottom, guipal 15.
+    if (!map_.empty()) {
+        const std::string s = "Map: " + map_;
+        text(s, float((640 - textWidth(s)) / 2), 480.0f - 1.5f * float(fntHeight_), white_);
+    }
+
+    // 0x497ce0, network games: a cell per player across 620 px from x 11, y 420..435,
+    // guipal 4 with the player's progress in guipal 10 and the name over it; above
+    // it at (10, 400) how many are ready, or "Synchronization complete".
+    std::string line = status_;
+    if (network_) {
+        int players = 0, ready = 0;
+        for (int i = 0; i < ta::net::kMaxSlots; ++i)
+            if (!names_[size_t(i)].empty()) ++players;
+        if (players > 0) {
+            const int cell = 620 / players;
+            float x = 11;
+            for (int i = 0; i < ta::net::kMaxSlots; ++i) {
+                if (names_[size_t(i)].empty()) continue;
+                const int pct = i == you_ ? std::max(localPercent(), slotPct_[size_t(i)])
+                                          : slotPct_[size_t(i)];
+                if (pct >= 100) ++ready;
+                fill(x, 420, float(cell - 2), 15, darkRed_);
+                fill(x, 420, float(pct * (cell - 2) / 100), 15, green_);
+                text(names_[size_t(i)], x, 420, white_);
+                x += float(cell);
+            }
+            if (line.empty())
+                line = ready == players ? std::string("Synchronization complete")
+                                        : "Waiting for other players.  " + std::to_string(ready) +
+                                              (ready == 1 ? " player ready" : " players ready");
+        }
+    }
+    text(line, 10, 400, white_);
     (void)settings_;
 }
 

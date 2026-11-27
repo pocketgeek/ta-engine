@@ -763,6 +763,7 @@ void MpClient::onFrame(const Frame& f) {
             }
             missionOutcome_ = 0;   // fresh game/replay
             slotLoaded_.fill(false);
+            slotLoadPct_.fill(0);
 
             // Snapshot the starting slot table for a replay header, before forfeits
             // and drops rewrite the live one.
@@ -797,10 +798,12 @@ void MpClient::onFrame(const Frame& f) {
             break;
         }
         case Msg::PlayerStatus: {
-            // slot, status (0=connected 1=dropped 2=loaded), ping. Only the loaded
-            // flag is consumed today -- it fills that player's loading-screen bar.
+            // slot, status (0=connected 1=dropped 2=loaded 3=loading), value. The
+            // loading screen's player strip reads loaded and loading (value = percent).
             uint8_t slot = r.u8(), status = r.u8();
+            const uint32_t value = r.u32();
             if (r.ok && slot < kMaxSlots && status == 2) slotLoaded_[slot] = true;
+            if (r.ok && slot < kMaxSlots && status == 3) slotLoadPct_[slot] = uint8_t(std::min<uint32_t>(value, 100));
             break;
         }
         case Msg::Pause: paused_ = true; break;
@@ -1089,6 +1092,12 @@ void MpClient::startGame() { startRequested_ = true; startError_.clear(); }
 // ---- game play ------------------------------------------------------------
 
 void MpClient::reportLoaded(uint64_t dataHash) { Writer w; w.u64(dataHash); send(Msg::Loaded, w); }
+void MpClient::reportLoadProgress(int percent) {
+    if (spectator_ || room_.mySlot < 0) return;
+    Writer w; w.u8(uint8_t(std::clamp(percent, 0, 100)));
+    send(Msg::LoadProgress, w);
+    conn_.flushWrite();   // the load blocks poll(): push it now (non-blocking)
+}
 
 void MpClient::spectate(uint32_t gameId, const std::string& password) {
     if(roomRequestPending_)return;

@@ -342,11 +342,46 @@ All front-end GUIs are 640×480 (container 0,0,640,480) unless noted. The backdr
 | — Game list | SELGAME.GUI | `selectgame2x` | `0x443ccb` | GAMENAME / PLAYERS / MAPNAME / STATUS… lists, JOINGAME, STARTNEW, WATCH, UPDATE, NICKNAME, PASSWORD, PREVMENU |
 | — New game | NEWMULTI.GUI | `createnew` | `0x441093` | GAMENAME / NICKNAME / PASSWORD; OK "Next"; CANCEL |
 | — Battle room | LOUNGE2.GUI | `battleroom` | `0x449c91` | per-player rows (PLAYERx / SIDEx / ALLYx / READYx / RESx / LOGOx / PINGx / MEMx), MESSAGE + OUTPUT chat, MAP→VIEWMAP / SELMAP, COMMANDER `Continues|Game ends|Deathmatch`, MAPPING, LOSTYPE `True|Circular|Permanent`, CHEATING, FIXEDLOC `Random|Fixed`, WATCHING, GAMEOPEN, METAL / ENERGY / MAXUNITS sliders, RESTRICTIONS→RESTRICT2.GUI (`UnitRestrict5x`; save and load lists use SAVELIST / LOADLIST with `DSaveList` / `DLoadList`), START, PREVMENU; LOGOSEL.GUI picks a team logo (`logos.gaf`) |
-| Mission end (campaign) | ENDMSN.GUI | `outcome1` / `outcome0` (one each for victory and defeat) | `0x41f0d4` | Start (next mission), LoadGame, SaveGame, MainMenu, Missions list, Difficulty |
-| Multiplayer end | ENDMULTI.GUI | ? | `0x44b089` | OK, RESULT |
+| Game end (all modes) | ENDMSN.GUI | `outcome1` (a campaign that can go on) / `outcome0` (anything else: skirmish, multiplayer, the campaign's last win) | `0x41f0d4` | Start (next mission), LoadGame, SaveGame, MainMenu, Missions list, Difficulty; on `outcome0` only MainMenu shows (`0x41f400`, retail-campaign.md 4.3) |
+| Multiplayer end | ENDMULTI.GUI | ? | `0x44b089` | OK, RESULT ("Victory" / "Failure", `0x44b0ab`) |
+| Game loading | none (code-drawn) | `bitmaps/loadgame2bg.pcx` | `0x497f40` | see "Loading screen" below |
 | Score reporting | REPORT.GUI | `scorebg` | `0x4435b5` | CHK0..15 checkboxes, OK |
 | Popups | YESORNO, MSGBOX, CDCHECK, CONFIRM*, CHOICE3*, INPUT*, NOTEXIST*, FILEREQ* (*not shipped) | — | `0x4abb27`… | CHOICE1 / CHOICE2 / TITLE; OK |
 | Credits | CREDITS.GUI (state 9) | ? | [U] | OK |
+
+### Loading screen [C]
+
+`0x497f40` (statically read, not run). Retail switches to 640x480 for the load
+(`0x49802b`), loads `bitmaps\loadgame2bg.pcx` (`0x498170`; the art carries "LOADING..."
+and six label plates) and builds the guipal colour map (game +0xdcb, `0x4ac7d0`). The
+loading runs on its own thread (`0x497c70`); the foreground redraws:
+
+- **Six parts**, each a 0..100 byte at game +0x38d6f..+0x38d74: Textures (y 135), Terrain
+  (177), Units (218), Animation (262), 3D Data (304), Explosions (347). Label at (90, y);
+  bar from (205, y), 20 px high, `pct * 7 / 2` wide (`0x4bf6f0`) in colour map entry 12
+  (red) below 100, 10 (green) at 100; `LIGHTBAR` frame 0 of `anims\commongui.gaf`
+  (351x21) blitted over it at (205, y), anchor zeroed (`0x49874f`).
+- **Text** (`0x4a50e0`): drawn in the current GAF font, `anims\hattfont12.gaf` (made
+  current at startup, `0x491558..0x491592`), in its own colours: the colour set before
+  it applies only to the `.FNT` fallback (`0x4c14f0`, `fonts\smlfont.fnt`), taken when
+  there is no GAF font. y is the line's top (the loader shifts each glyph's yoff by
+  'I''s height, `0x4aee56`); the `-1` argument is "no width clip".
+- **Label flash**: when a part reaches 100 its counter (`0x51e6c8 + i`) is set to 30
+  (`0x498796`), and each draw pass with a new 30 Hz tick (`0x4b6340`, rate set at
+  `0x49e98f`) takes 2 off every non-zero counter (`0x4985cc..0x4985fb`, one step a
+  pass): ~0.5 s. The counter is the label's light row: each opaque glyph pixel is
+  drawn as `PALETTE.LHT[row * 256 + pixel]` (`0x4b8310` -> `0x4cc3d0`), the 32 x 256
+  light table from `palettes\palette.lht` (`0x42e260`; built at `0x4babd0` scaling by
+  1 + row/30 if missing). hattfont12's face (index 66) goes white for rows 30..20 and
+  fades back through cream.
+- **Map line** (`0x498647`), unless the game is a campaign: `"Map: <name>"` centred,
+  y = screen height - 1.5 x the `.FNT` font's height (`0x4c1450`).
+- **Network game** (`0x497ce0`, from `0x498c99`): over 620 px from x 11, one cell per
+  player (620 / N wide, drawn 2 px narrower), y 420..435, colour map 4 with the player's
+  progress (+0x20; the local one is the mean of the six parts, `0x456de0`, sent to peers
+  as packet 0x2a) in colour map 10 and the name at (x, 420). At (10, 400):
+  `"Waiting for other players.  N player(s) ready"` (ready = progress 100), or
+  `"Synchronization complete"` once sync flag bit 3 is set.
 
 ### Skirmish defaults [C]
 

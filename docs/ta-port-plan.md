@@ -1112,5 +1112,8 @@ None left: see "Resolved (close-final pass, 2026-11-25)".
   540-high canvas), the diplomacy panel shrinks to fit eleven rows, the skirmish
   front end's ally groups take their first member's slot as the team (the old
   `10 + group` folded onto other seats' teams under `team % kMaxSlots`).
-- Open: retail's load screen plate has seven player rows (guis/loadscreen.gui),
-  so a game of eight or more shows the first seven.
+- Load screen: TA's own (retail-gui.md "Loading screen": loadgame2bg.pcx, six part
+  bars in hattfont12 with the light-table flash, map line, network player strip fed
+  by Msg::LoadProgress, retail's packet 0x2a). A client's own load blocks its poll,
+  so peers' cells move only between its parts and after; the 3D Data and Explosions
+  parts fill at the end, as their art loads on first use.
