@@ -17,6 +17,7 @@
 #include "client/dev.h"
 #include "client/gpuvram.h"
 #include "client/guiart.h"
+#include "client/guisound.h"
 #include "client/artscale.h"
 #include "sim/sides.h"
 #include "client/font.h"
@@ -193,6 +194,8 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     }
     const bool oneButton = endmsn != nullptr;
     if (oneButton) {
+        // ENDMSN's handler plays BigButton for MainMenu (0x41ee3e, client/guisound.h).
+        g.menuSound = guisound::frontEnd("ENDMSN", "MAINMENU");
     } else if (!g.bgPcx.empty()) {
         try {
             const auto img = gaf::loadPcx(vfs.read(g.bgPcx), g.bgPcx);
@@ -267,7 +270,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
         sfx.play(sound);
         if (press)
             std::fprintf(stderr, "result click: choice=%d sound=%s queued=%d\n", int(c),
-                         sound.c_str(), int(sfx.busy()));
+                         sfx.last.c_str(), int(sfx.busy()));
     };
 
     // TA's table (TotalA.exe 0x41e420): per row a bar cell for each column, counting up
@@ -313,6 +316,9 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             ev.button.x = int((r.x + r.w / 2) / perPoint);
             ev.button.y = int((r.y + r.h / 2) / perPoint);
             SDL_PushEvent(&ev);
+            ev.type = SDL_MOUSEBUTTONUP;   // ENDMSN's button fires on the release
+            ev.button.state = SDL_RELEASED;
+            SDL_PushEvent(&ev);
         }
 
         int mx = 0, my = 0;
@@ -337,6 +343,19 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                 // Replaying a mission you just won isn't on retail's plate; the key is
                 // here because the campaign screen is the only other way back in.
                 if (k == SDLK_r) choose(ResultChoice::Retry, g.proceedSound);
+            }
+            if (oneButton) {
+                // The GUI runtime drives MainMenu as the front end's ENDMSN does: its
+                // pressed frame while held, the choice on release over it.
+                if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
+                    SDL_Event pe = e;
+                    pe.button.x = hidpi::toPixels(ren, e.button.x);   // layout is in output pixels
+                    pe.button.y = hidpi::toPixels(ren, e.button.y);
+                    const std::string hit = endmsn->handle(pe, lay);
+                    if (!hit.empty() && guisound::upper(hit) == "MAINMENU")
+                        choose(ResultChoice::Menu, g.menuSound);
+                }
+                continue;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 float bx = float(hidpi::toPixels(ren, e.button.x)), by = float(hidpi::toPixels(ren, e.button.y));

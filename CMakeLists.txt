@@ -1812,20 +1812,13 @@ if(TA_TEST_DATA)
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_DIPLOMACY_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: diplomacy hotkey, roster, defaults, checkboxes, voice column, volume sliders"
             TIMEOUT 60)
-        # The result plate's buttons (TA's outcome0.pcx plate, which has no .gui) play
-        # retail's big-button click, BIGBUTTON = butmain1 (allsound.tdf), on the press.
-        foreach(result_press IN ITEMS menu proceed)
-            set(result_env "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_RESULT_PRESS=${result_press};TA_SHOT_RESULT=${CMAKE_CURRENT_BINARY_DIR}/result-click-${result_press}.png;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile/settings.ini")
-            if(result_press STREQUAL "menu")
-                set(result_pass "result click: choice=0 sound=butmain1.wav queued=1")
-            else()
-                list(APPEND result_env "TA_SHOT_RESULT_LOSE=1")   # a lost mission's Proceed is Retry
-                set(result_pass "result click: choice=1 sound=butmain1.wav queued=1")
-            endif()
-            add_test(NAME result_click_${result_press} COMMAND taclient --data "${TA_TEST_DATA}")
-            set_tests_properties(result_click_${result_press} PROPERTIES ENVIRONMENT "${result_env}"
-                PASS_REGULAR_EXPRESSION "${result_pass}" TIMEOUT 60)
-        endforeach()
+        # The result plate's Main Menu (TA's outcome0.pcx plate, ENDMSN's one button) plays
+        # retail's big-button click, BIGBUTTON = butmain1 (allsound.tdf), on the release,
+        # through the GUI runtime (TA_RESULT_PRESS sends press and release).
+        set(result_env "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_RESULT_PRESS=menu;TA_SHOT_RESULT=${CMAKE_CURRENT_BINARY_DIR}/result-click-menu.png;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile/settings.ini")
+        add_test(NAME result_click_menu COMMAND taclient --data "${TA_TEST_DATA}")
+        set_tests_properties(result_click_menu PROPERTIES ENVIRONMENT "${result_env}"
+            PASS_REGULAR_EXPRESSION "result click: choice=0 sound=butmain1.wav queued=1" TIMEOUT 60)
         # GUI sounds through the real paths: a click on the title screen's EXIT (TA's
         # front end, TA_FRONT_SCRIPT) and on the sidebar's order buttons (taHudEvent)
         # request retail's allsound.tdf entry and queue its WAV.
