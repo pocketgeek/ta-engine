@@ -592,6 +592,7 @@ std::string defaultGameName(const std::string& player) {
                 return !base.empty() && installed.count(lower(base));
             });
         }
+        if (progress) progress->setPart(ta::LobbyPart::MapList, 100);
         size_t completed=0;
         uint64_t lastProgress=0;
         for (const auto& [name, path] : maps) {
@@ -632,10 +633,12 @@ std::string defaultGameName(const std::string& player) {
             mapList_.push_back(std::move(mi));
             ++completed;
             if (progress && (completed==maps.size() || SDL_GetTicks64()-lastProgress>=100)) {
+                progress->setPartQuiet(ta::LobbyPart::Maps, int(completed * 100 / maps.size()));
                 progress->step("Reading maps "+std::to_string(completed)+" / "+std::to_string(maps.size()));
                 lastProgress=SDL_GetTicks64();
             }
         }
+        if (progress) progress->setPartQuiet(ta::LobbyPart::Maps, 100);
         sortMapList();
     }
 

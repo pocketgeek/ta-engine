@@ -31,6 +31,10 @@ struct LitFont;
 enum class LoadPart { Textures, Terrain, Units, Animation, Model3D, Explosions };
 inline constexpr int kLoadParts = 6;
 
+// The same six plates while the front end sets up a lobby (no retail equivalent:
+// retail's lobby needs no server or map scan). useLobbyParts() relabels them.
+enum class LobbyPart { GameData, Server, SignIn, GameRoom, MapList, Maps };
+
 class LoadScreen {
 public:
     // `mapName` empty hides the map line (retail hides it in a campaign).
@@ -61,6 +65,13 @@ public:
     void setPartQuiet(LoadPart part, int pct);
     // ...and draw and present.
     void setPart(LoadPart part, int pct);
+    void setPartQuiet(LobbyPart part, int pct) { setPartQuiet(LoadPart(int(part)), pct); }
+    void setPart(LobbyPart part, int pct) { setPart(LoadPart(int(part)), pct); }
+
+    // The lobby setup's labels on the plates, every bar shown from 0. With
+    // `showStatus` false step() still presents but its line is not drawn (a skirmish
+    // has the bars only, like the game's own load; a remote server's waits say why).
+    void useLobbyParts(bool showStatus);
 
     // A status line instead of the bars (the engine's connect-and-prepare screens,
     // which retail has no equivalent of): drawn where retail's waiting line goes.
@@ -98,6 +109,8 @@ private:
               white_{255, 255, 255, 255};
     std::string map_, status_;
     std::array<int, kLoadParts> part_{};
+    std::array<const char*, kLoadParts> labels_{};
+    bool showStatus_ = true;
     bool partsShown_ = false;
     std::array<std::string, ta::net::kMaxSlots> names_{};
     std::array<int, ta::net::kMaxSlots> slotPct_{};

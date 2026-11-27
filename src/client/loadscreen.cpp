@@ -203,6 +203,12 @@ void LoadScreen::setPart(LoadPart part, int pct) {
     present();
 }
 
+void LoadScreen::useLobbyParts(bool showStatus) {
+    labels_ = {"Game Data", "Server", "Sign In", "Game Room", "Map List", "Maps"};
+    showStatus_ = showStatus;
+    for (int i = 0; i < kLoadParts; ++i) setPartQuiet(LoadPart(i), 0);
+}
+
 void LoadScreen::step(const std::string& status) {
     status_ = status;
     present();
@@ -291,7 +297,7 @@ void LoadScreen::draw() {
             // A part reaching 100 lights its label from row 30 (0x498786..0x498796).
             if (pct == 100 && shownPct_[size_t(i)] != 100) flash_[size_t(i)] = 30;
             shownPct_[size_t(i)] = pct;
-            text(kPartLabel[i], kLabelX, y, c, flash_[size_t(i)]);
+            text(labels_[size_t(i)] ? labels_[size_t(i)] : kPartLabel[i], kLabelX, y, c, flash_[size_t(i)]);
             fill(kBarX, y, float(pct * 7 / 2), kBarH, c);
             if (lightbar_) {
                 const SDL_FRect r = lay.rect(kBarX, y, float(lightW_), float(lightH_));
@@ -333,7 +339,7 @@ void LoadScreen::draw() {
                                               (ready == 1 ? " player ready" : " players ready");
         }
     }
-    text(line, 10, 400, white_);
+    if (showStatus_ || network_) text(line, 10, 400, white_);
     (void)settings_;
 }
 

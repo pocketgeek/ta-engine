@@ -1623,6 +1623,7 @@ int main(int argc, char** argv) {
     if (fromMenu && (menuInteractive || menuMultiplayer) && campaignStem.empty() && !benchmarkLaunch) {
         // The loading backdrop with a status line: no map yet, so no map line.
         lobbyLoading=std::make_unique<ta::LoadScreen>(ren,vfs,std::string(),&settings);
+        lobbyLoading->useLobbyParts(menuMultiplayer);   // a skirmish shows the bars only
         lobbyLoading->step(menuMultiplayer ? "Connecting..." : "Starting...");
     }
 
@@ -1704,6 +1705,7 @@ int main(int argc, char** argv) {
                     ta::hpi::mountRetailRoot(ta::u8path(dataRoot)));
             mp->setDataHash(retailHash);
         }
+        if (lobbyLoading) lobbyLoading->setPartQuiet(ta::LobbyPart::GameData, 100);
         // A freshly-spawned local server takes a moment to mount + listen (~0.25s
         // warm); poll fast so single-player doesn't pay coarse-sleep quantization.
         // Credentials for a server that requires an account. A local single-player
@@ -1760,6 +1762,7 @@ int main(int argc, char** argv) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
         }
+        if (ok && lobbyLoading) lobbyLoading->setPart(ta::LobbyPart::Server, 100);
         if (!ok) {
             const std::string why = !serverDied.empty() ? serverDied
                                   : !transportWhy.empty() ? transportWhy
@@ -1812,6 +1815,7 @@ int main(int argc, char** argv) {
             if (tokenFallback() || failLaunch(why)) continue;   // back where it was picked, the reason in red
             return 1;
         }
+        if (lobbyLoading) lobbyLoading->setPart(ta::LobbyPart::SignIn, 100);
         if (mp->auth() == ta::net::MpClient::Auth::Created)
             std::printf("created account '%s' on %s\n", mp->account().c_str(), serverHost.c_str());
         if (!mp->account().empty()) {
@@ -1957,6 +1961,7 @@ int main(int argc, char** argv) {
                 ta::crypto::wipe(lanGamePass);
             }
             if (lobbyLoading) {
+                lobbyLoading->setPartQuiet(ta::LobbyPart::GameRoom, 100);
                 gameView->prepareLobbyMaps(*lobbyLoading);
                 lobbyLoading->step("Ready");
                 lobbyLoading.reset();
