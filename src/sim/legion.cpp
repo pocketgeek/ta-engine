@@ -10039,16 +10039,25 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // on only where nothing brakes the body (not the shot, nor half way
     // across a step); an origin with the shot is reached but ends the walk
     // there (combat brakes the body). With `through`, the shot is walked
-    // through too. kind: 0 unseen, 1 closed, 2 walk on, 4 the shot.
+    // through too. kind: 0 unseen, 1 closed, 2 walk on, 4 the shot. kind and
+    // mid (the half-way sight test of a step, by its doubled midpoint: 0
+    // unseen, 1 no shot, 2 the shot) are caches of what the world holds now,
+    // so walks of one body over one box in one call share them (ringDeepClaim).
     struct RingWalk {
         int bx0=0,bz0=0,bx1=-1,bz1=-1,bw=0,bh=0,start=-1;
-        std::vector<uint8_t> kind;std::vector<int32_t> parent,dist,queue;
+        std::vector<uint8_t> kind,mid;std::vector<int32_t> parent,dist,queue;
         bool inside(int x,int z) const {return x>=bx0&&z>=bz0&&x<=bx1&&z<=bz1;}
         int at(int x,int z) const {return (z-bz0)*bw+(x-bx0);}
     };
     // With block >= 0, the origins a body standing on origin `block` would
-    // cover are closed too (see ringDeepClaim).
-    bool ringWalk(const Unit& u,const Group& g,const Plane& p,int ox,int oz,bool through,RingWalk& wk,int64_t reach=0,int block=-1) {
+    // cover are closed too (see ringDeepClaim). With `goals` (box-local
+    // origins, each with the farthest walk it may have), the walk stops once
+    // every goal is reached, or once one is reached past its limit or can no
+    // longer be reached within it: the goals reached have their distances,
+    // the rest none (dist -1), and nothing else is meaningful.
+    struct WalkGoal {int at,limit;};
+    bool ringWalk(const Unit& u,const Group& g,const Plane& p,int ox,int oz,bool through,RingWalk& wk,int64_t reach=0,int block=-1,
+                  const std::vector<WalkGoal>* goals=nullptr) {
         const auto& r=g.ring;
         const int W=width(),H=height(),fx=p.footX,fz=p.footZ,foot=std::max(fx,fz),body=16*foot;
         const int64_t outer=std::max<int64_t>(reach,int64_t(r.R)+2*body);
@@ -10058,6 +10067,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
             wk.bw=wk.bx1-wk.bx0+1;wk.bh=wk.bz1-wk.bz0+1;
             if(wk.bw<=0||wk.bh<=0)return false;
             wk.kind.assign(size_t(wk.bw)*size_t(wk.bh),0);
+            wk.mid.assign(size_t(2*wk.bw)*size_t(2*wk.bh),0);
         }
         if(!wk.inside(ox,oz))return false;
         const int comp=groupComp(g,p);
@@ -10082,8 +10092,35 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         wk.parent.assign(wk.kind.size(),-1);wk.dist.assign(wk.kind.size(),-1);wk.queue.clear();
         wk.start=wk.at(ox,oz);
         wk.parent[size_t(wk.start)]=wk.start;wk.dist[size_t(wk.start)]=0;wk.queue.push_back(wk.start);
+        // The goals not yet reached, and the least limit among them; a goal
+        // reached past its limit settles the walk's answer too.
+        size_t goalsLeft=goals?goals->size():0;int goalLimit=INT_MAX;bool goalOver=false;
+        auto goalScan=[&] {
+            goalsLeft=0;goalLimit=INT_MAX;
+            for(const WalkGoal& q:*goals) {
+                const int d=wk.dist[size_t(q.at)];
+                if(d<0) {++goalsLeft;goalLimit=std::min(goalLimit,q.limit);}
+                else if(d>q.limit)goalOver=true;
+            }
+        };
+        if(goals)goalScan();
         for(size_t head=0;head<wk.queue.size();++head) {
             const int local=wk.queue[head],x=wk.bx0+local%wk.bw,z=wk.bz0+local/wk.bw;
+            // Every origin still unseen lies at least one step past this one.
+            if(goals&&(goalOver||goalsLeft==0||wk.dist[size_t(local)]+1>goalLimit))break;
+            // A step is at most one origin either way, so no goal this origin
+            // reaches within its limit: walking on from it settles nothing (a
+            // goal within its limit is reached by origins that pass this test
+            // only, at its true distance).
+            if(goals) {
+                bool useful=false;
+                for(const WalkGoal& q:*goals) {
+                    if(wk.dist[size_t(q.at)]>=0)continue;
+                    const int gx=wk.bx0+q.at%wk.bw,gz=wk.bz0+q.at/wk.bw;
+                    if(wk.dist[size_t(local)]+std::max(std::abs(gx-x),std::abs(gz-z))<=q.limit) {useful=true;break;}
+                }
+                if(!useful)continue;
+            }
             if(local!=wk.start&&!through&&cls(x,z)==4)continue;   // braked here: no further
             for(const auto& d:kDirections) {
                 const int nx=x+d[0],nz=z+d[1];
@@ -10099,9 +10136,14 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                 }
                 // ... nor half way there (sight changes within a cell: a
                 // diagonal step round a wall's corner had the shot).
-                if(!through&&k==2&&ringShotAt(r,foot,int64_t(x+nx)*16+fx*16,int64_t(z+nz)*16+fz*16))continue;
+                if(!through&&k==2) {
+                    uint8_t& h=wk.mid[size_t(z+nz-2*wk.bz0)*size_t(2*wk.bw)+size_t(x+nx-2*wk.bx0)];
+                    if(!h)h=ringShotAt(r,foot,int64_t(x+nx)*16+fx*16,int64_t(z+nz)*16+fz*16)?2:1;
+                    if(h==2)continue;
+                }
                 wk.parent[size_t(next)]=local;wk.dist[size_t(next)]=wk.dist[size_t(local)]+1;
                 wk.queue.push_back(next);
+                if(goals&&goalsLeft)for(const WalkGoal& q:*goals)if(q.at==next) {goalScan();break;}
             }
         }
         stats.detourCells+=wk.queue.size();
@@ -10212,34 +10254,67 @@ struct LegionNavigator::Impl : LegionWorldBinding {
             // a body standing on it, leaves that candidate unreached or more
             // than kRingDetour bodies farther (a corridor wide enough to pass
             // the body, or a short way round, is no block).
-            std::vector<uint8_t> onWay(cand.size(),0);
             std::vector<std::vector<size_t>> behind(cand.size());
+            // The candidates whose footprint each origin of the box overlaps
+            // (|dx| < fx, |dz| < fz), ascending, as offsets into coverIds.
+            std::vector<uint32_t> coverAt(wk.kind.size()+1,0);std::vector<uint32_t> coverIds;
+            {
+                auto box=[&](size_t b,auto&& f) {
+                    const int s=r.cells[size_t(cand[b])],sx=s%W,sz=s/W;
+                    for(int qz=std::max(wk.bz0,sz-fz+1);qz<=std::min(wk.bz1,sz+fz-1);++qz)
+                        for(int qx=std::max(wk.bx0,sx-fx+1);qx<=std::min(wk.bx1,sx+fx-1);++qx)f(wk.at(qx,qz));
+                };
+                for(size_t b=0;b<cand.size();++b)box(b,[&](int at) {++coverAt[size_t(at)+1];});
+                for(size_t i=1;i<coverAt.size();++i)coverAt[i]+=coverAt[i-1];
+                coverIds.resize(coverAt.back());
+                std::vector<uint32_t> fill(coverAt.begin(),coverAt.end()-1);
+                for(size_t b=0;b<cand.size();++b)box(b,[&](int at) {coverIds[fill[size_t(at)]++]=uint32_t(b);});
+            }
             for(size_t a=0;a<cand.size();++a) {
                 const int c=r.cells[size_t(cand[a])];
                 for(int q=wk.parent[size_t(wk.at(c%W,c/W))];q!=wk.start&&q>=0;q=wk.parent[size_t(q)]) {
-                    const int qx=wk.bx0+q%wk.bw,qz=wk.bz0+q/wk.bw;
-                    for(size_t b=0;b<cand.size();++b) {
+                    for(uint32_t k=coverAt[size_t(q)];k<coverAt[size_t(q)+1];++k) {
+                        const size_t b=coverIds[k];
                         if(b==a||(!behind[b].empty()&&behind[b].back()==a))continue;
-                        const int s=r.cells[size_t(cand[b])];
-                        if(std::abs(qx-s%W)<fx&&std::abs(qz-s/W)<fz)behind[b].push_back(a);
+                        behind[b].push_back(a);
                     }
                 }
             }
-            for(size_t b=0;b<cand.size();++b) {
-                if(behind[b].empty())continue;
-                RingWalk alt;
-                if(!ringWalk(u,g,p,ox,oz,through,alt,reach,r.cells[size_t(cand[b])]))continue;
-                for(const size_t a:behind[b]) {
-                    const int c=r.cells[size_t(cand[a])],at=wk.at(c%W,c/W);
-                    const int was=wk.dist[size_t(at)],now=alt.dist[size_t(at)];
-                    if(now<0||now>was+kRingDetour*std::max(fx,fz)) {onWay[b]=1;break;}
-                }
-            }
+            // The nearest candidate by walk (ties: the lower index) that lies on
+            // no other's way: tested nearest first, so the confirming walks
+            // stop at the first that passes.
+            std::vector<size_t> order(cand.size());
+            for(size_t a=0;a<cand.size();++a)order[a]=a;
+            auto walkTo=[&](size_t a) {const int c=r.cells[size_t(cand[a])];return wk.dist[size_t(wk.at(c%W,c/W))];};
+            std::sort(order.begin(),order.end(),[&](size_t x,size_t y) {
+                const int dx=walkTo(x),dy=walkTo(y);
+                return dx!=dy?dx<dy:x<y;
+            });
+            const int detour=kRingDetour*std::max(fx,fz);
             int best=-1,bestD=0;
-            for(size_t a=0;a<cand.size();++a) {
-                if(onWay[a])continue;
-                const int c=r.cells[size_t(cand[a])],d=wk.dist[size_t(wk.at(c%W,c/W))];
-                if(best<0||d<bestD) {best=cand[a];bestD=d;}
+            for(const size_t b:order) {
+                if(!behind[b].empty()) {
+                    // The same body over the same box, nothing moved since wk:
+                    // its classifications hold (a block is tested apart from
+                    // them). Only whether each spot behind it stays within
+                    // kRingDetour bodies is asked: the walk stops once that is
+                    // settled.
+                    RingWalk alt;
+                    alt.bx0=wk.bx0;alt.bz0=wk.bz0;alt.bx1=wk.bx1;alt.bz1=wk.bz1;alt.bw=wk.bw;alt.bh=wk.bh;
+                    std::vector<WalkGoal> goals;
+                    for(const size_t a:behind[b])goals.push_back({wk.at(r.cells[size_t(cand[a])]%W,r.cells[size_t(cand[a])]/W),walkTo(a)+detour});
+                    std::swap(alt.kind,wk.kind);std::swap(alt.mid,wk.mid);
+                    const bool walked=ringWalk(u,g,p,ox,oz,through,alt,reach,r.cells[size_t(cand[b])],&goals);
+                    std::swap(alt.kind,wk.kind);std::swap(alt.mid,wk.mid);
+                    bool onWay=false;
+                    if(walked)for(const WalkGoal& q:goals) {
+                        const int now=alt.dist[size_t(q.at)];
+                        if(now<0||now>q.limit) {onWay=true;break;}
+                    }
+                    if(onWay)continue;
+                }
+                best=cand[b];bestD=walkTo(b);
+                break;
             }
             if(best<0)continue;
             if(keep&&m.slot>=0&&r.owner[size_t(m.slot)]==u.id&&r.band[size_t(m.slot)]<=band) {

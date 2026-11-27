@@ -1514,6 +1514,8 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                 int lv = std::atoi(be);                        // TA_BENCH=<level 1..6>, default High
                 benchmarkLevel_ = (lv >= 1 && lv <= ta::sim::kBenchLevels) ? lv : 3;
                 benchmarkMode_ = true;                         // (forces watch + 10 AI + cap 10 + Block Wars below)
+                // TA_BENCH_SPEED=0|10|100: the menu's SPEED pick (NORMAL, +10, +100) for this run.
+                if (const char* bs = ta::devEnv("TA_BENCH_SPEED")) { const int v = std::atoi(bs); benchmarkSpeed_ = v >= 100 ? 100 : v > 0 ? 10 : 0; }
             }
             // The Benchmark runs with no mod packs at all (a menu run already applied this).
             if (benchmarkMode_) ta::applyBenchmarkMods(mods_, mp_);
