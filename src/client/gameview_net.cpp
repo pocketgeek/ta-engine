@@ -1576,6 +1576,8 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // TA_NO_SPECTATORS=1: the room refuses watchers (ALLOW SPECTATORS off), so
             // a --mpspectate client can be shown the server's refusal.
             o.allowSpectators = ta::devFlag("TA_NO_SPECTATORS") ? 0 : 1;
+            // TA_LOS_CIRCULAR=1: the room plays Circular line of sight (default TRUE).
+            o.losType = ta::devFlag("TA_LOS_CIRCULAR") ? 0 : 1;
             // TA_POWER_CODES=1: the room plays with CHEAT CODES on (the server clears it
             // for a mission), so a harness can type codes (TA_POWER_SCRIPT).
             o.powerCodes = ta::devFlag("TA_POWER_CODES") ? 1 : 0;
@@ -1830,7 +1832,7 @@ struct RoomScriptRule { const char* name; ta::RoomField field; };
 constexpr RoomScriptRule kRoomScriptRules[] = {
     {"doubleSight", ta::RoomField::DoubleSight},
     {"unitCap", ta::RoomField::UnitCap}, {"monarchExpendable", ta::RoomField::Commander},
-    {"speedUnlock", ta::RoomField::SpeedUnlock}, {"fog", ta::RoomField::Fog},
+    {"speedUnlock", ta::RoomField::SpeedUnlock}, {"fog", ta::RoomField::Fog}, {"losType", ta::RoomField::LosType},
     {"randomStarts", ta::RoomField::StartLocations}, {"pathfinding", ta::RoomField::Pathfinding},
     {"powerCodes", ta::RoomField::PowerCodes}, {"allowSpectators", ta::RoomField::AllowSpectators}};
 int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
@@ -1840,6 +1842,7 @@ int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
     case ta::RoomField::Commander: return o.monarchExpendable;
     case ta::RoomField::SpeedUnlock: return o.speedUnlock;
     case ta::RoomField::Fog: return o.fogExplored;
+    case ta::RoomField::LosType: return o.losType;
     case ta::RoomField::StartLocations: return o.randomStarts;
     case ta::RoomField::Pathfinding: return int(o.pathfindingMode);
     case ta::RoomField::PowerCodes: return o.powerCodes;
@@ -1870,6 +1873,7 @@ int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
         o.monarchExpendable = p.monarchExpendable ? 1 : 0;
         o.powerCodes = p.powerCodes ? 1 : 0;
         o.fogExplored = uint8_t(std::clamp(p.fog, 0, 2));
+        o.losType = p.losTrue ? 1 : 0;
         o.randomStarts = uint8_t(std::clamp(p.randomStarts, 0, 2));
         o.allowSpectators = sp || p.allowSpectators ? 1 : 0;
         // Game mods are on in every room: the host ticks mods/game packs in the room, and they

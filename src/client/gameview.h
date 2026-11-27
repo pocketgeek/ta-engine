@@ -3176,6 +3176,7 @@ private:
     // This match has CHEAT CODES on and this client plays in it (not a replay, a
     // spectator or a campaign mission).
     bool powerCodesOn() const;
+    bool playsCodes() const;   // a seat in a live game (not a replay, a watcher or the lobby)
     // A chat line that named a code: the sim codes go out as Cmd::PowerCode, Radar
     // and MakePoster act here. Nothing while the match has CHEAT CODES off.
     void powerCode(const ta::sim::PowerCodeInput& in);
@@ -4880,6 +4881,11 @@ private:
     // pieces and the grey table, loaded on first use; fogDummy_ is the SDL
     // texture its native draw is primed with (BLENDMODE_NONE: the program's
     // colour replaces the view's).
+    // The minimap's markers (anims\fx.gaf, TotalA.exe 0x4298f4 / 0x429930): radlogo
+    // and nuclogo, a frame per player colour, loaded on first use.
+    std::array<SDL_Texture*, 10> radLogo_{}, nucLogo_{};
+    bool radLogosLoaded_ = false;
+    void drawMinimapMarkers(const SDL_FRect& r, float mapW, float mapH);
     ta::FogRemapGL fogRemap_;
     std::vector<uint8_t> fogGreyLut_;   // the grey table as RGB, 256 levels (CPU copy)
     std::vector<uint8_t> miniRgb_;      // the minimap picture (RGBA, a pixel per cell), for its grey
@@ -4901,7 +4907,7 @@ private:
         int w = 0, h = 0; uint32_t viewers = 0; int player = -1; bool revealed = false, losOff = false;
         bool operator==(const FogKey&) const = default;
     } fogKey_;
-    ta::retailfog::RadarCover fogRadar_;
+    ta::retailfog::RadarCover fogRadar_, fogRadarJam_;   // the viewed player's radar; others' radar jammers
     // Before the first tick the World has no view counts yet (its first pass runs
     // inside tick 0); the frame drawn behind a campaign briefing stamps the same
     // footprints into these instead, so that view is not all black.

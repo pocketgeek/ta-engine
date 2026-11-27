@@ -128,11 +128,12 @@ inline bool unitInView(std::span<const uint8_t> plane, int w, int h, bool hidden
            pointInView(plane, w, h, x1, y, z1) || pointInView(plane, w, h, x0, y, z1);
 }
 
-// The minimap's radar (0x4f9970): every unit with a radar distance that the
-// local player owns (built, not status-locked) marks each other player's
-// uncloaked unit within that distance (0x509ac0's circle on 16.16 positions,
-// the high words of the squared terms; callback 0x4f98e0). Radar never clears
-// fog and never shows a unit in the main view -- only its minimap dot.
+// Circles on 16.16 positions for the minimap's detection (TotalA.exe 0x467440 /
+// 0x47e890, docs/retail-fog.md 4.1): a point is covered when the high words of
+// the squared terms sum below a source's radius squared, (dx^2 >> 32) +
+// (dz^2 >> 32) < R^2. Used for the viewed player's radar and for the other
+// players' radar jammers. Radar never clears fog and never shows a unit in the
+// main view -- only its minimap dot.
 class RadarCover {
 public:
     void clear() { sources_.clear(); head_.clear(); next_.clear(); }
@@ -179,7 +180,7 @@ public:
             for (int i = head_[size_t(cz) * size_t(bw_) + size_t(cx)]; i >= 0; i = next_[size_t(i)]) {
                 const auto& s = sources_[size_t(i)];
                 const int64_t ddx = int64_t(x) - s.x, ddz = int64_t(z) - s.z;
-                if (((ddx * ddx) >> 32) + ((ddz * ddz) >> 32) <= s.r2) return true;
+                if (((ddx * ddx) >> 32) + ((ddz * ddz) >> 32) < s.r2) return true;
             }
             return false;
         };

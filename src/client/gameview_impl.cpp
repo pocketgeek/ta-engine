@@ -1299,12 +1299,23 @@
         s.losSeen = s.mapSeen = false;
         if (!noFog_ && !s.sightShared && !fb.fog.empty()) {
             namespace rf = ta::retailfog;
-            const bool hidden = u.cloaked || u.embarked();
             const int32_t y = (u.type->canFly ? u.flightY : u.groundY).v;
+            // TotalA.exe 0x465ac0: under the sea, only a sonar contact of the viewed player.
+            const bool submerged = int16_t(uint32_t(y + u.type->modelTop) >> 16) < world_.mapSea() &&
+                                   !world_.sonarContact(seenAs(), u);
+            const bool hidden = u.cloaked || u.embarked() || submerged;
             s.losSeen = rf::unitInView(fb.fog, fb.fogW, fb.fogH, hidden, u.x.v, y, u.z.v,
                                        u.type->footX, u.type->footZ, u.type->modelTop);
-            s.mapSeen = !hidden && (rf::pointInView(fb.fog, fb.fogW, fb.fogH, u.x.v, y, u.z.v) ||
-                                    fogRadar_.covers(u.x.v, u.z.v));
+            // 0x467440: a minimap contact by radar (its top at or above the sea, not
+            // stealthy, not jammed), by sonar (submerged, the sim's contact), or by its
+            // centre cell in view -- the last after jamming, so a jammer never hides a
+            // unit in sight.
+            const bool cloaked = u.cloaked || u.embarked();
+            const bool afloat = int16_t(uint32_t(y + u.type->modelTop) >> 16) >= world_.mapSea();
+            const bool radar = afloat && !u.type->stealth && fogRadar_.covers(u.x.v, u.z.v) &&
+                               !fogRadarJam_.covers(u.x.v, u.z.v);
+            const bool sonar = world_.sonarContact(seenAs(), u);
+            s.mapSeen = !cloaked && (radar || sonar || rf::pointInView(fb.fog, fb.fogW, fb.fogH, u.x.v, y, u.z.v));
         }
         // Pose: prev comes from the previously-published frame's curr for this SAME unit
         // (id live last tick + matching type). Interpolate alive units between ticks;
@@ -1631,7 +1642,7 @@
     // the local player's radar for the minimap dots.
     void GameView::captureFog(Frame& fb) {
         namespace rf = ta::retailfog;
-        fogRadar_.clear();
+        fogRadar_.clear(); fogRadarJam_.clear();
         if (noFog_ || world_.viewPlaneW() <= 0 || world_.viewPlaneH() <= 0) {
             fb.fog.clear(); fb.fogW = fb.fogH = 0;
             return;
@@ -1710,12 +1721,19 @@
             fb.fogGen = fogPlaneGen_;
         }
         fb.fogW = w; fb.fogH = h;
-        // 0x4f9970: the local player's own units with a radar distance, built
-        // (the same units 4f6a40 stamps sight for).
-        for (const auto& u : world_.units())
-            if (u.player == localPlayer_ && u.alive() && u.type && !u.underConstruction)
-                fogRadar_.add(u.x.v, u.z.v, world_.radarDistance(*u.type));
+        // TotalA.exe 0x467440: the viewed player's radar -- its own units', and (our
+        // allied-sight rule) its sight-sharing allies' -- built and switched on, each
+        // reaching its radar distance plus twice its height (altitude extends radar);
+        // and every other player's switched-on radar jammer (an ally's too, 0x467960).
+        for (const auto& u : world_.units()) {
+            if (!u.alive() || !u.type || u.underConstruction || u.embarked() || !world_.retailActivated(u)) continue;
+            const int32_t ypx = int32_t(int16_t(uint32_t((u.type->canFly ? u.flightY : u.groundY).v) >> 16));
+            if (u.type->radar && sharesSightToLocal(u.player))
+                fogRadar_.add(u.x.v, u.z.v, world_.radarDistance(*u.type) + 2 * std::max(0, ypx));
+            if (u.type->radarJam && u.player != seenAs()) fogRadarJam_.add(u.x.v, u.z.v, u.type->radarJam);
+        }
         fogRadar_.finish();
+        fogRadarJam_.finish();
     }
 
     bool GameView::effectVisibleR(const std::array<int32_t,3>& position) const {

@@ -30,6 +30,7 @@ std::string ruleValue(RoomField field, const ta::net::GameOptions& o) {
     case RoomField::Commander: return o.monarchExpendable ? "CONTINUES" : "GAME ENDS";
     case RoomField::SpeedUnlock: return onOff(o.speedUnlock);
     case RoomField::Fog: return kFogName[std::min<int>(o.fogExplored, 2)];
+    case RoomField::LosType: return o.losType ? "TRUE" : "CIRCULAR";
     case RoomField::StartLocations:
         switch (ta::net::normalizeStartMode(o.randomStarts)) {
         case ta::net::kStartsRandom: return "RANDOM";
@@ -57,6 +58,7 @@ float roomRulePx(float maxW) {
     static const char* const kCaptions[] = {
         "DOUBLE SIGHT/RADAR: OFF", "UNIT CAP: 2000", "COMMANDER DEATH: SCENARIO",
         "COMMANDER DEATH: GAME ENDS", "COMMANDER DEATH: CONTINUES", "ALLOW SPEED CHANGE: OFF", "CHEAT CODES: OFF", "ALLOW SPECTATORS: OFF",
+        "LINE OF SIGHT: CIRCULAR",
         "MAP SCENARIO: OFF", "MAP SCENARIO: ON (TEST MAP)"};
     float px = 1.6f;
     ta::net::GameOptions o;
@@ -219,7 +221,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 const auto& o = room.opts;
                 const bool answered = d.doubleSight == o.doubleSight && d.unitCap == o.unitCap &&
                     d.monarchExpendable == o.monarchExpendable && d.speedUnlock == o.speedUnlock &&
-                    d.fogExplored == o.fogExplored && d.randomStarts == o.randomStarts &&
+                    d.fogExplored == o.fogExplored && d.losType == o.losType && d.randomStarts == o.randomStarts &&
                     d.pathfindingMode == o.pathfindingMode && d.powerCodes == o.powerCodes &&
                     d.allowSpectators == o.allowSpectators;
                 if (answered || now - roomOptsDraftMs_ > 1500) roomOptsDraft_.reset();
@@ -649,6 +651,10 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         if (watching) forced(RoomField::Fog, "FULL VISION");
         else add(RoomField::Fog, ruleLabel(RoomField::Fog, o), true, false, [this, fog = std::min<int>(o.fogExplored, 2)](int direction) {
             roomRuleCommit(RoomField::Fog, (fog + direction + 3) % 3); });
+        // LINE OF SIGHT (retail's battle-room / skirmish LOSType): TRUE casts los.tdf's rays
+        // over the terrain, CIRCULAR stamps vismasks.gaf. A campaign mission is always TRUE.
+        if (!room.mission.empty()) forced(RoomField::LosType, "TRUE");
+        else toggle(RoomField::LosType, o.losType);
         // START LOCATIONS: FIXED = the seated slots take the map's starts in order, as in
         // retail; RANDOM = shuffled for the match; BY SLOT (not retail) = slot N takes the
         // Nth start. A scenario plays on fixed starts.
@@ -776,6 +782,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             const auto& c = roomChosen_;
             o.doubleSight = c.doubleSight; o.unitCap = c.unitCap;
             o.monarchExpendable = c.monarchExpendable; o.speedUnlock = c.speedUnlock; o.fogExplored = c.fogExplored;
+            o.losType = c.losType;
             o.randomStarts = c.randomStarts; o.pathfindingMode = c.pathfindingMode; o.powerCodes = c.powerCodes;
             o.allowSpectators = c.allowSpectators;
         }
@@ -823,6 +830,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         case RoomField::Commander: c.monarchExpendable = uint8_t(value); break;
         case RoomField::SpeedUnlock: c.speedUnlock = uint8_t(value); break;
         case RoomField::Fog: c.fogExplored = uint8_t(value); break;
+        case RoomField::LosType: c.losType = uint8_t(value); break;
         case RoomField::StartLocations: c.randomStarts = uint8_t(value); break;
         case RoomField::Pathfinding: c.pathfindingMode = ta::sim::PathfindingMode(value); break;
         case RoomField::PowerCodes: c.powerCodes = uint8_t(value); break;
@@ -951,6 +959,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         case RoomField::Commander: p.monarchExpendable = c.monarchExpendable != 0; break;
         case RoomField::SpeedUnlock: p.speedUnlock = c.speedUnlock != 0; break;
         case RoomField::Fog: p.fog = std::min<int>(c.fogExplored, 2); break;
+        case RoomField::LosType: p.losTrue = c.losType != 0; break;
         case RoomField::StartLocations: p.randomStarts = ta::net::normalizeStartMode(c.randomStarts); break;
         case RoomField::Pathfinding: p.pathfindingMode = c.pathfindingMode; break;
         case RoomField::PowerCodes: p.powerCodes = c.powerCodes != 0; break;

@@ -22,7 +22,7 @@
 namespace ta::net {
 
 // Bump when the layout changes.
-inline constexpr uint32_t kReplayFormat = 16;   // 16: no Crusades byte
+inline constexpr uint32_t kReplayFormat = 17;   // 17: LINE OF SIGHT byte; 16: no Crusades byte
 
 // The largest .tarep the loaders accept (the client picker and the writer's re-read).
 inline constexpr uint64_t kMaxReplayBytes = 512ull * 1024 * 1024;
@@ -54,6 +54,7 @@ struct ReplayHeader {
     uint8_t mapScenario = 0;      // the room's MAP SCENARIO option
     uint8_t powerCodes = 0;       // bit 0 the room's CHEAT CODES option, bit 1 its map revealed at start
     uint8_t fogExplored = 1;      // the room's FOG OF WAR option, 0..2 (MatchConfig::roomMapRevealed/roomLosOff)
+    uint8_t losType = 1;          // the room's LINE OF SIGHT, 1 TRUE / 0 CIRCULAR (MatchConfig::trueLos)
 };
 
 // One recorded (tick, hash) pair from the ORIGINAL game, with posDigest
@@ -101,6 +102,7 @@ inline void writeReplayHeader(Writer& w, const ReplayHeader& h) {
     w.u8(h.mapScenario);
     w.u8(h.powerCodes);
     w.u8(h.fogExplored);
+    w.u8(h.losType);
 }
 
 // Reads the header. `fmt` and `proto` come back even when the header is refused,
@@ -140,6 +142,7 @@ inline bool readReplayHeader(Reader& r, ReplayHeader& h, uint32_t& fmt, uint32_t
     h.mapScenario = r.u8();
     h.powerCodes = r.u8();
     h.fogExplored = r.u8();
+    h.losType = r.u8() ? 1 : 0;
     return r.ok;
 }
 

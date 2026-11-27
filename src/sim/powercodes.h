@@ -37,12 +37,17 @@ enum class PowerCode : uint8_t {
     Meteor = 10,     // 0x417760: no argument starts a meteor strike now (0x438070);
                      // "+Meteor n" arms (n != 0) or disarms the storm (0x437d40 / 0x437d50)
     View = 11,       // 0x416b50: see the game as player n (+0x2a43; client only)
+    LosType = 12,    // 0x416690: toggle True / Circular line of sight (game +0x14281 bit 2).
+                     // Group 1 (0x501dec): always available, cheats or not.
 };
+
+// A code retail runs with or without cheats (command group 1).
+constexpr bool alwaysPowerCode(int32_t c) { return c == 12; }
 
 // The codes the sim applies (Cmd::PowerCode's targetId); the rest are client-side.
 constexpr bool simPowerCode(int32_t c) {
     return (c >= int32_t(PowerCode::Atm) && c <= int32_t(PowerCode::NowISee) && c != int32_t(PowerCode::RetiredManaMe)) ||
-           c == int32_t(PowerCode::Meteor);
+           c == int32_t(PowerCode::Meteor) || c == int32_t(PowerCode::LosType);
 }
 constexpr bool simPowerCode(PowerCode c) { return simPowerCode(int32_t(c)); }
 
@@ -69,6 +74,7 @@ inline const char* powerCodeName(PowerCode c) {
         case PowerCode::MakePoster: return "MAKEPOSTER";
         case PowerCode::Meteor: return "METEOR";
         case PowerCode::View: return "VIEW";
+        case PowerCode::LosType: return "LOSTYPE";
         default: return "";
     }
 }
@@ -112,7 +118,7 @@ inline std::optional<PowerCodeInput> parsePowerCode(std::string_view line) {
     while (argEnd < line.size() && !powerSpace(line[argEnd])) ++argEnd;
     const std::string_view word = line.substr(end, argEnd - end);
     PowerCodeInput in;
-    for (int c = int(PowerCode::Atm); c <= int(PowerCode::View); ++c)
+    for (int c = int(PowerCode::Atm); c <= int(PowerCode::LosType); ++c)
         if (*powerCodeName(PowerCode(c)) && detail::powerEqual(name, powerCodeName(PowerCode(c)))) in.code = PowerCode(c);
     if (in.code == PowerCode::None) return std::nullopt;
     if (!word.empty()) {

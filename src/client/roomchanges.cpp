@@ -16,6 +16,7 @@ const char* roomFieldCaption(RoomField field) {
     case RoomField::Commander: return "COMMANDER DEATH";
     case RoomField::SpeedUnlock: return "ALLOW SPEED CHANGE";
     case RoomField::Fog: return "FOG OF WAR";
+    case RoomField::LosType: return "LINE OF SIGHT";
     case RoomField::StartLocations: return "START LOCATIONS";
     case RoomField::Pathfinding: return "PATHFINDING";
     case RoomField::PowerCodes: return "CHEAT CODES";
@@ -44,6 +45,7 @@ RoomChanges roomChanges(const net::RoomView& before, const net::RoomView& after)
     changed(RoomField::Commander, a.monarchExpendable != b.monarchExpendable);
     changed(RoomField::SpeedUnlock, a.speedUnlock != b.speedUnlock);
     changed(RoomField::Fog, a.fogExplored != b.fogExplored);
+    changed(RoomField::LosType, a.losType != b.losType);
     changed(RoomField::StartLocations, a.randomStarts != b.randomStarts);
     changed(RoomField::Pathfinding, a.pathfindingMode != b.pathfindingMode);
     changed(RoomField::PowerCodes, a.powerCodes != b.powerCodes);

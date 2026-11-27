@@ -62,7 +62,7 @@ auth.MSG.setdefault('GameOver', GAME_OVER)
 
 def options(speed=20):
     # GameOptions wire bytes (server_public_test.options), at 2x so a scenario is short.
-    return bytes([1, 0, speed, 0]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10])
+    return bytes([1, 0, speed, 0]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10, 1])
 
 
 def command(kind, unit):

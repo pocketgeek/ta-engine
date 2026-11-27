@@ -102,7 +102,7 @@ def complete_ticks(path):
     try:
         s(); pos += 2; u('<I'); pos += 2; u('<I'); pos += 2   # map, forfeit+mods, cap, expendable+stress, seed, starts+bench
         s(); s(); u('<Q'); pos += 1; s(); s(); pos += 1       # mission, engine, data hash, sight, digests, path mode
-        slots = u('<B'); pos += 5 * slots + 3                  # slot table, map scenario (13), power codes (14), fog (15)
+        slots = u('<B'); pos += 5 * slots + 4                  # slot table, map scenario (13), power codes (14), fog (15), line of sight (17)
         pos += 4                                               # the count (open while recording)
         n = 0
         while pos + 4 <= len(d):

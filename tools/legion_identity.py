@@ -106,7 +106,7 @@ MATRIX_QUICK = (
     ("maze", 200, 1, 2, "retail", "workers"),
 )
 
-REPLAY_FORMAT = 16   # src/net/replayhdr.h kReplayFormat
+REPLAY_FORMAT = 17   # src/net/replayhdr.h kReplayFormat
 
 
 def patch_replay(args):

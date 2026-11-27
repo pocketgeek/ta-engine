@@ -29,8 +29,8 @@ from server_net import OPTIONS_BYTES, lobby
 from server_public_test import login, options, server
 
 REASON = b'spectators are not allowed in this game'
-ALLOW = OPTIONS_BYTES - 5   # allowSpectators, before mapScenario, powerCodes and the start resources
-SCENARIO = OPTIONS_BYTES - 4   # mapScenario, before powerCodes and the start resources
+ALLOW = OPTIONS_BYTES - 6   # allowSpectators, before mapScenario, powerCodes and the start resources
+SCENARIO = OPTIONS_BYTES - 5   # mapScenario, before powerCodes and the start resources
 
 
 def recipe():

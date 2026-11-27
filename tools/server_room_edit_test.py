@@ -70,7 +70,7 @@ def opts(double=0, mods=0, speed=10, unit_cap=2000, fog=1, starts=0, path=0, spe
          stress=0, bench=0):
     """GameOptions on the wire (net::put)."""
     return (bytes([0, mods, speed, 0]) + struct.pack('<I', unit_cap) +
-            bytes([0, stress, fog, bench, starts, double, path, spectators, scenario, codes, 10, 10]))
+            bytes([0, stress, fog, bench, starts, double, path, spectators, scenario, codes, 10, 10, 1]))
 
 
 def room_of(r):
@@ -408,7 +408,7 @@ def case_create(env):
     with contextlib.closing(login(env.port, env.h, 'Alice')) as host:
         (ok, slot, _, rev), room = create(host, recipe(2), 2, name='')
         assert ok and rev == 1 and room['name'] == "Alice's Game", room['name']
-        assert log_says(env.root, "created game %d 'Alice's Game' on '%s' (sight=0 fog=1 starts=0 cap=2000 path=0 "
+        assert log_says(env.root, "created game %d 'Alice's Game' on '%s' (sight=0 fog=1 los=1 starts=0 cap=2000 path=0 "
                         "codes=0 scenario=0 spectators=1 mods=0)" % (room['id'], recipe(2))), 'the created-game line'
         host.send('LeaveGame')
         (ok, _, why, _), _ = create(host, recipe(2), 2, name='n' * 33)
@@ -444,7 +444,7 @@ def case_shrink(env):
         assert ok and slot == 1 and moved_rev == rev + 1, ('the guest was not moved to the lowest open seat', slot, moved_rev)
         room = latest(host)
         types = [s[0][0] for s in room['slots']]
-        assert types == [1, 1, 2, 2, 3, 3, 3, 3], ('the seats after the change', types)
+        assert types == [1, 1, 2, 2, 3, 3, 3, 3, 3, 3], ('the seats after the change', types)
         assert room['slots'][1][1] == b'Bobby' and room['slots'][1][0][4] == 0, 'the moved guest is unready'
         assert room['cap'] == 4 and room['rev'] == rev + 1 and room['serial'] == 7, room
         assert room['bits'] == CHANGE_MAP | CHANGE_CAPACITY and room['map'] == recipe(4), room['bits']
@@ -459,7 +459,7 @@ def case_grow(env):
         set_room_map(host, 1, recipe(6), 2)
         room = latest(host)
         types = [s[0][0] for s in room['slots']]
-        assert room['cap'] == 6 and types == [1, 0, 0, 0, 0, 0, 3, 3], ('the seats after growing', types)
+        assert room['cap'] == 6 and types == [1, 0, 0, 0, 0, 0, 3, 3, 3, 3], ('the seats after growing', types)
         assert room['bits'] == CHANGE_MAP | CHANGE_CAPACITY and room['serial'] == 1
 
 

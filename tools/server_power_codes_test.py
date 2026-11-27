@@ -17,7 +17,7 @@ import server_net as auth
 from server_net import OPTIONS_BYTES, lobby
 from server_public_test import server, login, options
 
-POWER = OPTIONS_BYTES - 3       # powerCodes, before the two start-resource bytes
+POWER = OPTIONS_BYTES - 4       # powerCodes, before the two start-resource bytes
 CMD_MOVE, CMD_POWER = 0, 28     # net::Cmd::Move, net::Cmd::PowerCode (after Order = 27)
 DOUBLE_SHOT, RADAR = 3, 8       # sim::PowerCode
 MARKER = 123456                 # a Move for a unit nobody owns: shows the batch was sequenced

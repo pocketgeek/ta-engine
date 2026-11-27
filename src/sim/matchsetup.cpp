@@ -814,6 +814,51 @@ static void loadVisMasks(const hpi::Vfs& vfs) {
     setRetailVisMasks(masks);
 }
 
+// gamedata\los.tdf (TotalA.exe 0x433130 / 0x433380 / 0x4336f0): True sight's
+// ray tables (retailexploration.h). [TABLEINFO] numtables tables, [TABLEn]
+// numlines lines "count, a, b, a, b, ...", each stored four times as the
+// quarter turns (a, -b), (b, a), (-a, b), (-b, -a), ray q*numlines + i.
+static void loadLosTables(const hpi::Vfs& vfs) {
+    std::vector<RetailLosTable> tables;
+    const std::string path = "gamedata/los.tdf";
+    if (vfs.has(path)) try {
+        const auto data = vfs.read(path);
+        const auto root = tdf::parseText(std::string(data.begin(), data.end()), path);
+        const tdf::Node* info = root.child("tableinfo");
+        const int count = info ? std::max(0, int(info->numberOr("numtables", 0))) : 0;
+        tables.resize(size_t(count));
+        for (int t = 0; t < count; ++t) {
+            const tdf::Node* node = root.child("table" + std::to_string(t + 1));
+            if (!node) continue;
+            const int n = std::max(0, int(node->numberOr("numlines", 0)));
+            RetailLosTable& table = tables[size_t(t)];
+            table.assign(size_t(n) * 4, {});
+            for (int i = 0; i < n; ++i) {
+                std::vector<int> v;
+                const std::string text = node->valueOr("line" + std::to_string(i + 1), "");
+                size_t at = 0;
+                while (at < text.size()) {   // strtok on "," then atoi
+                    const size_t end = std::min(text.find(',', at), text.size());
+                    v.push_back(std::atoi(text.substr(at, end - at).c_str()));
+                    at = end + 1;
+                }
+                const int cells = v.empty() ? 0 : std::max(0, v[0]);
+                for (int q = 0; q < 4; ++q) {
+                    RetailLosRay& ray = table[size_t(q * n + i)];
+                    for (int k = 0; k < cells; ++k) {
+                        const int a = size_t(1 + 2 * k) < v.size() ? v[size_t(1 + 2 * k)] : 0;
+                        const int b = size_t(2 + 2 * k) < v.size() ? v[size_t(2 + 2 * k)] : 0;
+                        const std::array<int, 2> c = q == 0 ? std::array<int, 2>{a, -b} : q == 1 ? std::array<int, 2>{b, a}
+                                                   : q == 2 ? std::array<int, 2>{-a, b} : std::array<int, 2>{-b, -a};
+                        ray.push_back({int8_t(c[0]), int8_t(c[1])});
+                    }
+                }
+            }
+        }
+    } catch (const std::exception&) { tables.clear(); }
+    setRetailLosTables(std::move(tables));
+}
+
 // The schema's meteor storm (TotalA.exe 0x436732..0x436813; docs/retail-campaign.md
 // section 2.3): a MeteorWeapon name (31 chars at most) arms it; if any of
 // MeteorRadius, Density, Duration or Interval is 0 it still does, with every
@@ -876,6 +921,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     const hpi::Vfs& vfs = ta::mapgen::isGeneratedMapId(cfg.mapPath) ? generatedData : *cfg.vfs;
     world.setGameSeed(cfg.startSeed);
     loadVisMasks(*cfg.vfs);
+    loadLosTables(*cfg.vfs);
     // A "~gen1~" mapPath is a random-map recipe: generate it in memory (identically
     // on client and referee -- the params ride the mapId, generation is integer-only).
     const bool generated = ta::mapgen::isGeneratedMapId(cfg.mapPath);
@@ -1043,6 +1089,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     world.setDoubleSight(cfg.doubleSight);
     world.setPowerCodes(cfg.powerCodes, cfg.powerMapRevealed);
     world.setRoomVision(cfg.roomMapRevealed, cfg.roomLosOff);
+    world.setTrueLos(cfg.trueLos);
 
     // Cartographer scenarios use authored placements instead of skirmish monarchs.
     // Read the same map-local CRT on every peer, before any default units spawn.
@@ -1670,6 +1717,7 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
     cfg.loadCrt = false;
     cfg.slots = slots;
     cfg.unitCap = int(gh->numberOr("maxunits", 200));
+    cfg.trueLos = true;   // TotalA.exe 0x4363d9: a campaign plays True line of sight
     setupMatch(world, reg, cfg);
     world.setSurfaceMetal(int(schema->numberOr("surfacemetal", 0)));
     setupMeteorStorm(world, reg, vfs, schema);
@@ -1807,6 +1855,7 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     // section 6): mapping=1 plays with the shroud on, 0 with the map revealed;
     // lineofsight=0 plays with LOS off (Permanent: explored cells stay in view).
     world.setRoomVision(gh->numberOr("mapping", 1) == 0, gh->numberOr("lineofsight", 1) == 0);
+    world.setTrueLos(true);   // 0x4363d9: LOSType forced True
 
     // Map the .ota's sparse, 1-based Player<N> ids to compact 0-based World slots in
     // ascending N order, so gaps (e.g. Player1,2,9,10) don't collide when clamped into

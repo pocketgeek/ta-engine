@@ -98,24 +98,83 @@ inline RetailVisMasks retailDefaultVisMasks() {
 inline RetailVisMasks& retailVisMaskTable() { static RetailVisMasks table=retailDefaultVisMasks(); return table; }
 inline void setRetailVisMasks(const RetailVisMasks& masks) { retailVisMaskTable()=masks; }
 
+// TotalA.exe's True sight (docs/retail-fog.md section 2.3): rays from
+// gamedata\los.tdf (loader 0x433130). [TABLEINFO] numtables gives how many of
+// [TABLE1].. are read; each table's lines list cells (dx, dz) of one quadrant,
+// "count, dx, dz, ...", and 0x4336f0 stores every line four times, rotated a
+// quarter turn each: line i of n is ray q*n + i with cells (a, -b), (b, a),
+// (-a, b), (-b, -a) for q = 0..3.
+using RetailLosRay=std::vector<std::array<int8_t,2>>;
+using RetailLosTable=std::vector<RetailLosRay>;
+inline std::vector<RetailLosTable>& retailLosTableData() { static std::vector<RetailLosTable> tables; return tables; }
+inline void setRetailLosTables(std::vector<RetailLosTable> tables) { retailLosTableData()=std::move(tables); }
+
 struct RetailSightFootprint {
     int16_t x=-1,z=-1;      // the centre cell (projected, 32 px)
-    int32_t eyeHeight=0;
+    int16_t eyeHeight=0;    // True sight: the eye byte (0..255); Circular: unused (16 bits keeps Unit's layout)
     int16_t distance=0;     // sightdistance, px
     uint8_t sightHeight=0;
     bool active=false;
+    bool trueLos=false;     // stamped with True sight's rays, else Circular's mask
 };
+
+// 0x481e09..0x481e52: True sight's table for a sight distance, r = sight/32
+// (truncated, at least 0) and at most numtables - 1, element r - 1 (0x433500)
+// -- TABLE r. Below 32 px there is no table (retail reads element -1): the
+// centre cell alone.
+inline const RetailLosTable* retailLosTable(const RetailSightFootprint& sight) {
+    const auto& tables=retailLosTableData();
+    if (tables.empty()) return nullptr;
+    const int r=std::min(std::max(0,int(sight.distance)/32),int(tables.size())-1);
+    return r>=1 ? &tables[size_t(r-1)] : nullptr;
+}
+
+// 0x482270: the cells a True footprint counts. The centre always (0x48239c);
+// then along each ray, step j = 1, 2, ..., the horizon (h, d) starting at
+// (-1, 0): a cell on the plane whose top rises above it, (hi - e)*d > h*j, is
+// counted, and then its bottom raises the horizon when (lo - e)*d > h*j
+// (0x4823fc..0x48248e). Off-plane cells are skipped. A cell several rays reach
+// is counted once per ray.
+template<class HeightAt,class Visit>
+void retailTrueSightCells(const RetailSightFootprint& sight,int width,int height,HeightAt& heightAt,Visit visit) {
+    if (uint32_t(sight.x)>=uint32_t(width) || uint32_t(sight.z)>=uint32_t(height)) return;
+    visit(int(sight.x),int(sight.z));
+    const RetailLosTable* table=retailLosTable(sight);
+    if (!table) return;
+    const int e=sight.eyeHeight;
+    for (const RetailLosRay& ray:*table) {
+        int32_t bestH=-1,bestD=0,j=1;
+        for (const auto& step:ray) {
+            const int x=sight.x+step[0],z=sight.z+step[1];
+            if (uint32_t(x)<uint32_t(width) && uint32_t(z)<uint32_t(height)) {
+                const auto h=heightAt(x,z);
+                const int32_t hi=int32_t(h[0])-e,lo=int32_t(h[1])-e;
+                if (hi*bestD>bestH*j) {
+                    visit(x,z);
+                    if (lo*bestD>bestH*j) {bestD=j;bestH=lo;}
+                }
+            }
+            ++j;
+        }
+    }
+}
 
 struct RetailSightVisitAll {
     bool operator()(int, int, bool) const { return true; }
 };
 
-// 0x481840..0x481868: the mask frame for a sight distance.
+// 0x481840..0x481868: the Circular mask frame for a sight distance.
 inline const RetailVisMask& retailSightMask(const RetailSightFootprint& sight) {
     return retailVisMaskTable()[size_t(std::clamp(int(sight.distance)/32-5,0,9))];
 }
-// The farthest the mask reaches from its centre cell, for dirty rectangles.
+// The farthest a footprint reaches from its centre cell, for dirty rectangles.
 inline int retailSightRadius(const RetailSightFootprint& sight) {
+    if (sight.trueLos) {
+        int reach=0;
+        if (const RetailLosTable* t=retailLosTable(sight))
+            for (const auto& ray:*t) for (const auto& c:ray) reach=std::max({reach,std::abs(int(c[0])),std::abs(int(c[1]))});
+        return reach;
+    }
     const RetailVisMask& m=retailSightMask(sight);
     return std::max({int(m.xoff),int(m.width)-1-m.xoff,int(m.yoff),int(m.height)-1-m.yoff});
 }
@@ -124,7 +183,12 @@ inline float retailSightSlope(const RetailSightFootprint&) { return 0; }
 // Is cell (x, z) under the footprint's mask? (The other arguments are the old
 // cone's; Circular reads no terrain.)
 template<class HeightAt>
-inline bool retailSightAdmits(const RetailSightFootprint& sight,int x,int z,int,float,HeightAt&) {
+inline bool retailSightAdmits(const RetailSightFootprint& sight,int x,int z,int,float,HeightAt& heightAt) {
+    if (sight.trueLos) {
+        bool hit=false;
+        retailTrueSightCells(sight,1<<15,1<<15,heightAt,[&](int cx,int cz){hit=hit || (cx==x && cz==z);});
+        return hit;
+    }
     const RetailVisMask& m=retailSightMask(sight);
     return m.at(x-sight.x+m.xoff,z-sight.z+m.yoff);
 }
@@ -134,10 +198,16 @@ inline bool retailSightAdmits(const RetailSightFootprint& sight,int x,int z,int,
 template<class HeightAt,class Visit,class Needed=RetailSightVisitAll>
 void retailSightFootprint(RetailSightFootprint& sight,bool active,bool explore,
         int width,int height,uint8_t player,HeightAt heightAt,Visit visit,Needed needed={}) {
-    (void)heightAt;
     if (sight.active==active) return;
-    const RetailVisMask& m=retailSightMask(sight);
     const uint16_t mask=explore?uint16_t(uint32_t(1)<<(player&31)):0;
+    if (sight.trueLos) {
+        retailTrueSightCells(sight,width,height,heightAt,[&](int x,int z) {
+            if (needed(x,z,active)) visit(x,z,active?1:-1,mask);
+        });
+        sight.active=active;
+        return;
+    }
+    const RetailVisMask& m=retailSightMask(sight);
     const int x0=sight.x-m.xoff,z0=sight.z-m.yoff;
     for (int j=std::max(0,-z0);j<m.height && z0+j<height;++j)
         for (int i=std::max(0,-x0);i<m.width && x0+i<width;++i) {
@@ -154,6 +224,14 @@ inline void retailSightCentre(Fixed x,Fixed y,Fixed z,int& cx,int& cz) {
     cx=x.floorInt()>>5;
     cz=(z.floorInt()>>5)-(y.floorInt()>>6);
 }
+// True sight's eye and centre (0x4817f8, 0x4825d4..0x48261c): the eye byte is
+// the height, at least sea level + 1, plus the model height, held to 0..255;
+// the centre is (x >> 5, (z - eye/2) >> 5) in pixels.
+inline void retailTrueSightEye(Fixed x,Fixed y,Fixed z,uint8_t sea,uint8_t sightHeight,int& cx,int& cz,int& eye) {
+    eye=std::clamp(std::max(y.floorInt(),int(sea)+1)+int(sightHeight),0,255);
+    cx=x.floorInt()>>5;
+    cz=(z.floorInt()-eye/2)>>5;
+}
 
 // 0x4827b0 -> 0x48272e..0x482746: a footprint is re-stamped only when its
 // centre cell moves (the mask follows the sight distance, whose change resets
@@ -162,13 +240,21 @@ template<class HeightAt,class Visit,class Needed=RetailSightVisitAll>
 void retailUpdateSight(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z,
         uint8_t sea,bool explore,int width,int height,uint8_t player,
         HeightAt heightAt,Visit visit,Needed needed={}) {
-    int cx,cz;retailSightCentre(x,y,z,cx,cz);
-    const int eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
-    if (cx==sight.x && cz==sight.z) return;
+    int cx,cz,eye;
+    if (sight.trueLos) {
+        // 0x48261f..0x48262e: the same cell and the eye within 5 keep the stamp.
+        retailTrueSightEye(x,y,z,sea,sight.sightHeight,cx,cz,eye);
+        if (cx==sight.x && cz==sight.z && std::abs(sight.eyeHeight-eye)<=5) return;
+    } else {
+        retailSightCentre(x,y,z,cx,cz);
+        eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
+        if (cx==sight.x && cz==sight.z) return;
+    }
     retailSightFootprint(sight,false,false,width,height,player,heightAt,visit,needed);
-    sight.x=int16_t(cx);sight.z=int16_t(cz);sight.eyeHeight=eye;
+    sight.x=int16_t(cx);sight.z=int16_t(cz);sight.eyeHeight=int16_t(eye);
     if (uint32_t(cx)<uint32_t(width) && uint32_t(cz)<uint32_t(height))
         retailSightFootprint(sight,true,explore,width,height,player,heightAt,visit,needed);
+    else if (sight.trueLos) sight.eyeHeight=0;   // 0x482600: off the plane, the eye byte is cleared
 }
 
 // 0x481930, exploration for callers that keep no current-view counts: the
@@ -182,14 +268,32 @@ template<class HeightAt,class Covered,class Needed,class Reveal,class BlockDone>
 void retailUpdateExploration(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z,
         uint8_t sea,int width,int height,int blockShift,HeightAt heightAt,
         Covered covered,Needed needed,Reveal reveal,BlockDone blockDone) {
-    (void)heightAt;
-    int cx,cz;retailSightCentre(x,y,z,cx,cz);
-    const int eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
-    if (cx==sight.x && cz==sight.z) return;
+    int cx,cz,eye;
+    if (sight.trueLos) {
+        retailTrueSightEye(x,y,z,sea,sight.sightHeight,cx,cz,eye);
+        if (cx==sight.x && cz==sight.z && std::abs(sight.eyeHeight-eye)<=5) return;
+    } else {
+        retailSightCentre(x,y,z,cx,cz);
+        eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
+        if (cx==sight.x && cz==sight.z) return;
+    }
     sight.active=false;
-    sight.x=int16_t(cx);sight.z=int16_t(cz);sight.eyeHeight=eye;
+    sight.x=int16_t(cx);sight.z=int16_t(cz);sight.eyeHeight=int16_t(eye);
     if (uint32_t(cx)>=uint32_t(width) || uint32_t(cz)>=uint32_t(height)) return;
     sight.active=true;
+    if (sight.trueLos) {
+        // 0x481930 walks the same rays: hills hide what lies behind them from
+        // the map too. Every block a reveal touched is reported once.
+        std::vector<std::pair<int,int>> touched;
+        retailTrueSightCells(sight,width,height,heightAt,[&](int x,int z) {
+            if (covered(x>>blockShift,z>>blockShift) || !needed(x,z)) return;
+            reveal(x,z);
+            const std::pair<int,int> b{x>>blockShift,z>>blockShift};
+            if (std::find(touched.begin(),touched.end(),b)==touched.end()) touched.push_back(b);
+        });
+        for (const auto& [bx,bz]:touched) blockDone(bx,bz);
+        return;
+    }
     const RetailVisMask& m=retailSightMask(sight);
     const int mx0=cx-m.xoff,mz0=cz-m.yoff;
     const int x0=std::max(0,mx0),x1=std::min(width-1,mx0+m.width-1);

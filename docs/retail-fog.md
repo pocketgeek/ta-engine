@@ -271,11 +271,14 @@ The minimap is never dithered and has no edge pieces.
 
 - **1, 2:** `client/fogremap.h` adds the grey table, DitheredFog (`TA_FOG_DITHER`) and the fog.gaf edges. Without OpenGL the overlay stays still and black.
 - **3:** campaign `mapping` / `lineofsight`.
-- **4 (Circular only), 6:** vismasks.gaf stamps at the projected centre (`sim/retailexploration.h`).
-- **7:** the minimap uses the grey table.
+- **4, 6:** both sight modes at their projected centres (`sim/retailexploration.h`). Circular stamps the vismasks.gaf masks. True casts the los.tdf rays (four quarter turns, `TABLE min(sight/32, numtables−1)`, horizon test 0x4823fc) and reveals the map along the same rays.
+- **5:** the LINE OF SIGHT room option (TRUE by default, always TRUE in a campaign) and `+LOSType`, which works with cheats off.
+- **7, 8:** the minimap's grey table, `radlogo` dots, `nuclogo` / yellow shot pixels, and radar, sonar and jammer rings.
+- **9:** radar reaches radardistance + 2·height and needs the unit switched on. It skips stealth units and submerged targets. Other players' jammers clear contacts; sonar contacts come from the sim. All of it is keyed on the viewed player.
+- **10:** a submerged enemy is seen only as a sonar contact (`World::playerSees`, hashed).
 - **12:** `nodrawundergray`.
 
-Open: 4 (True LOS rays), 5, 8, 9, 10, 11, 13, 14 and 15.
+Open: 11 (retail ally sharing, untraced; the engine keeps D2), 13 (R:/S: hover text), 14 (draw order) and 15 (nanoframe sight). `radlogohigh` (G+0x2cba) and the blinking dot are not drawn.
 
 1. **The out-of-view look.** Retail desaturates out-of-view terrain through the
    GRAY TABLE, or covers it with a 50% black checkerboard (DitheredFog), with no

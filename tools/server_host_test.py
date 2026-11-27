@@ -48,7 +48,7 @@ def options(speed=10):
     # forfeitSelfDestruct, gameMods, speed (tenths), speedUnlock (on), unitCap,
     # monarchExpendable, stressTest, fogExplored, benchmark, randomStarts, doubleSight, pathMode,
     # allowSpectators (on), mapScenario, powerCodes, startMetal100, startEnergy100
-    return bytes([1, 0, speed, 1]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10])
+    return bytes([1, 0, speed, 1]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10, 1])
 
 
 def room_state(body):

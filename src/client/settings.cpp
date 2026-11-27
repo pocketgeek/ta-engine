@@ -84,6 +84,7 @@ void parseRoomPref(RoomPrefs& p, const std::string& field, const std::string& va
     else if (field == "monarchExpendable") p.monarchExpendable = boolValue(val);
     else if (field == "allowSpectators")   p.allowSpectators = boolValue(val);
     else if (field == "powerCodes")        p.powerCodes = boolValue(val);
+    else if (field == "losTrue")           p.losTrue = boolValue(val);
     else if (field == "pathfindingMode")   p.pathfindingMode = pathModeValue(val);
     else if (field == "unitCap")           p.unitCap = intValue(val, 250, 2000);
     else if (field == "fog")               p.fog = intValue(val, 0, 2);
@@ -103,6 +104,7 @@ void writeRoomPrefs(std::ostream& o, const std::string& prefix, const RoomPrefs&
     o << prefix << ".monarchExpendable = " << p.monarchExpendable << "\n";
     o << prefix << ".allowSpectators = " << p.allowSpectators << "\n";
     o << prefix << ".powerCodes = " << p.powerCodes << "\n";
+    o << prefix << ".losTrue = " << p.losTrue << "\n";
     o << prefix << ".pathfindingMode = " << int(p.pathfindingMode) << "\n";
     o << prefix << ".unitCap = " << p.unitCap << "\n";
     o << prefix << ".fog = " << p.fog << "\n";

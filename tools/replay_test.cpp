@@ -113,7 +113,7 @@ int main() {
     for (auto mode : {ta::sim::PathfindingMode::Retail, ta::sim::PathfindingMode::Legion}) {
         auto in = sample(); in.mission.clear(); in.pathfindingMode = mode;
         Writer w; writeReplayHeader(w, in);
-        const size_t modeAt = w.b.size() - size_t(kMaxSlots) * 5 - 5;   // ... mode, count, slots, mapScenario, powerCodes, fogExplored
+        const size_t modeAt = w.b.size() - size_t(kMaxSlots) * 5 - 6;   // ... mode, count, slots, mapScenario, powerCodes, fogExplored, losType
         ReplayHeader out; uint32_t fmt=0, proto=0;
         Reader r(w.b.data()+4,w.b.size()-4);
         check(readReplayHeader(r,out,fmt,proto) && out.pathfindingMode==mode,
@@ -180,7 +180,7 @@ int main() {
         Writer probe;
         ReplayHeader h = sample();
         writeReplayHeader(probe, h);
-        size_t countAt = probe.b.size() - size_t(kMaxSlots) * 5 - 4;   // ... count, slots, mapScenario, powerCodes, fogExplored
+        size_t countAt = probe.b.size() - size_t(kMaxSlots) * 5 - 5;   // ... count, slots, mapScenario, powerCodes, fogExplored, losType
         w.b[countAt] = uint8_t(kMaxSlots + 9);
         Reader r(w.b.data() + 4, w.b.size() - 4);
         ReplayHeader out;

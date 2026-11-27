@@ -2,6 +2,7 @@
 #include <iterator>
 #include <type_traits>
 #include "client/guiart.h"
+#include "sim/taweapons.h"
 #include "client/cliprect.h"
 #include "client/gameview.h"
 #include "client/gamespeed.h"
@@ -618,10 +619,10 @@ namespace {
         auto toMini = [&](float wx, float wz) {
             return SDL_FPoint{r.x + wx / mapW * r.w, r.y + wz / mapH * r.h};
         };
-        // All unit dots batched into one draw call (per-unit FillRect + colour
-        // set was thousands of state changes a frame at large unit counts).
+        drawMinimapMarkers(r, mapW, mapH);
+        // The fallback dots (no fx.gaf art), batched into one draw call.
         overlayBatch_.clear();
-        for (const UnitR* _up : front().live) { const UnitR& u = *_up;
+        if (!radLogo_[0]) for (const UnitR* _up : front().live) { const UnitR& u = *_up;
             // A spectator (noFog_) sees every unit on the radar; a player sees allied
             // units, and enemies in view or within its radar (radarVisible). The
             // +Radar power code shows them all here, on the minimap only (retail's
@@ -643,6 +644,84 @@ namespace {
                        mapViewH(winH) / zm / mapH * r.h};
         SDL_SetRenderDrawColor(ren_, 240, 240, 240, 200);
         SDL_RenderDrawRectF(ren_, &view);
+    }
+
+    // TotalA.exe's minimap markers (0x466dc0 / 0x4671a0, docs/retail-fog.md 5.2):
+    //  - each shown unit is its owner colour's radlogo frame at its projected point;
+    //  - a selected unit draws its radar and sonar range in green and its jammer
+    //    ranges in red (guipal 0xa / 0xc, 0x4c0070) -- an onoffable one only while
+    //    switched on -- and an antiweapons unit its weapons' coverage;
+    //  - every shot in view, or the viewed player's own, is a yellow pixel (guipal
+    //    0xe), a targetable or interceptor weapon's (bits 29-30) a nuclogo in its
+    //    owner's colour; a noradar weapon's never shows.
+    // Sizes are retail's pixels times the minimap's scale over retail's 128 px box.
+    void GameView::drawMinimapMarkers(const SDL_FRect& r, float mapW, float mapH) {
+        if (!radLogosLoaded_) {
+            radLogosLoaded_ = true;
+            for (int i = 0; i < 10; ++i) {
+                radLogo_[size_t(i)] = ta::gafTexture(ren_, vfs_, "fx", "radlogo", i);
+                nucLogo_[size_t(i)] = ta::gafTexture(ren_, vfs_, "fx", "nuclogo", i);
+            }
+        }
+        if (!radLogo_[0]) return;
+        const float px = std::max(1.0f, std::round(std::min(r.w, r.h) / 128.0f));
+        auto toMini = [&](float wx, float wz) { return SDL_FPoint{r.x + wx / mapW * r.w, r.y + wz / mapH * r.h}; };
+        auto logo = [&](SDL_Texture* t, SDL_FPoint p, float size) {
+            if (!t) return;
+            const SDL_FRect d{std::floor(p.x - (size / 2) * px), std::floor(p.y - (size / 2) * px), size * px, size * px};
+            SDL_RenderCopyF(ren_, t, nullptr, &d);
+        };
+        auto ring = [&](SDL_FPoint c, float radiusPx, SDL_Color col) {
+            if (radiusPx <= 0) return;
+            const float rx = radiusPx / mapW * r.w, rz = radiusPx / mapH * r.h;
+            SDL_SetRenderDrawColor(ren_, col.r, col.g, col.b, 255);
+            constexpr int kSegs = 48;
+            SDL_FPoint pts[kSegs + 1];
+            for (int i = 0; i <= kSegs; ++i) {
+                const float a = float(i) * 6.2831853f / kSegs;
+                pts[i] = {c.x + rx * std::cos(a), c.y + rz * std::sin(a)};
+            }
+            SDL_RenderDrawLinesF(ren_, pts, kSegs + 1);
+        };
+        constexpr SDL_Color kGreen{85, 255, 85, 255}, kRed{255, 85, 85, 255}, kYellow{255, 255, 85, 255};
+        const auto& f = front();
+        for (const UnitR* up : f.live) {
+            const UnitR& u = *up;
+            if (radarCode_ ? !u.alive() || u.embarked() || !u.type : !radarVisible(u)) continue;
+            const SDL_FPoint p = toMini(u.x, u.z - float((u.worldPosition[1] >> 16) >> 1));
+            logo(radLogo_[size_t(std::clamp(playerColorSlot(u.player), 0, 9))], p, 4);
+        }
+        for (int id : selection_) {
+            const UnitR* u = frameUnitP(id);
+            if (!u || !u->alive() || !u->type) continue;
+            if (u->type->onOffable && !u->active) continue;
+            const SDL_FPoint p = toMini(u->x, u->z - float((u->worldPosition[1] >> 16) >> 1));
+            const float ypx = float(u->worldPosition[1] >> 16);
+            if (u->type->radar) ring(p, float(u->type->radar) + 2 * std::max(0.0f, ypx), kGreen);
+            if (u->type->sonar) ring(p, float(u->type->sonar), kGreen);
+            if (u->type->radarJam) ring(p, float(u->type->radarJam), kRed);
+            if (u->type->sonarJam) ring(p, float(u->type->sonarJam), kRed);
+            if (u->type->antiWeapons)
+                for (const auto& w : u->type->weapons) if (w.coverage > 0) ring(p, float(w.coverage), kGreen);
+        }
+        overlayBatch_.clear();
+        for (const auto& shot : f.projectiles) {
+            if (shot.spent || shot.life <= 0 || !shot.wsrc) continue;
+            const auto& w = *shot.wsrc;
+            if (w.hasTaFlag(ta::sim::kWNoRadar)) continue;
+            const bool native3d = shot.ballistic3d || shot.guided3d || shot.taLineOfSight;
+            const float sx = native3d ? float(shot.position[0] >> 16) : shot.x.toFloat();
+            const float sy = native3d ? float(shot.position[1] >> 16) : 0.0f;
+            const float sz = native3d ? float(shot.position[2] >> 16) : shot.z.toFloat();
+            if (!noFog_ && shot.fromPlayer != seenAs() &&
+                projectedFogCellR(sx, sz - sy / 2) != ta::retailfog::kInView) continue;
+            const SDL_FPoint p = toMini(sx, sz - sy / 2);
+            if (w.hasTaFlag(ta::sim::kWTargetable) || w.hasTaFlag(ta::sim::kWInterceptor))
+                logo(nucLogo_[size_t(std::clamp(playerColorSlot(shot.fromPlayer), 0, 9))], p, 7);
+            else pushQuad(overlayBatch_, std::floor(p.x), std::floor(p.y), px, px, kYellow);
+        }
+        if (!overlayBatch_.empty())
+            SDL_RenderGeometry(ren_, nullptr, overlayBatch_.data(), int(overlayBatch_.size()), nullptr, 0);
     }
 
     bool GameView::minimapToWorld(float mx, float my, int winW, int winH, float& wx, float& wz) {

@@ -796,8 +796,8 @@ private:
 // A short form of a room's rules for the log ("sight=0 fog=1 starts=0 ...").
 static std::string optionsSummary(const GameOptions& o) {
     char b[192];
-    std::snprintf(b, sizeof b, "sight=%d fog=%d starts=%d cap=%d path=%d codes=%d scenario=%d spectators=%d mods=%d",
-                  o.doubleSight, o.fogExplored, o.randomStarts, o.unitCap, int(o.pathfindingMode), o.powerCodes,
+    std::snprintf(b, sizeof b, "sight=%d fog=%d los=%d starts=%d cap=%d path=%d codes=%d scenario=%d spectators=%d mods=%d",
+                  o.doubleSight, o.fogExplored, o.losType, o.randomStarts, o.unitCap, int(o.pathfindingMode), o.powerCodes,
                   o.mapScenario, o.allowSpectators, o.gameMods);
     return b;
 }
@@ -816,6 +816,7 @@ static std::string optionsChanged(const GameOptions& a, const GameOptions& b) {
     field(a.stressTest != b.stressTest, "stress");
     field(a.randomStarts != b.randomStarts, "starts");
     field(a.fogExplored != b.fogExplored, "fog");
+    field(a.losType != b.losType, "los");
     field(a.pathfindingMode != b.pathfindingMode, "path");
     field(a.doubleSight != b.doubleSight, "sight");
     field(a.benchmark != b.benchmark, "benchmark");
@@ -1590,6 +1591,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             if (!mission.empty()) { o.pathfindingMode = ta::sim::PathfindingMode::Retail; o.doubleSight = 0; }
             // CHEAT CODES: on or off, never in a campaign mission (TotalA.exe 0x497462: cheats off for game type 1).
             o.powerCodes = o.powerCodes && mission.empty() ? 1 : 0;
+            o.losType = o.losType || !mission.empty() ? 1 : 0;   // a campaign is True (0x4363d9)
             // A campaign mission, or any game on a private single-player server (a
             // loopback, no-auth, non-LAN local server: PLAY THE MACHINE / skirmish), is
             // played alone: its player may always change the game speed with -/+, as in
@@ -2809,6 +2811,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
             // the rule never removes (see Spectate).
             o.allowSpectators = o.allowSpectators ? 1 : 0;
             o.powerCodes = o.powerCodes ? 1 : 0;
+            o.losType = o.losType ? 1 : 0;
             // MAP SCENARIO changes only with the map (SetRoomMap): the capacity it implies
             // moves seats, which a rules change does not.
             o.mapScenario = r->opts.mapScenario;
@@ -2964,7 +2967,8 @@ void Server::gameMsg(Client& c, const Frame& f) {
                 // CHEAT CODES off: a code does nothing (TotalA.exe leaves group 2 out of the mask, 0x493e25, and skips the
                 // handler), so it never reaches a bundle. Not a fault: the chat line
                 // that carried it is ordinary chat.
-                if(cmd.kind==ta::net::Cmd::PowerCode && !r->opts.powerCodes) continue;
+                if(cmd.kind==ta::net::Cmd::PowerCode && !r->opts.powerCodes &&
+                   !ta::sim::alwaysPowerCode(cmd.targetId)) continue;
                 cmd.player=uint8_t(c.slot);
                 c.cmdQueue.push_back(cmd);
             }

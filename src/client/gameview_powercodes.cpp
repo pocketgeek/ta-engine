@@ -47,7 +47,7 @@ namespace {
         // so everyone sees a code typed. Here only a code that can act goes to all:
         // with CHEAT CODES off a +line is ordinary chat to the chosen recipients.
         const auto code = ta::sim::parsePowerCode(line);
-        const bool acts = code && powerCodesOn();
+        const bool acts = code && (powerCodesOn() || (ta::sim::alwaysPowerCode(int32_t(code->code)) && playsCodes()));
         if (acts) {
             if (chatEchoMs_) flushSystemChat();   // an earlier code's echo is overdue
             chatEcho_ = line;
@@ -76,10 +76,13 @@ namespace {
         }
     }
 
+    bool GameView::playsCodes() const {
+        return mp_ && !replayMode_ && !spectating_ && !inLobbyPhase() && mp_->room().mySlot >= 0;
+    }
     bool GameView::powerCodesOn() const {
-        if (!mp_ || replayMode_ || spectating_ || !missionStem_.empty() || inLobbyPhase()) return false;
+        if (!playsCodes() || !missionStem_.empty()) return false;
         const auto& room = mp_->room();
-        return room.opts.powerCodes != 0 && room.mission.empty() && room.mySlot >= 0;
+        return room.opts.powerCodes != 0 && room.mission.empty();
     }
 
     void GameView::powerCode(const ta::sim::PowerCodeInput& in) {
@@ -87,7 +90,7 @@ namespace {
         // TotalA.exe runs a group-2 handler only when the match allows cheating
         // (mask bit 2, 0x493e25..0x493e2f; executor 0x4b79cd): with CHEAT CODES off
         // the line is ordinary chat and does nothing else.
-        if (!powerCodesOn()) return;
+        if (!powerCodesOn() && !(ta::sim::alwaysPowerCode(int32_t(in.code)) && playsCodes())) return;
         switch (in.code) {
             case PowerCode::Radar: radarCode_ = !radarCode_; return;
             case PowerCode::MakePoster: startPoster(); return;

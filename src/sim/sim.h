@@ -2988,6 +2988,12 @@ public:
     // AI levels' fog rule (ai::Controller::knowsGround / sees);
     // the exploration plane itself still starts unexplored. Hashed when set.
     void setRoomVision(bool mapRevealed, bool losOff) { roomMapRevealed_ = mapRevealed; roomLosOff_ = losOff; }
+    // LOSType (docs/retail-fog.md 2.2 / 2.3, game +0x14281 bit 2): True sight
+    // casts los.tdf's rays over the terrain, Circular stamps vismasks.gaf. Set
+    // from the room's LINE OF SIGHT (a campaign is always True, 0x4363d9) and
+    // toggled by +LOSType; every footprint re-stamps under the new rule.
+    void setTrueLos(bool on) { trueLos_ = on; }
+    bool trueLos() const { return trueLos_; }
     bool roomMapRevealed() const { return roomMapRevealed_; }
     bool roomLosOff() const { return roomLosOff_; }
     // `player`'s whole map counts as explored: the room revealed it (no power codes
@@ -3031,6 +3037,12 @@ public:
     bool powerMappingOff(int player) const { return player >= 0 && player < 16 && (powerMappingOff_ >> player & 1); }
     int32_t sightDistance(const UnitType& type) const { return type.sight * (doubleSight_ ? 2 : 1); }
     int32_t radarDistance(const UnitType& type) const { return type.radar * (doubleSight_ ? 2 : 1); }
+    int32_t sonarDistance(const UnitType& type) const { return type.sonar * (doubleSight_ ? 2 : 1); }
+    // TotalA.exe 0x467440 / 0x467840 (docs/retail-fog.md 4.1): is `u` a sonar contact
+    // of `player` -- at or below sea level, within the sonar distance of an activated
+    // sonar unit whose sight `player` shares, and not inside an activated sonar jammer
+    // of another player? From this tick's sonar sources (collectSonar).
+    bool sonarContact(int player, const Unit& u) const;
     // Monarch-expendable rule (net GameOptions): when FALSE, losing your Monarch
     // (a commander unit) loses you the game even if other units survive.
     void setMonarchExpendable(bool e) { monarchExpendable_ = e; }
@@ -4423,6 +4435,11 @@ public:
     // projected bounding-box corners lies on a cell `player`'s current-view
     // counters hold. Without terrain (no view plane) every placed unit is seen.
     bool playerSees(int player,const Unit& u) const;
+    // Each tick's activated sonar units and sonar jammers (collectSonar, at the
+    // start of the tick): derived from the units, never hashed.
+    struct SonarSource { int32_t x = 0, z = 0; int64_t r2 = 0; uint16_t sharedWith = 0; int8_t player = -1; };
+    std::vector<SonarSource> sonarSources_, sonarJammers_;
+    void collectSonar();
     // Owner kind 2 (computer AI): an AI seat, the campaign's strategic
     // players, the benchmark (Player::automaticGates, hashed).
     bool computerOwned(int player) const {
@@ -4495,6 +4512,7 @@ private:
 
     bool doubleSight_ = false;  // synchronized skirmish/MP rule; campaigns use authored sight
     bool roomMapRevealed_ = false, roomLosOff_ = false;   // setRoomVision
+    bool trueLos_ = false;   // setTrueLos; hashed when on
     // Power codes (setPowerCodes / applyPowerCode). Hashed while powerCodes_ is on.
     bool powerCodes_ = false;
     bool doubleShot_ = false, halfShot_ = false;   // game flags 0x80 / 0x100: every player's damage

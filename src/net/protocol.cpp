@@ -150,6 +150,7 @@ void put(Writer& w, const GameOptions& o) {
     w.u8(o.mapScenario);       // map scenario
     w.u8(o.powerCodes);        // power codes
     w.u8(o.startMetal100); w.u8(o.startEnergy100);   // TA start resources
+    w.u8(o.losType);           // line of sight
 }
 
 void get(Reader& r, GameOptions& o) {
@@ -164,6 +165,7 @@ void get(Reader& r, GameOptions& o) {
     o.mapScenario = r.u8();
     o.powerCodes = r.u8();
     o.startMetal100 = r.u8(); o.startEnergy100 = r.u8();
+    o.losType = r.u8() ? 1 : 0;
 }
 
 void put(Writer& w, const SlotInfo& s) {

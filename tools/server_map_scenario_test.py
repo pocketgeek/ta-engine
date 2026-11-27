@@ -40,7 +40,7 @@ import server_net as auth
 from server_net import OPTIONS_BYTES, BufferedPeer as Peer, lobby
 from server_public_test import login, options, server
 
-SCENARIO = OPTIONS_BYTES - 4   # mapScenario, before powerCodes and the start resources
+SCENARIO = OPTIONS_BYTES - 5   # mapScenario, before powerCodes and the start resources
 RANDOM = 12                    # randomStarts (net::put: after benchmark, before doubleSight)
 SEAT_TWO = b'Seat player 2 in the lobby to play this scenario'
 

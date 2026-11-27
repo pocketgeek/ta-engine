@@ -33,6 +33,10 @@ void retailSightMove(const RetailSightFootprint& from,const RetailSightFootprint
 template<class HeightAt,class Visit>
 void retailUpdateSightCounts(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z,
         uint8_t sea,int width,int height,uint8_t player,HeightAt heightAt,Visit visit) {
+    if (sight.trueLos) {   // rays: removed and added whole
+        retailUpdateSight(sight,x,y,z,sea,false,width,height,player,heightAt,visit);
+        return;
+    }
     int cx,cz;retailSightCentre(x,y,z,cx,cz);
     const int eye=std::max(y.floorInt(),int(sea)+1)+sight.sightHeight;
     if (cx==sight.x && cz==sight.z) return;
@@ -41,7 +45,7 @@ void retailUpdateSightCounts(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z
         return;
     }
     RetailSightFootprint next=sight;
-    next.x=int16_t(cx);next.z=int16_t(cz);next.eyeHeight=eye;
+    next.x=int16_t(cx);next.z=int16_t(cz);next.eyeHeight=int16_t(eye);
     retailSightMove(sight,next,width,height,heightAt,visit);
     sight=next;
 }

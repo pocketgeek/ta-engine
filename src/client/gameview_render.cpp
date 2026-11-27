@@ -4519,6 +4519,9 @@
         kill(fogDummy_);
         kill(fogTex_);
         kill(miniFogTex_);
+        for (auto& t : radLogo_) kill(t);
+        for (auto& t : nucLogo_) kill(t);
+        radLogosLoaded_ = false;
         kill(mapPreviewTex_);
         distantModelCache_.clear();
         distantModelItems_.clear();

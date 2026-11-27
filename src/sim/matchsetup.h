@@ -71,6 +71,7 @@ struct MatchConfig {
     // line of sight off. Only area clear's fog test reads them. Replays carry the
     // option itself (format 15).
     bool roomMapRevealed = false, roomLosOff = false;
+    bool trueLos = false;   // LINE OF SIGHT: True (los.tdf rays) or Circular (World::setTrueLos)
     ScenarioScript::TraceSink scenarioTrace; // local diagnostics only, installed before initial rules
     int scenarioViewPlayer = -1;     // cosmetic message filtering only; never hashed
     // Total Annihilation start resources (skirmish/MP: the lobby's values; retail

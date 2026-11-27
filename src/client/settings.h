@@ -237,6 +237,7 @@ struct Settings {
         bool monarchExpendable = false;
         bool allowSpectators = true;   // multiplayer only (single player rooms are private)
         bool powerCodes = false;       // off, as in retail
+        bool losTrue = true;           // LINE OF SIGHT: TRUE, retail's SkirmishLOSType / MultiLOSType default
         sim::PathfindingMode pathfindingMode = sim::PathfindingMode::Retail;
         int unitCap = 2000, fog = 1;   // fog: 0 NOT EXPLORED, 1 EXPLORED, 2 FULL VISION
         int randomStarts = 0;          // 0 FIXED, 1 RANDOM, 2 BY SLOT

@@ -23,7 +23,7 @@ def options(speed):
     # forfeitSelfDestruct, gameMods, speed (tenths), speedUnlock, unitCap,
     # monarchExpendable, stressTest, fogExplored, benchmark, randomStarts, doubleSight, pathMode,
     # allowSpectators, mapScenario, powerCodes, startMetal100, startEnergy100
-    return bytes([1, 0, speed, 1]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10])
+    return bytes([1, 0, speed, 1]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10, 1])
 
 
 class Watcher:

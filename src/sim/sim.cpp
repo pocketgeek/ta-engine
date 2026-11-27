@@ -12266,10 +12266,13 @@ void World::tickReclaimArea(Unit& b) {
             // Before the first exploration pass, initialize the same authored sight.
             if (sight.x<0 || sight.z<0) {
                 sight.distance=int16_t(sightDistance(*u.type));sight.sightHeight=u.type->sightHeight;
+                sight.trueLos=trueLos_;
                 const Fixed y=u.type->canFly?u.flightY:u.groundY;
-                int cx,cz;retailSightCentre(u.x,y,u.z,cx,cz);
+                int cx,cz,eye;
+                if (trueLos_) retailTrueSightEye(u.x,y,u.z,uint8_t(seaLevel_),sight.sightHeight,cx,cz,eye);
+                else {retailSightCentre(u.x,y,u.z,cx,cz);eye=std::max(y.floorInt(),seaLevel_+1)+sight.sightHeight;}
                 sight.x=int16_t(cx);sight.z=int16_t(cz);
-                sight.eyeHeight=std::max(y.floorInt(),seaLevel_+1)+sight.sightHeight;
+                sight.eyeHeight=int16_t(eye);
             }
             retailSightFootprint(sight,true,false,width,height,uint8_t(b.player),
                 [&](int x,int z){return explorationHeights_[size_t(z)*width+x];},
@@ -15817,10 +15820,12 @@ void World::updateExplorationPlane() {
             // with its own sight from the attach point its mover committed.
             if (!u.alive() || !u.type || u.underConstruction) continue;
             const int16_t distance=int16_t(sightDistance(*u.type));
-            if (u.sightFootprint.distance!=distance || u.sightFootprint.sightHeight!=u.type->sightHeight) {
+            if (u.sightFootprint.distance!=distance || u.sightFootprint.sightHeight!=u.type->sightHeight ||
+                u.sightFootprint.trueLos!=trueLos_) {
                 u.sightFootprint={};
                 u.sightFootprint.distance=distance;
                 u.sightFootprint.sightHeight=u.type->sightHeight;
+                u.sightFootprint.trueLos=trueLos_;
             }
             const uint16_t viewers=size_t(u.player)<playerViewers.size() ? playerViewers[size_t(u.player)] : 0;
             const Fixed y=u.type->canFly?u.flightY:u.groundY;
@@ -15974,9 +15979,13 @@ void World::updateViewCounts() {
                 u.viewSight.active=false;u.viewSight.x=-1;u.viewPlayer=-1;u.viewPlanes=0;
             }
             const int16_t distance=int16_t(sightDistance(*u.type));
-            if (u.viewSight.distance!=distance || u.viewSight.sightHeight!=u.type->sightHeight) {
+            if (u.viewSight.distance!=distance || u.viewSight.sightHeight!=u.type->sightHeight ||
+                u.viewSight.trueLos!=trueLos_) {
+                // A new sight distance, or +LOSType (0x416690 rebuilds every stamp):
+                // the old footprint comes off by its own rule, the new one goes on.
                 if (u.viewSight.active && size_t(u.viewPlayer)<planes) change(u.viewSight,u.viewPlanes,u.viewPlayer,false,shared);
                 u.viewSight={};u.viewSight.distance=distance;u.viewSight.sightHeight=u.type->sightHeight;
+                u.viewSight.trueLos=trueLos_;
                 u.viewPlayer=-1;u.viewPlanes=0;
             }
             if (u.player<0 || size_t(u.player)>=planes || isNeutralPlayer(u.player) || !mask) continue;
@@ -16010,9 +16019,57 @@ void World::updateViewCounts() {
     });
 }
 
+void World::collectSonar() {
+    sonarSources_.clear();sonarJammers_.clear();
+    for (const auto& u:units_) {
+        if (!u.alive() || !u.type || u.underConstruction || u.embarked()) continue;
+        if (!u.type->sonar && !u.type->sonarJam) continue;
+        if (!retailActivated(u)) continue;   // +0x10e bit 0: switched on
+        if (u.type->sonar) {
+            const int64_t r=sonarDistance(*u.type);
+            uint16_t shared=0;
+            for (int p=0;p<16 && size_t(p)<players_.size();++p)
+                if (viewShareMask(u.player)>>p & 1) shared|=uint16_t(1u<<p);
+            if (u.player>=0 && u.player<16) shared|=uint16_t(1u<<u.player);
+            sonarSources_.push_back({u.x.v,u.z.v,r*r,shared,int8_t(u.player)});
+        }
+        if (u.type->sonarJam) {
+            const int64_t r=u.type->sonarJam;
+            sonarJammers_.push_back({u.x.v,u.z.v,r*r,0,int8_t(u.player)});
+        }
+    }
+}
+
+bool World::sonarContact(int player,const Unit& u) const {
+    // 0x467840: (dx^2 >> 32) + (dz^2 >> 32) < R^2 on 16.16 positions.
+    const auto within=[&](const SonarSource& s) {
+        const int64_t dx=int64_t(u.x.v)-s.x,dz=int64_t(u.z.v)-s.z;
+        return ((dx*dx)>>32)+((dz*dz)>>32)<s.r2;
+    };
+    if (player<0 || player>=16 || !u.type) return false;
+    // 0x467840: only a target at or below sea level (its y, not its top).
+    const Fixed y=u.type->canFly?u.flightY:u.groundY;
+    if (int16_t(uint32_t(y.v)>>16)>seaLevel_) return false;
+    bool heard=false;
+    for (const auto& s:sonarSources_)
+        if ((s.sharedWith>>player & 1) && within(s)) {heard=true;break;}
+    if (!heard) return false;
+    // 0x467980: another player's sonar jammer (an ally's too) clears the contact.
+    for (const auto& j:sonarJammers_)
+        if (j.player!=player && within(j)) return false;
+    return true;
+}
+
 bool World::playerSees(int player,const Unit& u) const {
     if (u.player==player) return true;                       // own units, cloaked or not
     if (!u.alive() || !u.type || u.cloaked || u.embarked()) return false;   // +0x114&4, 0x130&3
+    // TotalA.exe 0x465ac0: a unit whose top is under the sea is seen only as a
+    // sonar contact (+0x110 bit 9), and then by the corner test below.
+    {
+        const Fixed y=u.type->canFly?u.flightY:u.groundY;
+        const int topPx=int16_t(uint32_t(y.v+u.type->modelTop)>>16);
+        if (topPx<seaLevel_ && !sonarContact(player,u)) return false;
+    }
     const int width=hW_/2,height=hH_/2;
     const size_t cells=size_t(width)*height;
     if (viewCounts_.empty() || !cells) return true;
@@ -16047,7 +16104,7 @@ bool World::playerSees(int player,const Unit& u) const {
 // `unitId` names ATM's recipient: 1 + the player the issuer views (+View), or 0
 // for the issuer itself.
 void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
-    if (!powerCodes_ || player<0 || size_t(player)>=players_.size() || player>=16) return;
+    if ((!powerCodes_ && !alwaysPowerCode(int32_t(code))) || player<0 || size_t(player)>=players_.size() || player>=16) return;
     const uint16_t bit=uint16_t(1u<<player);
     switch (code) {
         case PowerCode::Atm: {
@@ -16072,6 +16129,11 @@ void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
         case PowerCode::Los:
             // 0x416d50: toggles line of sight (+0x14281 bit 1); no argument.
             powerLosOff_^=bit;
+            break;
+        case PowerCode::LosType:
+            // 0x416690: True <-> Circular; every footprint re-stamps under the new
+            // rule on the next sight pass (as 0x4816a0's rebuild).
+            trueLos_=!trueLos_;
             break;
         case PowerCode::Meteor:
             // 0x417760: with an argument, atoi != 0 arms the storm (0x437d40) and 0
@@ -19700,6 +19762,7 @@ void World::tick(float dt) {
         convoys_.prune(tickCounter_ + 1);
     }
     ++tickCounter_;
+    collectSonar();   // this tick's sonar contacts read the positions it starts from
     {
         std::optional<PhaseSpan> _nav;
         if (g_phase) _nav.emplace(g_navMs, probe::kNav);
@@ -21340,6 +21403,7 @@ uint64_t World::stateHash() const {
         mix(meteor_.armed);mix(meteor_.active);mix(meteor_.nextStrike);mix(meteor_.strikeEnd);mix(meteor_.nextHit);
         mix(uint16_t(meteor_.targetX));mix(uint16_t(meteor_.targetZ));mix(uint16_t(meteor_.originX));mix(uint16_t(meteor_.originZ));
     }
+    if (trueLos_) mix(0x545255454c4f5300ull);   // True LOS (the room's LINE OF SIGHT, +LOSType)
     if (patrolRepairs_) mix(0x5054524c52455052ull);
     if (!shootAll_) mix(0x53484f4f54414c4cull);   // retail's shootme gate: only off changes the hash
     mix(nextMovementController_);
@@ -21761,7 +21825,7 @@ uint64_t World::stateHash() const {
         mix(uint64_t(u.groundScanTick));
         mix(uint16_t(u.sightFootprint.x));mix(uint16_t(u.sightFootprint.z));
         mix(uint32_t(u.sightFootprint.eyeHeight));mix(uint16_t(u.sightFootprint.distance));
-        mix(u.sightFootprint.sightHeight);mix(u.sightFootprint.active);
+        mix(u.sightFootprint.sightHeight);mix(u.sightFootprint.active);mix(u.sightFootprint.trueLos);
         mix(uint16_t(u.viewSight.x));mix(uint16_t(u.viewSight.z));
         mix(uint32_t(u.viewSight.eyeHeight));mix(uint16_t(u.viewSight.distance));
         mix(u.viewSight.sightHeight);mix(u.viewSight.active);mix(uint8_t(u.viewPlayer));mix(u.viewPlanes);

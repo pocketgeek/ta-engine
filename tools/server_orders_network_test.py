@@ -24,7 +24,7 @@ from server_public_test import server, login
 
 def options(path=4):
     # GameOptions wire bytes (server_public_test.options), pathfinding byte `path`: 4 = Legion, 0 = Retail.
-    return bytes([1, 0, 10, 0]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, path, 1, 0, 0, 10, 10])
+    return bytes([1, 0, 10, 0]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, path, 1, 0, 0, 10, 10, 1])
 
 CMD = dict(Move=0, Stop=4, ReclaimArea=23, RetiredAreaBuild=26, Order=27)
 

@@ -24,7 +24,7 @@ namespace ta::net {
 // Bump it whenever the wire layout changes or the simulation can compute a different
 // result from the same inputs -- a peer or replay of another number would desync.
 // The CHANGELOG records what each release changed.
-constexpr uint32_t kNetVersion = 345;      // 345: TA Circular sight (anims/vismasks.gaf at the projected centre) and campaign vision (mapping=1 is the shroud on); 344: TA's cheat codes (Cmd::PowerCode admits Meteor, ATM's unitId names the viewed player, LOS takes no argument, DoubleShot/HalfShot independent) and the meteor storm; 343: ten players (kMaxSlots 10: RoomState/replay slot tables, u16 Chat/VoiceUp recipient masks; sim::kNeutralPlayer 10); 342: Cmd::StandingOrder (TA's separate move / fire standing orders); 341: Cmd::Land (a flyer's landing on an air base); 340: Cmd::ReclaimUnit (TA's RECLAIMUNIT; the server admits DGun and ReclaimUnit); 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
+constexpr uint32_t kNetVersion = 346;      // 346: LINE OF SIGHT option (GameOptions::losType, True LOS rays from los.tdf) and +LOSType, submerged units need sonar; 345: TA Circular sight (anims/vismasks.gaf at the projected centre) and campaign vision (mapping=1 is the shroud on); 344: TA's cheat codes (Cmd::PowerCode admits Meteor, ATM's unitId names the viewed player, LOS takes no argument, DoubleShot/HalfShot independent) and the meteor storm; 343: ten players (kMaxSlots 10: RoomState/replay slot tables, u16 Chat/VoiceUp recipient masks; sim::kNeutralPlayer 10); 342: Cmd::StandingOrder (TA's separate move / fire standing orders); 341: Cmd::Land (a flyer's landing on an air base); 340: Cmd::ReclaimUnit (TA's RECLAIMUNIT; the server admits DGun and ReclaimUnit); 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
 constexpr uint32_t kMaxFrame = 1u << 18;   // 256 KB frame cap (hardening) -- headroom for a
                                            // big tick bundle when many units are ordered at once
 // Players per game: retail's ten (TotalA.exe's ten 0x14b-byte player records at
@@ -444,6 +444,10 @@ struct GameOptions {
     // table, so every peer agrees.
     uint8_t randomStarts = 0;
     uint8_t fogExplored = 1;
+    // LINE OF SIGHT (retail's LOSType, game +0x14281 bit 2): 1 TRUE -- los.tdf's rays
+    // over the terrain, retail's default -- 0 CIRCULAR, vismasks.gaf. A campaign
+    // mission is always TRUE. Sim-affecting (MatchConfig::trueLos, in the replay header).
+    uint8_t losType = 1;
     sim::PathfindingMode pathfindingMode = sim::PathfindingMode::Retail;
     uint8_t doubleSight = 0;   // skirmish/MP only; ignored for campaign missions
     // Benchmark INTENSITY: 0=off, 1=Low..6=Extra Absurd -- an all-AI perf run with a spawn ramp

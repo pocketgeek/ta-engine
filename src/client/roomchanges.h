@@ -16,7 +16,7 @@ namespace ta {
 // One line of the room a change can light: the map and its MAP SCENARIO, each cell of the
 // options block, the slot table, the mods line.
 enum class RoomField : uint8_t { Map, Scenario, DoubleSight, UnitCap, Commander,
-    SpeedUnlock, Fog, StartLocations, Pathfinding, PowerCodes, AllowSpectators, Players, Mods, kCount };
+    SpeedUnlock, Fog, LosType, StartLocations, Pathfinding, PowerCodes, AllowSpectators, Players, Mods, kCount };
 const char* roomFieldCaption(RoomField);   // "FOG OF WAR", ... (for the notes)
 
 // What changed between two LobbyStates of one room.

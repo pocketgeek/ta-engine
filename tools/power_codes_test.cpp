@@ -7,6 +7,7 @@
 #include "sim/matchsetup.h"
 #include "sim/powercodes.h"
 #include "sim/retailrng.h"
+#include "sim/retailexploration.h"
 #include "sim/sim.h"
 
 #include <cstdio>
@@ -186,6 +187,70 @@ static void simCodes() {
     check(!off.powerMappingOff(0) && off.stateHash() == e.stateHash(), "map revealed means nothing with CHEAT CODES off");
 }
 
+// True line of sight (TotalA.exe 0x482270, docs/retail-fog.md 2.3) and +LOSType.
+static void trueSight() {
+    // One ray straight east, cells 1..4, as a TABLE1 would hold it.
+    // (numtables 2: r = min(sight/32, 1), TABLE r.)
+    const RetailLosTable east{RetailLosRay{{1, 0}, {2, 0}, {3, 0}, {4, 0}}};
+    setRetailLosTables({east, east});
+    RetailSightFootprint f;
+    f.trueLos = true; f.distance = 40; f.x = 2; f.z = 2; f.eyeHeight = 30;
+    constexpr int W = 10, H = 5;
+    std::vector<RetailExplorationHeight> h(size_t(W) * H, RetailExplorationHeight{0, 0});
+    auto at = [&](int x, int z) { return h[size_t(z) * W + size_t(x)]; };
+    auto cells = [&]() {
+        std::vector<int> xs;
+        retailTrueSightCells(f, W, H, at, [&](int x, int z) { if (z == 2) xs.push_back(x); });
+        return xs;
+    };
+    check(cells() == std::vector<int>{2, 3, 4, 5, 6}, "flat ground: the centre and every cell of the ray");
+    h[size_t(2) * W + 4] = {60, 60};     // a wall two cells out, above the eye (30)
+    check(cells() == std::vector<int>{2, 3, 4}, "a wall above the eye is seen and hides what lies behind it");
+    h[size_t(2) * W + 6] = {250, 250};   // a taller tower behind it shows over the wall
+    check(cells() == std::vector<int>{2, 3, 4, 6}, "a tower taller than the horizon shows over the wall");
+    f.distance = 20;
+    check(cells() == std::vector<int>{2}, "under 32 px there is no table: the centre alone");
+    setRetailLosTables({});
+
+    // +LOSType is retail's group 1: it acts with CHEAT CODES off too.
+    TypeRegistry reg;
+    for (bool codes : {false, true}) {
+        World w; w.setSerialThreads(true); w.setPlayerCount(2);
+        w.setTerrain(std::vector<uint8_t>(128 * 128, 0), 128, 128, 0);
+        w.setPowerCodes(codes); w.setTrueLos(true);
+        const auto before = w.stateHash();
+        applyCommand(w, reg, code(PowerCode::LosType, 0));
+        check(!w.trueLos() && w.stateHash() != before, "+LOSType toggles True to Circular, cheats or not");
+        applyCommand(w, reg, code(PowerCode::LosType, 1));
+        check(w.trueLos(), "and back");
+    }
+    check(parsePowerCode("+LOSType") && parsePowerCode("+lostype")->code == PowerCode::LosType, "parse +LOSType");
+    check(alwaysPowerCode(int32_t(PowerCode::LosType)) && !alwaysPowerCode(int32_t(PowerCode::Atm)),
+          "only LOSType is always on");
+}
+
+// A submerged enemy is seen only as a sonar contact (TotalA.exe 0x465ac0, 0x467440).
+static void submerged() {
+    UnitType eyes; eyes.id = eyes.name = "eyes"; eyes.maxHp = 100; eyes.sight = 320; eyes.footX = eyes.footZ = 1;
+    UnitType sub = eyes; sub.id = sub.name = "sub"; sub.sight = 64;
+    UnitType sonar = eyes; sonar.id = sonar.name = "sonar"; sonar.sonar = 400;
+    UnitType jammer = eyes; jammer.id = jammer.name = "jammer"; jammer.sight = 64; jammer.sonarJam = 300;
+    World w; w.setSerialThreads(true); w.setPlayerCount(2);
+    w.setTerrain(std::vector<uint8_t>(128 * 128, 0), 128, 128, 50);   // sea level 50 over a flat bottom
+    w.spawn(&eyes, 512, 512, {}, 0);
+    const int target = w.spawn(&sub, 640, 512, {}, 1);
+    auto& t = *w.unit(target);
+    t.groundY = Fixed::fromInt(10);   // its top under the sea
+    advance(w, 5);
+    check(!w.playerSees(0, *w.unit(target)), "submerged: unseen in sight without sonar");
+    w.spawn(&sonar, 500, 500, {}, 0);
+    advance(w, 5);
+    check(w.playerSees(0, *w.unit(target)), "submerged: seen as a sonar contact");
+    w.spawn(&jammer, 900, 520, {}, 1);
+    advance(w, 5);
+    check(!w.playerSees(0, *w.unit(target)), "submerged: an enemy sonar jammer clears the contact");
+}
+
 // The meteor storm (TotalA.exe 0x437cd0..0x438070) and +Meteor.
 static void meteor() {
     TypeRegistry reg;
@@ -286,6 +351,8 @@ int main() {
     damageFormula();
     simCodes();
     meteor();
+    trueSight();
+    submerged();
     wire();
     std::puts("PASS: power codes -- parser, damage formula, sim effects and gating, hash, wire");
 }
