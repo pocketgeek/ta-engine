@@ -7183,22 +7183,23 @@
                 add(FxKind::Ring,&r,uint32_t(k),r.x+std::cos(a)*radius,r.z+std::sin(a)*radius);
             }
         }
+        // TotalA.exe spawns explosions, debris and death effects whatever the fog
+        // (0x499eb0 -> 0x420a30, 0x420e50) and draws its effect list with only a
+        // screen test (0x420b00); the fog pass after it (0x4848e0) blacks out the
+        // unexplored and greys the rest out of view (docs/retail-fog.md 3.4). So
+        // they are drawn here unfiltered and drawFog covers them. (A unit script's
+        // effects are gated at their emission, emitSfx, as 0x480eb0 is.)
         // Blood: a stain lies on the ground, so it is flat scenery (under every
         // unit, kLayerLowFeature); a drop still in flight sorts by depth.
         for(const auto& stain:bloodStains_)
-            if(noFog_ || effectVisibleR(stain.position))
-                add(FxKind::BloodStain,&stain,0,float(stain.position[0]>>16),float(stain.position[2]>>16),hu::kLayerLowFeature);
+            add(FxKind::BloodStain,&stain,0,float(stain.position[0]>>16),float(stain.position[2]>>16),hu::kLayerLowFeature);
         for(const auto& debris:detachedPieces_)
             for(const auto& drop:debris.blood)
-                if(noFog_ || effectVisibleR(drop.position))
-                    add(FxKind::DebrisBlood,&drop,0,float(drop.position[0]>>16),float(drop.position[2]>>16));
+                add(FxKind::DebrisBlood,&drop,0,float(drop.position[0]>>16),float(drop.position[2]>>16));
         // Detached debris (its model and its shadow), at the ground under it.
         for(const auto& debris:detachedPieces_)
-            if(noFog_ || effectVisibleR(debris.motion.position))
-                add(FxKind::Debris,&debris,0,float(debris.motion.position[0]>>16),float(debris.motion.position[2]>>16));
+            add(FxKind::Debris,&debris,0,float(debris.motion.position[0]>>16),float(debris.motion.position[2]>>16));
         for(const auto& glow:explosionGlows_) {
-            if(!noFog_ && (glow.worldPosition ? !effectVisibleR(*glow.worldPosition) :
-                                               !cellVisibleR(glow.x,glow.z)))continue;
             if(frame.gameTick-glow.started>uint32_t(ta::retailGlowEnvelope(glow.kind).duration))continue;
             if(glow.worldPosition) add(FxKind::Glow,&glow,0,float((*glow.worldPosition)[0]>>16),float((*glow.worldPosition)[2]>>16));
             else add(FxKind::Glow,&glow,0,glow.x,glow.z);
@@ -7207,7 +7208,6 @@
         // larger, keys them), and into the air layer with an airborne flyer.
         for(const auto& e:effects_) {
             if(!e.anim || e.anim->frames.empty() || e.age-e.delay<0)continue;
-            if(e.worldPosition ? !effectVisibleR(*e.worldPosition) : (!noFog_ && !cellVisibleR(e.x,e.z)))continue;
             if(e.worldPosition) add(FxKind::Effect,&e,0,float((*e.worldPosition)[0]>>16),float((*e.worldPosition)[2]>>16));
             else add(FxKind::Effect,&e,0,e.x,e.z);
         }

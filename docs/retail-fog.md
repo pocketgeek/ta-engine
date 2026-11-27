@@ -175,10 +175,24 @@ instead of the counts: 0x465ac0 → 0x408090, 0x4658e0, 0x49bf2f.
   rocks, wrecks and corpses. Under black it is hidden only by the black fill.
 - An unexplored cell's feature cannot be targeted by the cursor (0x43e6cd).
 
-### 3.4 Shots: 0x49be60 [S]
-A projectile is drawn only if its (x, z − y/2) cell is in view (or explored
-with LOS off). Explosions, smoke and sounds were not traced [U].
-docs/retail-music.md: the battle music has no view test.
+### 3.4 Shots, effects and sounds [S]
+- **Shots** (0x49be60): a projectile is drawn only if its (x, z − y/2) cell is
+  in view, or explored with LOS off.
+- **Explosions, debris and death effects** spawn whatever the fog:
+  - the weapon burst (0x499eb0 → 0x420a30, 0x49a016);
+  - the death explosion and its flying pieces (0x420e50 → 0x4213b0);
+  - a shot's trail (0x49be31).
+  The effect list is drawn with only a screen test (0x420b00 → 0x4b6720 against
+  the view rectangle), before the fog (§3.1 item 5). So an explosion out of view
+  shows greyed, and one on unexplored ground is blacked out.
+- **A unit script's effects** (EmitSfx: smoke, wakes, flashes; 0x480eb0) are
+  created only when the unit passes 0x465ac0 for the viewed player.
+- **Positional sounds** (0x47f300; weapon hits 0x499fd8 / 0x499ff2, and the
+  rest) play only when their point's projected cell is in the viewed player's
+  view (LOS on: view count > 0), or explored by them (LOS off),
+  0x47f403..0x47f4a8. With 3D sound (0x51e694 set), 0x47f0c0 plays them with
+  no such test.
+- docs/retail-music.md: the battle music has no view test.
 
 ## 4. Radar, sonar, jammers
 
@@ -200,8 +214,14 @@ docs/retail-music.md: the battle music has no view test.
 3. **Jammers**: each activated unit **not owned by `V`** with
    `radardistancejam` / `sonardistancejam` clears bit 8 / bit 9 and sets bit 10
    on the units in range (0x467960 / 0x467980). This includes allies' jammers.
-4. (bit 12: a type `+0x245` bit 13 proximity rule with `+0x208`. It is not a
-   vision rule [U].)
+4. **Cloak proximity** (0x467680..0x4676e8, for every player's units, not
+   only `V`'s): a unit of a human or computer player whose type can cloak
+   (`+0x245` bit 13, cloakcost > 0) asks 0x40b0d0 whether any enemy on its
+   owner's visible-enemy list (411700's `+5`; live, not `+0x110` bit 14) lies
+   within `mincloakdistance` (`+0x208`; (dx² >> 32) + (dz² >> 32) ≤ R²). If one
+   does, it gets bit 12 and its cloak block `+0xb0` = now + 90 (assigned).
+   Firing sets the same block to now + 600 (0x49c84b). 0x467440 runs once a
+   game tick (0x49555f → 0x464f80).
 5. **LOS**: every unit not yet at bit 8, not cloaked, whose **centre** cell
    (x, z − y/2) is in view of `V` (explored with LOS off) gets bit 8. This
    step runs after jamming, so a jammer never hides a unit in LOS.
@@ -374,7 +394,5 @@ at-most-20 death eyeballs for the viewed player; the minimap dot position at
 z − y/2; the minimap-only `+Radar`; and the |Δeye| ≤ 5 re-stamp rule.
 
 ## 8. Not determined
-- Explosion, smoke and sound visibility (§3.4).
 - Retail's ShareMapping reader (allies share no sight in retail; the engine's sharing is D2, §7 item 11).
-- The `+0x110` bit-12 proximity rule.
 - Whether the GRAY TABLE is ever replaced (0x4bab60 has no static caller).

@@ -251,6 +251,24 @@ static void submerged() {
     check(!w.playerSees(0, *w.unit(target)), "submerged: an enemy sonar jammer clears the contact");
 }
 
+// A seen enemy inside mincloakdistance keeps a cloaker from cloaking for 90 ticks
+// (TotalA.exe 0x467680..0x4676e8).
+static void cloakProximity() {
+    UnitType eyes; eyes.id = eyes.name = "eyes"; eyes.maxHp = 100; eyes.sight = 320; eyes.footX = eyes.footZ = 1;
+    UnitType cloaker = eyes; cloaker.id = cloaker.name = "cloaker"; cloaker.canCloak = true;
+    cloaker.cloakCost = 10; cloaker.minCloakDist = 80;
+    for (int gap : {60, 200}) {
+        World w; w.setSerialThreads(true); w.setPlayerCount(2); w.setTeam(1, 1);
+        w.setTerrain(std::vector<uint8_t>(128 * 128, 0), 128, 128, 0);
+        const int c = w.spawn(&cloaker, 512, 512, {}, 0);
+        w.spawn(&eyes, 512 + float(gap), 512, {}, 1);
+        advance(w, 20);   // the visible-enemy lists rebuild on their 7-tick clock
+        const bool blocked = w.unit(c)->cloakBlockedUntil > w.tickCount();
+        check(blocked == (gap < 80), gap < 80 ? "an enemy inside mincloakdistance blocks the cloak"
+                                              : "an enemy beyond mincloakdistance does not");
+    }
+}
+
 // The meteor storm (TotalA.exe 0x437cd0..0x438070) and +Meteor.
 static void meteor() {
     TypeRegistry reg;
@@ -353,6 +371,7 @@ int main() {
     meteor();
     trueSight();
     submerged();
+    cloakProximity();
     wire();
     std::puts("PASS: power codes -- parser, damage formula, sim effects and gating, hash, wire");
 }

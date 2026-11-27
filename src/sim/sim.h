@@ -450,7 +450,7 @@ struct UnitType {
     bool  initCloaked = false;    // init_cloaked: a new unit's cloak order starts on
     float cloakCost = 0;          // cloakcost: energy per second while cloaked and idle (taSettle)
     float cloakCostMove = 0;      // cloakcostmoving: the same while moving (default cloakcost/30)
-    int32_t minCloakDist = 0;     // mincloakdistance (readInt): retail only draws it round a cloaked unit
+    int32_t minCloakDist = 0;     // mincloakdistance (readInt): a seen enemy this close blocks the cloak (World::tickCloakProximity)
     // FBI fireatwillrandom (icd: UnitDef+0x264 bit 24, parsed at 0x4c0a3a; its ONLY
     // reader is the auto-target scorer at 0x4129bc). Retail scores each candidate
     // n = dist^2 / damageVsTarget and keeps the lowest of rand(n)/2 + rand(n); this
@@ -4441,6 +4441,8 @@ public:
     struct SonarSource { int32_t x = 0, z = 0; int64_t r2 = 0; uint16_t sharedWith = 0; int8_t player = -1; };
     std::vector<SonarSource> sonarSources_, sonarJammers_;
     void collectSonar();
+    // TotalA.exe 0x467680..0x4676e8: a cloaker an enemy is too close to.
+    void tickCloakProximity();
     // Owner kind 2 (computer AI): an AI seat, the campaign's strategic
     // players, the benchmark (Player::automaticGates, hashed).
     bool computerOwned(int player) const {

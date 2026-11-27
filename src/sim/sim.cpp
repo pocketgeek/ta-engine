@@ -16021,6 +16021,31 @@ void World::updateViewCounts() {
     });
 }
 
+// TotalA.exe 0x467680..0x4676e8 (docs/retail-fog.md 4.1 item 4), once a game
+// tick: every unit of a human or computer player whose type can cloak (+0x245
+// bit 13, cloakcost > 0) checks its owner's visible-enemy list (411700's +5) with
+// 0x40b0d0 -- an enemy whose (dx^2 >> 32) + (dz^2 >> 32) is at most
+// mincloakdistance^2 -- and if one is that close, the unit is marked (+0x110 bit
+// 12) and cannot cloak for 90 ticks: +0xb0 = now + 90, assigned, as firing sets it
+// to now + 600 (0x49c84b).
+void World::tickCloakProximity() {
+    for (auto& u:units_) {
+        if (!u.alive() || !u.type || u.type->cloakCost<=0) continue;
+        if (u.player<0 || size_t(u.player)>=players_.size() || isNeutralPlayer(u.player)) continue;
+        const int64_t r=int16_t(u.type->minCloakDist);
+        const int64_t r2=r*r;
+        for (int id:visibleEnemies(u.player)) {
+            const Unit* e=unit(id);
+            if (!e || !e->alive()) continue;
+            const int64_t dx=int64_t(u.x.v)-e->x.v,dz=int64_t(u.z.v)-e->z.v;
+            if (((dx*dx)>>32)+((dz*dz)>>32)<=r2) {
+                u.cloakBlockedUntil=tickCounter_+90;
+                break;
+            }
+        }
+    }
+}
+
 void World::collectSonar() {
     sonarSources_.clear();sonarJammers_.clear();
     for (const auto& u:units_) {
@@ -20868,8 +20893,10 @@ void World::tick(float dt) {
                  {}, std::array<int32_t,3>{bp.x.v, Fixed::fromInt(ground).v, bp.z.v}, bp.slot);
     }
     std::erase_if(projectiles_, [](const Projectile& p) { return p.life <= 0; });
-    // TotalA.exe 0x495594: the meteor storm after the projectiles, so a meteor
-    // launched now takes its first step next tick.
+    // TotalA.exe 0x49555f -> 0x464f80 -> 0x467440: the cloak proximity rule, then
+    // (0x495594) the meteor storm, after the projectiles, so a meteor launched now
+    // takes its first step next tick.
+    tickCloakProximity();
     tickMeteorStorm();
 
     // Retail updates missions/movers in 51d3e0 before 4f6c70 runs 416430

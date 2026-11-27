@@ -1977,7 +1977,15 @@
 
             // A status hit that lands adds a silent event
             // carrying only its explosion, on the victim (HitFx::sound/explosion).
-            if (h.weapon && h.sound && !h.weapon->soundHit.empty()) {
+            // TotalA.exe 0x47f300: a positional sound plays only when its point's
+            // projected cell, (x, z - y/2), is in the viewed player's view (explored,
+            // with LOS off -- the plane already folds that in).
+            const bool heard = noFog_ ||
+                (h.position ? projectedFogCellR(float((*h.position)[0] >> 16),
+                                                float((*h.position)[2] >> 16) - float((*h.position)[1] >> 16) / 2) ==
+                                  ta::retailfog::kInView
+                            : cellVisibleR(h.x, h.z));
+            if (heard && h.weapon && h.sound && !h.weapon->soundHit.empty()) {
                 const std::string& body = h.target ? h.target->bodyType : std::string("default");
                 const std::string* wav = soundClasses_.pick(h.weapon->soundHit, body, salt_++);
                 if (!wav) wav = soundClasses_.pick(h.weapon->soundHit, "default", salt_++);
