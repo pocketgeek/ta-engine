@@ -2361,7 +2361,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 mouse(SDL_MOUSEMOTION,r.x+r.w+80,r.y-40,true);check(voiceVolume_[1]==100,"dragged past the end: 100");
                 mouse(SDL_MOUSEMOTION,r.x-80,r.y,true);check(voiceVolume_[1]==0,"dragged past the start: 0");
                 mouse(SDL_MOUSEMOTION,r.x+r.w*0.5f,r.y,true);
-                const uint8_t chat=chatRecipients_;
+                const auto chat=chatRecipients_;
                 auto box=std::find_if(giveUnitsHots_.begin(),giveUnitsHots_.end(),[&](const auto& h){return h.action==DiplomacyAction::Chat && h.player==2;});
                 check(box!=giveUnitsHots_.end(),"ENEMY has a CHAT box");
                 mouse(SDL_MOUSEBUTTONUP,box->rect.x+box->rect.w/2,box->rect.y+box->rect.h/2,false);
