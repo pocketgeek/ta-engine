@@ -189,7 +189,8 @@
             unitSoundQueue_.clear();
         }
         resetDiplomacy(room);
-        radarCode_ = false;   // power codes start off in every match
+        radarCode_ = false;   // cheat codes start off in every match
+        viewPlayer_ = -1;
         buildLineGap_ = 0;    // so does the tight shift-drag line spacing
         buildLineWheel_ = 0;
         buildLineWheelMs_ = 0;
@@ -1575,7 +1576,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // TA_NO_SPECTATORS=1: the room refuses watchers (ALLOW SPECTATORS off), so
             // a --mpspectate client can be shown the server's refusal.
             o.allowSpectators = ta::devFlag("TA_NO_SPECTATORS") ? 0 : 1;
-            // TA_POWER_CODES=1: the room plays with POWER CODES on (the server clears it
+            // TA_POWER_CODES=1: the room plays with CHEAT CODES on (the server clears it
             // for a mission), so a harness can type codes (TA_POWER_SCRIPT).
             o.powerCodes = ta::devFlag("TA_POWER_CODES") ? 1 : 0;
             // TA_MP_WATCH: host creates the game as a spectator (no slot) so every

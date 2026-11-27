@@ -30,6 +30,7 @@
 #include "tnt/tnt.h"
 #include "tnt/mapgen.h"
 #include "sim/groupspots.h"
+#include "sim/taweapons.h"
 
 namespace ta::sim {
 
@@ -787,6 +788,45 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
 // movement class flood-filled the whole map inside the tick it left the
 // factory: 82-110 ms on a 2048-cell map, four times in the first three minutes,
 // on every peer. A cache: the simulation is unchanged.
+// The schema's meteor storm (TotalA.exe 0x436732..0x436813; docs/retail-campaign.md
+// section 2.3): a MeteorWeapon name (31 chars at most) arms it; if any of
+// MeteorRadius, Density, Duration or Interval is 0 it still does, with every
+// number (the weapon too) from gamedata/meteor.tdf [Default] (0x438320). No name
+// leaves it disarmed, with that default storm for +Meteor to start.
+static void setupMeteorStorm(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
+                             const tdf::Node* schema) {
+    std::string weapon = schema ? schema->valueOr("meteorweapon", "") : std::string();
+    if (weapon.size() > 31) weapon.resize(31);
+    World::MeteorConfig c;
+    c.armed = !weapon.empty();
+    if (c.armed) {
+        c.radius = int32_t(schema->numberOr("meteorradius", 0));
+        c.density = float(schema->numberOr("meteordensity", 0));
+        c.duration = float(schema->numberOr("meteorduration", 0));
+        c.interval = float(schema->numberOr("meteorinterval", 0));
+    }
+    if (!c.armed || !c.radius || c.density == 0 || c.duration == 0 || c.interval == 0) {
+        weapon.clear(); c.radius = 0; c.density = c.duration = c.interval = 0;
+        const std::string path = "gamedata/meteor.tdf";
+        if (vfs.has(path)) {
+            const auto data = vfs.read(path);
+            const auto root = tdf::parseText(std::string(data.begin(), data.end()), path);
+            if (const tdf::Node* d = root.child("default")) {
+                weapon = d->valueOr("meteorweapon", "");
+                if (weapon.size() > 31) weapon.resize(31);
+                c.radius = int32_t(d->numberOr("meteorradius", 0));
+                c.density = float(d->numberOr("meteordensity", 0));
+                c.duration = float(d->numberOr("meteorduration", 0));
+                c.interval = float(d->numberOr("meteorinterval", 0));
+            }
+        }
+    }
+    // 0x437ce9: the weapon by name, else the table's first record (game +0x2cf3).
+    if (const TaWeaponTable* table = reg.taWeapons(); table && !table->empty() && !weapon.empty())
+        c.weapon = &table->resolve(weapon);
+    world.setMeteorStorm(c);
+}
+
 static void prebuildReachability(World& world, const TypeRegistry& reg) {
     std::set<std::string> seen;
     std::vector<const UnitType*> open, types;
@@ -814,7 +854,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     const bool generated = ta::mapgen::isGeneratedMapId(cfg.mapPath);
     int windMin = 100, windMax = 2000;
     double mapGravity = 112.0;
-    bool noSeaLevelTrigger = false, authoredPlaytest = false, scenarioOn = false;
+    bool noSeaLevelTrigger = false, authoredPlaytest = false, scenarioOn = false, meteorSet = false;
     world.setBuildRestrictions({},false);
     if (!generated) {
         auto ota = ta::vpath::replaceExtension(cfg.mapPath,".ota");
@@ -856,6 +896,8 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                         if (diff < bestDiff) { bestDiff = diff; best = sc; }
                     }
                     world.setSurfaceMetal(best ? int(best->numberOr("surfacemetal", 0)) : 0);
+                    setupMeteorStorm(world, reg, vfs, best);
+                    meteorSet = true;
                 }
                 windMin = int(gh->numberOr("minwindspeed", 100));
                 windMax = int(gh->numberOr("maxwindspeed", 2000));
@@ -893,6 +935,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             }
         }
     }
+    if (!meteorSet) setupMeteorStorm(world, reg, vfs, nullptr);   // no OTA: meteor.tdf's, disarmed
     world.setWindRange(windMin, windMax);
     world.setBallisticGravityRaw(retailBallisticGravityRaw(mapGravity));
     world.setMapGravity(int32_t(mapGravity));
@@ -1604,6 +1647,7 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
     cfg.unitCap = int(gh->numberOr("maxunits", 200));
     setupMatch(world, reg, cfg);
     world.setSurfaceMetal(int(schema->numberOr("surfacemetal", 0)));
+    setupMeteorStorm(world, reg, vfs, schema);
     world.setStartResources(0, float(schema->numberOr("humanenergy", 1000)), float(schema->numberOr("humanmetal", 1000)));
     world.setStartResources(1, float(schema->numberOr("computerenergy", 1000)), float(schema->numberOr("computermetal", 1000)));
     if (gh->numberOr("waterdoesdamage", 0) != 0) world.setWaterDamage(int32_t(gh->numberOr("waterdamage", 0)));
@@ -1733,7 +1777,7 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     if (!gh) { std::fprintf(stderr, "setupMission: %s no [GlobalHeader]\n", stem.c_str()); return false; }
     world.setBallisticGravityRaw(retailBallisticGravityRaw(gh->numberOr("gravity",112.0)));
     world.setMapGravity(int32_t(gh->numberOr("gravity",112.0)));
-    world.setPowerCodes(false);   // retail 0x499610: never in a campaign
+    world.setPowerCodes(false);   // TotalA.exe 0x497462: never in a campaign
     // The mission's own vision: lineofsight=0 plays with LosOn off and the map
     // revealed, mapping=1 starts with the terrain explored (area clear's fog test).
     {

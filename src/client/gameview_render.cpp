@@ -7693,7 +7693,7 @@
                            float(int(std::bit_cast<int16_t>(uint16_t(uint32_t(p.position[1]) >> 16))) >> 1))
                      : !cellVisibleR(renderX, renderZ)) return;
         // A TA shot draws by its weapon's rendertype (TotalA.exe 0x49be60).
-        if (p.wsrc && (p.taLineOfSight || p.taSelfProp || p.taBallistic) &&
+        if (p.wsrc && (p.taLineOfSight || p.taSelfProp || p.taBallistic || p.taMeteor) &&
             p.wsrc->renderType >= 1 && p.wsrc->renderType <= 6) {
             drawTaShot(p);
             return;

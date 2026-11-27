@@ -24,7 +24,7 @@ namespace ta::net {
 // Bump it whenever the wire layout changes or the simulation can compute a different
 // result from the same inputs -- a peer or replay of another number would desync.
 // The CHANGELOG records what each release changed.
-constexpr uint32_t kNetVersion = 343;      // 343: ten players (kMaxSlots 10: RoomState/replay slot tables, u16 Chat/VoiceUp recipient masks; sim::kNeutralPlayer 10); 342: Cmd::StandingOrder (TA's separate move / fire standing orders); 341: Cmd::Land (a flyer's landing on an air base); 340: Cmd::ReclaimUnit (TA's RECLAIMUNIT; the server admits DGun and ReclaimUnit); 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
+constexpr uint32_t kNetVersion = 344;      // 344: TA's cheat codes (Cmd::PowerCode admits Meteor, ATM's unitId names the viewed player, LOS takes no argument, DoubleShot/HalfShot independent) and the meteor storm; 343: ten players (kMaxSlots 10: RoomState/replay slot tables, u16 Chat/VoiceUp recipient masks; sim::kNeutralPlayer 10); 342: Cmd::StandingOrder (TA's separate move / fire standing orders); 341: Cmd::Land (a flyer's landing on an air base); 340: Cmd::ReclaimUnit (TA's RECLAIMUNIT; the server admits DGun and ReclaimUnit); 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
 constexpr uint32_t kMaxFrame = 1u << 18;   // 256 KB frame cap (hardening) -- headroom for a
                                            // big tick bundle when many units are ordered at once
 // Players per game: retail's ten (TotalA.exe's ten 0x14b-byte player records at
@@ -467,11 +467,12 @@ struct GameOptions {
     // (MatchConfig::mapScenario, in the replay header). A Test Map copy's [TAPlaytest]
     // opt-in plays its scenario even with this 0.
     uint8_t mapScenario = 0;
-    // POWER CODES (retail's "Power Codes" battle-room box, GameOptions+0x18): 1 lets
-    // every player type the nine +codes (sim/powercodes.h) in the chat box. Host-set
-    // in the lobby (a skirmish room adopts it from SetGameOptions), fixed once the game
-    // starts. The server clears it for campaign missions -- retail's gate 0x499610
-    // refuses codes in a campaign -- and drops every Cmd::PowerCode while it is 0.
+    // CHEAT CODES (retail's battle-room "Cheat Codes" box, LOUNGE2.GUI CHEATING; the
+    // host's option bit 13, TotalA.exe 0x49730f): 1 lets every player type the ten
+    // +codes (sim/powercodes.h) in the chat box. Host-set in the lobby (a skirmish
+    // room adopts it from SetGameOptions), fixed once the game starts. The server
+    // clears it for campaign missions -- retail never allows cheats in one
+    // (0x497462) -- and drops every Cmd::PowerCode while it is 0.
     // Sim-affecting (MatchConfig::powerCodes, in the replay header).
     uint8_t powerCodes = 0;
 };

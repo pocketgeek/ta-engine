@@ -368,7 +368,8 @@ std::string upperStr(std::string s) {
             SDL_RenderFillRectF(ren_, &back);
             taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, kArtX, 0, L);
         }
-        const int shown = std::clamp(hudPlayer(), 0, std::max(0, frameNumPlayers() - 1));
+        // +View: the viewed player's books (TotalA.exe reads +0x2a43 for the bar).
+        const int shown = std::clamp(watchOnly() ? hudPlayer() : seenAs(), 0, std::max(0, frameNumPlayers() - 1));
         const PlayerR& p = framePlayer(shown);
         // The stored amounts as TotalA.exe shows them (0x468e7b..0x468f6c): a display
         // copy (game +0x37e3f, saved back at 0x468fec) steps toward the stored whole

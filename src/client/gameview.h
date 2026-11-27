@@ -3172,11 +3172,11 @@ private:
     struct GameChat { std::string who, text; float age = 0; bool notice = false; };
     std::vector<GameChat> gameChat_;
     // ---- power codes (sim/powercodes.h; gameview_powercodes.cpp) ----
-    // This match has POWER CODES on and this client plays in it (not a replay, a
+    // This match has CHEAT CODES on and this client plays in it (not a replay, a
     // spectator or a campaign mission).
     bool powerCodesOn() const;
     // A chat line that named a code: the sim codes go out as Cmd::PowerCode, Radar
-    // and MakePoster act here. Nothing while the match has POWER CODES off.
+    // and MakePoster act here. Nothing while the match has CHEAT CODES off.
     void powerCode(const ta::sim::PowerCodeInput& in);
     // A local system line. While this client's own +CODE line is on its way to the
     // server and back, the lines it raised wait (heldSystemChat_) so they are drawn
@@ -3196,13 +3196,18 @@ private:
     std::string chatEcho_;                     // the +CODE line awaiting its echo
     uint64_t chatEchoMs_ = 0;                  // when it was sent (0 = none awaited)
     std::vector<std::string> heldSystemChat_;
-    // The chat composer's Enter: a +CODE line acts when the match has POWER CODES on,
+    // The chat composer's Enter: a +CODE line acts when the match has CHEAT CODES on,
     // and every line is sent as chat.
     void submitChat(const std::string& line);
     // TA_POWER_SCRIPT="TICK:LINE;..." (debug builds): type these
     // chat lines at those ticks.
     void powerScriptStep();
     bool radarCode_ = false;   // +Radar: the minimap shows every unit (reset each match)
+    // +View n (TotalA.exe 0x416b50, game +0x2a43): the player this client sees the
+    // game as -- its fog, its effects, its resource bar -- while orders stay its own
+    // (+0x2a42). -1: itself. Reset each match.
+    int viewPlayer_ = -1;
+    int seenAs() const { return viewPlayer_ >= 0 ? viewPlayer_ : localPlayer_; }
     // +MakePoster / MAKE POSTER: the whole map at native scale, one tile (the window,
     // at most 2048 x 1152) rendered per frame (posterStep, before the frame's own
     // draw), then written as a PNG off the main thread. The view is the local player's (its fog included).
@@ -4412,7 +4417,8 @@ private:
     // Does `player`'s sight count in the local plane (World::viewShareMask)?
     // Every ally's does but a passive neutral's: its units show only in sight.
     bool sharesSightToLocal(int player) const {
-        return localPlayer_ >= 0 && localPlayer_ < 16 && (world_.viewShareMask(player) >> localPlayer_ & 1) != 0;
+        const int me = seenAs();
+        return me >= 0 && me < 16 && (world_.viewShareMask(player) >> me & 1) != 0;
     }
 
     // Plain interface text in the chosen UI FONT (client/uitext.h): `px` is the size of

@@ -18,7 +18,7 @@ const char* roomFieldCaption(RoomField field) {
     case RoomField::Fog: return "FOG OF WAR";
     case RoomField::StartLocations: return "START LOCATIONS";
     case RoomField::Pathfinding: return "PATHFINDING";
-    case RoomField::PowerCodes: return "POWER CODES";
+    case RoomField::PowerCodes: return "CHEAT CODES";
     case RoomField::AllowSpectators: return "ALLOW SPECTATORS";
     case RoomField::Players: return "THE PLAYERS";
     case RoomField::Mods: return "THE GAME MODS";

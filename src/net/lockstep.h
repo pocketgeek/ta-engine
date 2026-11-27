@@ -46,11 +46,12 @@ enum class Cmd : uint8_t {
     // OrderMembers / OrderCommit transaction (net/protocol.h) and the server
     // puts the committed order into ONE tick bundle, its activation tick.
     Order,
-    // A power code (sim/powercodes.h), honoured only in a match created with
-    // POWER CODES on: targetId = the sim::PowerCode (Atm..NowISee), queue = the
-    // sim::PowerArg (LOS On/Off), unitId = the selected unit for the
-    // codes that take one (one command per selected unit). The server drops it when the room's option is off, and the
-    // sim ignores it there as well. An ordinary PlayerCommands item (base layout).
+    // A cheat code (sim/powercodes.h), honoured only in a match created with
+    // CHEAT CODES on: targetId = the sim::PowerCode (Atm..NowISee, Meteor), queue
+    // = the sim::PowerArg (Meteor's argument), unitId = ATM's recipient (1 + the
+    // player the issuer views with +View, 0 itself). The server drops it when the
+    // room's option is off, and the sim ignores it there as well. An ordinary
+    // PlayerCommands item (base layout).
     PowerCode,
     // Protocol 305: the caster unitId raises the body of dead unit targetId
     // (retail RESURRECT: a resurrect, else an animate; World::resurrect). The

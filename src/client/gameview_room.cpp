@@ -56,7 +56,7 @@ std::string ruleLabel(RoomField field, const ta::net::GameOptions& o) {
 float roomRulePx(float maxW) {
     static const char* const kCaptions[] = {
         "DOUBLE SIGHT/RADAR: OFF", "UNIT CAP: 2000", "COMMANDER DEATH: SCENARIO",
-        "COMMANDER DEATH: GAME ENDS", "COMMANDER DEATH: CONTINUES", "ALLOW SPEED CHANGE: OFF", "POWER CODES: OFF", "ALLOW SPECTATORS: OFF",
+        "COMMANDER DEATH: GAME ENDS", "COMMANDER DEATH: CONTINUES", "ALLOW SPEED CHANGE: OFF", "CHEAT CODES: OFF", "ALLOW SPECTATORS: OFF",
         "MAP SCENARIO: OFF", "MAP SCENARIO: ON (TEST MAP)"};
     float px = 1.6f;
     ta::net::GameOptions o;
@@ -100,7 +100,7 @@ std::string seatPlanText(const ta::net::SeatPlan& plan) {
 }
 
 // The host's own choices start as the room's rules. A single-player host watching the AIs
-// has FULL VISION and no POWER CODES forced on the room, so those two come from the
+// has FULL VISION and no CHEAT CODES forced on the room, so those two come from the
 // remembered set and return when it sits down again.
 void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView& room, bool watchingSp,
                 const ta::Settings* settings) {
@@ -259,7 +259,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             // WATCH (single player): once the server has the host watching, an AI in every
             // OPEN seat if fewer than two AIs are seated (each a random race on its seat's
             // team, in the lowest colour no seat holds), and the watcher's rules (FULL
-            // VISION, no POWER CODES). Again whenever a smaller map takes AIs away.
+            // VISION, no CHEAT CODES). Again whenever a smaller map takes AIs away.
             const bool watching = singlePlayer_ && host && mp_->isSpectator() && room.mySlot < 0;
             if (watching && mp_->roomEditable()) {
                 const bool fill = (watchFillAt_ && mp_->lobbySeq() > watchFillAt_) ||   // the first room after WATCH
@@ -285,7 +285,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 }
                 roomWatching_ = true;
             } else if (!watching) {
-                // Sat down again (SIT HERE): the host's own FOG OF WAR and POWER CODES return.
+                // Sat down again (SIT HERE): the host's own FOG OF WAR and CHEAT CODES return.
                 if (roomWatching_ && host && room.mySlot >= 0 && mp_->roomEditable()) mp_->setGameOptions(roomEffective());
                 roomWatching_ = false;
             }
@@ -620,7 +620,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         const bool havePackage = bool(mp_->mapPackage());
         const bool scenario = scenarioPlays(room, havePackage, scenarioLobby_);
         const bool testCopy = fileMap && havePackage && scenarioLobby_.marker && scenarioLobby_.runnable();
-        // Single player's watcher plays no army: FULL VISION and no POWER CODES, forced.
+        // Single player's watcher plays no army: FULL VISION and no CHEAT CODES, forced.
         const bool watching = singlePlayer_ && host && mp_->isSpectator() && room.mySlot < 0;
         std::vector<RoomRule> rules;
         const auto add = [&](RoomField field, std::string label, bool live, bool dim, std::function<void(int)> cycle) {
@@ -658,7 +658,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                      roomRuleCommit(RoomField::StartLocations, (mode + direction + 3) % 3); });
         add(RoomField::Pathfinding, ruleLabel(RoomField::Pathfinding, o), true, false, [this, mode = o.pathfindingMode](int direction) {
             roomRuleCommit(RoomField::Pathfinding, int(ta::sim::cyclePathfindingMode(mode, direction))); });
-        // POWER CODES (retail's battle-room box): the +codes typed in the chat box work for
+        // CHEAT CODES (retail's battle-room box): the +codes typed in the chat box work for
         // every player. Never in a campaign mission.
         if (!room.mission.empty()) rules.push_back({RoomField::kCount, "", false, false, nullptr});
         else if (watching) forced(RoomField::PowerCodes, "OFF");

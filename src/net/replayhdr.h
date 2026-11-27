@@ -52,7 +52,7 @@ struct ReplayHeader {
     uint8_t slotTeam[kMaxSlots] = {};
     uint8_t slotAiLevel[kMaxSlots] = {};
     uint8_t mapScenario = 0;      // the room's MAP SCENARIO option
-    uint8_t powerCodes = 0;       // bit 0 the room's POWER CODES option, bit 1 its map revealed at start
+    uint8_t powerCodes = 0;       // bit 0 the room's CHEAT CODES option, bit 1 its map revealed at start
     uint8_t fogExplored = 1;      // the room's FOG OF WAR option, 0..2 (MatchConfig::roomMapRevealed/roomLosOff)
 };
 

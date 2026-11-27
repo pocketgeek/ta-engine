@@ -17,16 +17,12 @@ constexpr uint32_t retailCrtRandom(uint32_t& seed) {
 
 // 0x52a330 applies retail's per-recipient damage spread after attack, armour,
 // and area-falloff scaling. The CRT draw is supplied by the caller even when
-// scaledDamage is too small to produce a non-zero spread. `mode` is the power
-// codes' damage mode (sim::DamageMode): DoubleShot doubles the spread float and
-// HalfShot halves it through a double, both before the truncation, as 52a330
-// does -- int(2 * s) is not 2 * int(s).
-inline int retailDamageWithSpread(float scaledDamage, uint32_t crtRoll, uint8_t mode = 0) {
+// scaledDamage is too small to produce a non-zero spread. (TA's DoubleShot and
+// HalfShot act on the integer afterwards: World::applyHit, TotalA.exe 0x499dee.)
+inline int retailDamageWithSpread(float scaledDamage, uint32_t crtRoll) {
     const int range = int(scaledDamage * 0.15f);
     const int offset = int((2ll * range * crtRoll) / 32768ll) - range;
-    float s = scaledDamage + float(offset);
-    if (mode == 1) s *= 2.0f;
-    else if (mode == 2) s = float(double(s) * 0.5);
+    const float s = scaledDamage + float(offset);
     return int(s);
 }
 

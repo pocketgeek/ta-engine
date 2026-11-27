@@ -1042,9 +1042,9 @@
     void GameView::captureEffectVisibility() {
         if (noFog_) return;
         const auto& map=mapView_.map();
-        if (!effectVisibility_ || effectVisibilityPlayer_!=localPlayer_ ||
+        if (!effectVisibility_ || effectVisibilityPlayer_!=seenAs() ||
             world_.tickCount()<=effectVisibilityTick_) {
-            effectVisibilityPlayer_=localPlayer_;
+            effectVisibilityPlayer_=seenAs();
             effectVisibility_=std::make_unique<ta::RetailEffectVisibility>(map.width/2,map.height/2,
                 ta::sim::retailExplorationHeights(map.width,map.height,uint8_t(map.seaLevel),
                     [&](int x,int z) {return map.heights[size_t(z)*map.width+x];}));
@@ -1055,7 +1055,7 @@
             // A passive neutral's sight is not the local player's (World::viewShareMask).
             const bool eligible=unit.type && unit.alive() && !unit.underConstruction &&
                                 sharesSightToLocal(unit.player);
-            effectVisibility_->track(unit.id,unit.player,localPlayer_,eligible,unit.alive(),
+            effectVisibility_->track(unit.id,unit.player,seenAs(),eligible,unit.alive(),
                                      unit.sightFootprint,world_.tickCount());
         }
         effectVisibilityTick_=world_.tickCount();
@@ -1638,12 +1638,12 @@
         }
         const int w = world_.viewPlaneW(), h = world_.viewPlaneH();
         rf::PlaneSource source;
-        source.width = w; source.height = h; source.player = localPlayer_;
-        source.mapRevealed = world_.mapRevealedFor(localPlayer_);
-        source.losOff = world_.roomLosOff() || world_.powerLosOff(localPlayer_);
+        source.width = w; source.height = h; source.player = seenAs();   // +View's player
+        source.mapRevealed = world_.mapRevealedFor(seenAs());
+        source.losOff = world_.roomLosOff() || world_.powerLosOff(seenAs());
         // The planes the local player shares (World::viewShareMask: every ally
         // but a passive neutral), so the fog is the plane its units pick from.
-        source.viewers = world_.viewShareMask(localPlayer_);
+        source.viewers = world_.viewShareMask(seenAs());
         source.viewCounts = world_.viewCounts();
         source.explored = world_.navigationExploration();
         if (world_.viewCounts().empty()) {

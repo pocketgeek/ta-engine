@@ -6835,7 +6835,12 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         float armour = std::max(e.armBuff * e.scenarioArmor, 0.01f);
         float scaledDamage = w.damageVs(e.type) * atkMul / armour * scale;
         damageCrtUsed_ = true;
-        const int answer = retailDamageWithSpread(scaledDamage, crtRand(0x52a3ba), uint8_t(damageMode_));
+        int answer = retailDamageWithSpread(scaledDamage, crtRand(0x52a3ba));
+        // TotalA.exe 0x499dee..0x499e17: the cheat flags on the integer damage
+        // before 0x489bb0 takes it -- +DoubleShot doubles it, then +HalfShot
+        // halves it (cdq / sar: towards zero).
+        if (doubleShot_) answer += answer;
+        if (halfShot_) answer /= 2;
         (e.player == fromPlayer ? ownDamage : enemyDamage) += answer;   // 52a330's answer, before 51a140
         // TotalA.exe 0x489bb0 (0x489bc3..0x489c32): an ARMORED unit (+0x10e
         // bit 1, SET 20) takes the hit through its damagemodifier, then the
@@ -16034,35 +16039,46 @@ bool World::playerSees(int player,const Unit& u) const {
     return seen(x0,top,z0) || seen(x1,top,z0) || seen(x1,bottom,z1) || seen(x0,bottom,z1);
 }
 
-// Power codes (sim/powercodes.h), Cmd::PowerCode's effect on every peer and the
+// Cheat codes (sim/powercodes.h), Cmd::PowerCode's effect on every peer and the
 // referee at the same tick. Retail applies each to the machine that typed it; here
 // the money and vision codes act for the issuing player alone, and the damage
-// codes for the whole game (what retail single player does).
+// codes and the meteor storm for the whole game (what retail single player does).
+// `unitId` names ATM's recipient: 1 + the player the issuer views (+View), or 0
+// for the issuer itself.
 void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
     if (!powerCodes_ || player<0 || size_t(player)>=players_.size() || player>=16) return;
     const uint16_t bit=uint16_t(1u<<player);
-    Player& owner=players_[size_t(player)];
     switch (code) {
-        case PowerCode::Atm:
-            // TotalA.exe 0x4170c0: stored energy (+0x8c) and metal (+0x98) each
-            // minus -1000.0f (0x4fcc7c), past the cap; the next settle caps them.
+        case PowerCode::Atm: {
+            // TotalA.exe 0x4170c0: the viewed player's (+0x2a43) stored energy
+            // (+0x8c) and metal (+0x98) each minus -1000.0f (0x4fcc7c), past the
+            // cap; the next settle caps them.
+            const int viewed=unitId-1;
+            const int to=viewed>=0 && size_t(viewed)<players_.size() && viewed<int(kMaxPlayers) ? viewed : player;
+            Player& owner=players_[size_t(to)];
             owner.books.stored[econ::E]=owner.books.stored[econ::E]-(-1000.0f);
             owner.books.stored[econ::M]=owner.books.stored[econ::M]-(-1000.0f);
             break;
+        }
         case PowerCode::RetiredManaMe:
             break;   // Kingdoms' per-unit mana cheat: never parsed, refused here
         case PowerCode::DoubleShot:
-            damageMode_=damageMode_==DamageMode::Double ? DamageMode::Normal : DamageMode::Double;
+            doubleShot_=!doubleShot_;   // 0x417030: game flag 0x80
             break;
         case PowerCode::HalfShot:
-            damageMode_=damageMode_==DamageMode::Half ? DamageMode::Normal : DamageMode::Half;
+            halfShot_=!halfShot_;       // 0x417060: game flag 0x100
             break;
         case PowerCode::Los:
-            // 4258e0: no argument toggles LosOn; "On"/"Off" set it; any other word
-            // changes nothing.
-            if (arg==PowerArg::Invalid) break;
-            if (arg==PowerArg::On || (arg==PowerArg::None && (powerLosOff_ & bit))) powerLosOff_&=uint16_t(~bit);
-            else powerLosOff_|=bit;
+            // 0x416d50: toggles line of sight (+0x14281 bit 1); no argument.
+            powerLosOff_^=bit;
+            break;
+        case PowerCode::Meteor:
+            // 0x417760: with an argument, atoi != 0 arms the storm (0x437d40) and 0
+            // disarms it (0x437d50); without one a strike starts now (0x438070),
+            // armed or not, with whatever storm the map (or meteor.tdf) set.
+            if (arg==PowerArg::On) meteor_.armed=true;
+            else if (arg==PowerArg::Off) meteor_.armed=false;
+            else if (arg==PowerArg::None && meteor_.weapon && meteor_.hitTicks>0) startMeteorStrike();
             break;
         case PowerCode::Mapping:
         case PowerCode::NowISee: {
@@ -16091,6 +16107,93 @@ void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
         }
         default: break;   // Radar and MakePoster are the client's
     }
+}
+
+// TotalA.exe's meteor storm (0x437cd0..0x438441; docs/retail-campaign.md 2.3).
+// 0x437d60 turns the OTA's (or meteor.tdf's) numbers into ticks, each _ftol of
+// an x87 product: the hit spacing 30 / density, the strike duration x 30 and
+// the interval x 30. At game start (0x437cd0, 0x4919be) nothing is striking
+// and the first strike falls due at the hit spacing.
+void World::setMeteorStorm(const MeteorConfig& config) {
+    const auto ticks=[](double v) {
+        return v>=-2147483648.0 && v<2147483648.0 ? int32_t(v) : INT32_MIN;   // _ftol, indefinite outside
+    };
+    meteor_={};
+    meteor_.weapon=config.weapon;
+    meteor_.radius=config.radius;
+    meteor_.armed=config.armed;
+    meteor_.hitTicks=config.density!=0 ? ticks(30.0/double(config.density)) : INT32_MIN;
+    meteor_.durationTicks=ticks(double(config.duration)*30.0);
+    meteor_.intervalTicks=ticks(double(config.interval)*30.0);
+    meteor_.nextStrike=uint32_t(meteor_.hitTicks);
+}
+
+// 0x438070 (also the head of 0x437de0): a strike starts now and lasts the
+// duration, the next falls due an interval after it ends, and the first hit is
+// this tick. Its target is a random cell of the map (height first, 0x437e37;
+// then width, 0x437e57) and the meteors come from up to 15 cells west, east
+// and north of it (z - 15..-6, x - 15..+14): four CRT draws.
+void World::startMeteorStrike() {
+    MeteorStorm& m=meteor_;
+    const uint32_t now=tickCounter_;
+    m.active=true;
+    m.strikeEnd=now+uint32_t(m.durationTicks);
+    m.nextStrike=m.strikeEnd+uint32_t(m.intervalTicks);
+    m.nextHit=now;
+    const auto scaled=[&](int64_t span,uint32_t origin) { return int32_t(int64_t(crtRand(origin))*span/0x8000); };
+    m.targetZ=int16_t(scaled(hH_,0x437e37));
+    m.targetX=int16_t(scaled(hW_,0x437e57));
+    m.originZ=int16_t(m.targetZ+int16_t(scaled(10,0x437e88)-15));
+    m.originX=int16_t(m.targetX+int16_t(scaled(30,0x437eaa)-15));
+}
+
+// 0x437de0, once a game tick after the projectiles (0x495594). A strike that
+// falls due starts (and is called off at once while the storm is disarmed,
+// 0x437ef5: retail still draws its target then; here a disarmed storm draws
+// nothing, so a map without one leaves the CRT stream alone). While one is on,
+// each hit spacing a meteor falls (0x437f16..0x438044): from 1350 px up over a
+// point within `radius` px of the origin, at 15 px a tick down and (target -
+// origin) / 90 ticks across, so it comes down 90 ticks later the same offset
+// from the target. The strike ends once its end tick is reached (0x43805f).
+void World::tickMeteorStorm() {
+    MeteorStorm& m=meteor_;
+    if(!m.weapon)return;   // no storm data at all (no meteor.tdf): nothing to time
+    const uint32_t now=tickCounter_;
+    if(!(m.nextStrike>now)) {
+        if(m.armed)startMeteorStrike();
+        else {
+            m.strikeEnd=now+uint32_t(m.durationTicks);
+            m.nextStrike=m.strikeEnd+uint32_t(m.intervalTicks);
+            m.nextHit=now;
+            m.active=false;
+        }
+    }
+    if(!m.active)return;
+    if(!(m.nextHit>now)) {
+        m.nextHit=now+uint32_t(m.hitTicks);
+        const int32_t vx=int32_t(uint32_t(int32_t(m.targetX)-int32_t(m.originX))<<20)/90;
+        const int32_t vz=int32_t(uint32_t(int32_t(m.targetZ)-int32_t(m.originZ))<<20)/90;
+        const int32_t vy=std::bit_cast<int32_t>(0xfff10000u);   // -15 px a tick
+        const int32_t distance=std::bit_cast<int32_t>(
+            uint32_t(int32_t(int64_t(crtRand(0x437f98))*m.radius/0x8000))<<16);
+        const uint16_t angle=uint16_t(int64_t(crtRand(0x437fb5))*0x10000/0x8000);
+        Projectile p;
+        p.position={std::bit_cast<int32_t>((uint32_t(int32_t(m.originX))<<20)-uint32_t(retailScaledSine(angle,distance))),
+                    std::bit_cast<int32_t>(uint32_t(-vy)*90u),
+                    std::bit_cast<int32_t>((uint32_t(int32_t(m.originZ))<<20)-uint32_t(retailScaledCosine(angle,distance)))};
+        p.velocity={vx,vy,vz};
+        // 0x49df10 -> 0x49c740: no shooter, so player 10 (0x49c853) and no target.
+        p.taMeteor=true;p.guided3d=true;
+        p.wsrc=m.weapon;p.fx=WeaponFx::Arrow;
+        p.fromPlayer=kNeutralPlayer;p.fromId=0;p.targetId=0;
+        p.start=tickCounter_;p.end=0xffffffffu;p.life=0x7fffffff;p.flight=90;
+        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+        p.vx=Fixed::raw(vx);p.vz=Fixed::raw(vz);
+        p.taTargetPoint={int32_t(uint32_t(int32_t(m.targetX))<<20),0,int32_t(uint32_t(int32_t(m.targetZ))<<20)};
+        p.serial=++nextShotSerial_;
+        projectiles_.push_back(p);
+    }
+    if(!(m.strikeEnd>now))m.active=false;
 }
 
 // 411700: the player's visible-enemy (+5) and visible-ally (+0x15) lists, in
@@ -17058,6 +17161,28 @@ void World::tickTaBallistic(Projectile& p,std::span<const int> airGrid) {
         if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
         p.spent=true;p.life=0;
     }
+}
+
+// TotalA.exe's meteor motion (docs/retail-data.md 3.3 rule 5, 0x49bd46..
+// 0x49bd82): the shot moves by its velocity, straight, and its model spins --
+// +0x34 and +0x38 gain the whole-pixel x and z speeds << 8 -- then it is tested
+// once at the new point (0x49bd86 -> 0x49b090) and bursts on what it meets.
+void World::tickTaMeteor(Projectile& p,std::span<const int> airGrid) {
+    if(p.life<=0 || p.spent || !p.wsrc)return;
+    if(tickCounter_<p.start)return;
+    const Weapon& w=*p.wsrc;
+    for(size_t axis=0;axis<3;++axis)
+        p.position[axis]=std::bit_cast<int32_t>(uint32_t(p.position[axis])+uint32_t(p.velocity[axis]));
+    p.angles[0]=uint16_t(p.angles[0]+uint16_t(uint16_t(uint32_t(p.velocity[0])>>16)<<8));
+    p.angles[2]=uint16_t(p.angles[2]+uint16_t(uint16_t(uint32_t(p.velocity[2])>>16)<<8));
+    p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+    p.age=int32_t(tickCounter_-p.start)+1;
+    const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
+    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
+    if(hit.code==2) {
+        applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,0,unit(hit.unitId),p.position,{},0);
+        p.spent=true;p.life=0;
+    } else if(hit.code==1) {p.spent=true;p.life=0;}   // off the map
 }
 
 // TotalA.exe's line-of-sight motion (docs/retail-data.md 3.3 rule 2). At or
@@ -20556,6 +20681,7 @@ void World::tick(float dt) {
         if(p.taLineOfSight) {tickTaLineOfSight(p,projectileAircraft);continue;}
         if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
         if(p.taBallistic) {tickTaBallistic(p,projectileAircraft);continue;}
+        if(p.taMeteor) {tickTaMeteor(p,projectileAircraft);continue;}
         const bool ballistic3d=p.ballistic3d && p.wsrc;
         const float ox = p.x.toFloat(), oz = p.z.toFloat();   // segment start (before this step)
         p.x += p.vx;   // px per tick already
@@ -20676,6 +20802,9 @@ void World::tick(float dt) {
                  {}, std::array<int32_t,3>{bp.x.v, Fixed::fromInt(ground).v, bp.z.v}, bp.slot);
     }
     std::erase_if(projectiles_, [](const Projectile& p) { return p.life <= 0; });
+    // TotalA.exe 0x495594: the meteor storm after the projectiles, so a meteor
+    // launched now takes its first step next tick.
+    tickMeteorStorm();
 
     // Retail updates missions/movers in 51d3e0 before 4f6c70 runs 416430
     // (5263aa, then 526411). Install completed routes only after movement,
@@ -21199,9 +21328,16 @@ uint64_t World::stateHash() const {
     if(!convoys_.empty()) {mix(0x434f4e564f590000ull);mix(convoys_.checksum());}
     if (doubleSight_) mix(0x44424c5349474854ull);
     if (roomMapRevealed_ || roomLosOff_) { mix(0x524f4f4d564953ull); mix(roomMapRevealed_); mix(roomLosOff_); }
-    if (powerCodes_) {   // only in a POWER CODES match, so every other hash is unchanged
+    if (powerCodes_) {   // only in a CHEAT CODES match, so every other hash is unchanged
         mix(0x504f574552434f44ull);
-        mix(uint8_t(damageMode_));mix(powerLosOff_);mix(powerMappingOff_);
+        mix(uint8_t(doubleShot_ | halfShot_ << 1));mix(powerLosOff_);mix(powerMappingOff_);
+    }
+    // The meteor storm, once it can act: armed by the map, or a cheat-codes match
+    // whose +Meteor may start one (every other hash is unchanged).
+    if (meteor_.weapon && (meteor_.armed || meteor_.active || powerCodes_)) {
+        mix(0x4d4554454f520000ull);
+        mix(meteor_.armed);mix(meteor_.active);mix(meteor_.nextStrike);mix(meteor_.strikeEnd);mix(meteor_.nextHit);
+        mix(uint16_t(meteor_.targetX));mix(uint16_t(meteor_.targetZ));mix(uint16_t(meteor_.originX));mix(uint16_t(meteor_.originZ));
     }
     if (patrolRepairs_) mix(0x5054524c52455052ull);
     if (!shootAll_) mix(0x53484f4f54414c4cull);   // retail's shootme gate: only off changes the hash

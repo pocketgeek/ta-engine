@@ -686,6 +686,43 @@ builder flag, `+0x110` bit 28, whose meaning is not traced [U].
 - Load and save open LOADGAME.GUI as in §2.
 - Opening the menu pauses the CD (see retail-music.md).
 
+### 3.x Chat commands (`+NAME args`) [S]
+
+A chat line that begins with `+` (after spaces) runs through the command table
+(0x493e04 → 0x417b50 → executor 0x4b7900; names `_stricmp`, arguments `atoi`). The
+table has three groups of 12-byte records {name, handler, group}, registered at
+0x4195c4..0x4195d8:
+
+- **Group 1 (always on), 0x501d38:** NoShake, Contour, ScrollSpeed, IFace, Give,
+  CDPlay, CDStop, Sound3D, Shading, AntiAlias, Shadow, Dither, SwitchAlt, TShadow,
+  FShadow, LOSType, Light, RCache, Selectable, MusicMode, Logo, ScreenChat, Gamma, Clock,
+  NetStats, Sing, NoMetal, NoEnergy, BigBrother, Now, Drop, ShootAll, ShareMetal,
+  ShareEnergy, ShareMapping, ShareRadar, ShareAll, ShowRanges, SetShareMetal,
+  SetShareEnergy, Compression, BPS, SFX.
+- **Group 2 (cheats), 0x501f48:** Radar 0x417090, ATM 0x4170c0, View 0x416b50, LOS
+  0x416d50, Mapping 0x416d80, DoubleShot 0x417030, HalfShot 0x417060, NowISee 0x417540,
+  Meteor 0x417760, MakePoster 0x417600.
+- **Group 4 (developer), 0x501fd0:** AI, Control, Kill, IWin, ILose, Film, FilmSpeed,
+  Assert, Assign, BurnAll, BurnOne, DebugBreak, DPrint, Edge, Include, Mem, MemDump, Move,
+  PrintWeights, Profile, Reload, ReloadAIProfiles, Save, SeaLevel, Search, SelBoxes,
+  Senderror, TreeDeath, Feature, ZBuffer. An unknown name goes to 0x417890 when the group
+  is in the mask (0x4b78e0(4, …)).
+
+The mask is 1, or 7 with developer mode (game +0x37f2f bit 1); it adds 2 when global
+0x5091cc is set. That global is set at game start by game type (0x4971c7): a campaign 0,
+a skirmish 1, and a multiplayer game the host's "Cheat Codes" box (LOUNGE2.GUI
+`CHEATING`, option word bit 13, 0x49730f). Handler effects:
+
+- **ATM** adds 1000 to the stored energy and metal of the *viewed* player (+0x2a43).
+- **View n** sets +0x2a43 = n when n < 10 is a human or AI player (+0x73 ∈ 1..3) that
+  is not watching (+0x146 ≠ 10). +0x2a43 drives the presentation: LOS, radar, the
+  resource bar. Orders still use +0x2a42.
+- **LOS** and **Mapping** toggle game +0x14281 bits 1 and 0 and take no argument.
+  **NowISee** clears both. **Radar** toggles +0x37f2f bit 9.
+- **DoubleShot** and **HalfShot** toggle +0x37f2f bits 7 and 8 independently. Damage
+  (0x499dee) doubles on the first, then halves (`cdq/sar`) on the second.
+- **Meteor**: retail-campaign.md §2.3.1. **MakePoster [w h | all]**: a map picture.
+
 ## 4. Fonts, palette and cursor (summary)
 
 See §1.5 and §1.6. In short:

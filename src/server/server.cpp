@@ -1588,7 +1588,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             o.doubleSight = o.doubleSight ? 1 : 0;
             o.allowSpectators = o.allowSpectators ? 1 : 0;
             if (!mission.empty()) { o.pathfindingMode = ta::sim::PathfindingMode::Retail; o.doubleSight = 0; }
-            // POWER CODES: on or off, never in a campaign mission (retail 0x499610).
+            // CHEAT CODES: on or off, never in a campaign mission (TotalA.exe 0x497462: cheats off for game type 1).
             o.powerCodes = o.powerCodes && mission.empty() ? 1 : 0;
             // A campaign mission, or any game on a private single-player server (a
             // loopback, no-auth, non-LAN local server: PLAY THE MACHINE / skirmish), is
@@ -2961,7 +2961,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
                 return;
             }
             for(auto& cmd:parsed) {
-                // POWER CODES off: a code does nothing (retail 0x428f10 skips the
+                // CHEAT CODES off: a code does nothing (TotalA.exe leaves group 2 out of the mask, 0x493e25, and skips the
                 // handler), so it never reaches a bundle. Not a fault: the chat line
                 // that carried it is ordinary chat.
                 if(cmd.kind==ta::net::Cmd::PowerCode && !r->opts.powerCodes) continue;

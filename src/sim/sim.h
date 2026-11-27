@@ -1890,6 +1890,9 @@ struct Projectile {
     // ballistic3d for drawing. `end` is the expiry tick (+0x46), read only
     // for a ballistic weapon with a weapontimer (0x49bc19).
     bool taBallistic=false;
+    // TotalA.exe's meteor motion (0x49bd46..0x49bd82): a storm's strike
+    // (World::tickMeteorStorm), straight along `velocity`, spinning.
+    bool taMeteor=false;
     // TotalA.exe line-of-sight motion (0x49bb60, retailtashot.h
     // taLineOfSightStep): `position` is the head (+0x04), taTail the beam's
     // tail (+0x10), taLaunch +0x42, taTailMoving +0x69 bit 0. `end` is the
@@ -2990,21 +2993,38 @@ public:
     // `player`'s whole map counts as explored: the room revealed it (no power codes
     // then, which take the reveal over), or its +Mapping code -- area clear's rule.
     bool mapRevealedFor(int player) const { return (roomMapRevealed_ && !powerCodes_) || powerMappingOff(player); }
-    // Power codes (sim/powercodes.h; the room's POWER CODES option). setPowerCodes
-    // also starts every code at its off state: no damage mode, line of sight on for
+    // Cheat codes (sim/powercodes.h; the room's CHEAT CODES option). setPowerCodes
+    // also starts every code at its off state: no damage flags, line of sight on for
     // every player, and the shroud on unless the room starts with the map revealed
     // (FOG OF WAR: EXPLORED or FULL VISION). Retail seeds MappingOn from the room's
     // Map Revealed box the same way, so the first +Mapping there brings the shroud
     // back. applyPowerCode is Cmd::PowerCode's effect, a no-op while the option is
     // off. All of it is hashed once the option is on.
     void setPowerCodes(bool enabled, bool mapRevealed = false) {
-        powerCodes_ = enabled; damageMode_ = DamageMode::Normal; powerLosOff_ = 0;
+        powerCodes_ = enabled; doubleShot_ = halfShot_ = false; powerLosOff_ = 0;
         powerMappingOff_ = enabled && mapRevealed ? uint16_t(0xffff) : uint16_t(0);
     }
     bool powerCodes() const { return powerCodes_; }
     void applyPowerCode(int player, PowerCode code, PowerArg arg, int unitId);
-    DamageMode damageMode() const { return damageMode_; }
-    // +LOS Off / +NowISee: `player` sees every unit on a cell it has explored
+    // +DoubleShot / +HalfShot: game flags 0x80 / 0x100, each its own toggle
+    // (0x417030 / 0x417060). A hit's damage doubles, then halves (0x499e05 /
+    // 0x499e10): both on give back the damage, less an odd unit.
+    bool doubleShot() const { return doubleShot_; }
+    bool halfShot() const { return halfShot_; }
+    // ---- meteor storm (TotalA.exe 0x437cd0..0x438441; docs/retail-campaign.md 2.3) ----
+    // The map's MeteorWeapon / Radius / Density / Duration / Interval, armed or
+    // not as the OTA loader decided (0x4367b9..0x436813). Density is strikes
+    // per second, duration and interval seconds (x 30.0 ticks, 0x437d60).
+    struct MeteorConfig {
+        const Weapon* weapon = nullptr;   // resolved like an FBI weapon name (0x49e5b0)
+        int32_t radius = 0;
+        float density = 0, duration = 0, interval = 0;
+        bool armed = false;
+    };
+    void setMeteorStorm(const MeteorConfig& config);
+    bool meteorArmed() const { return meteor_.armed; }
+    bool meteorActive() const { return meteor_.active; }
+    // +LOS / +NowISee: `player` sees every unit on a cell it has explored
     // (playerSees), and the client's display fog shows explored cells in view.
     bool powerLosOff(int player) const { return player >= 0 && player < 16 && (powerLosOff_ >> player & 1); }
     // +Mapping / +NowISee: `player`'s whole map is explored (sim and display).
@@ -4477,7 +4497,18 @@ private:
     bool roomMapRevealed_ = false, roomLosOff_ = false;   // setRoomVision
     // Power codes (setPowerCodes / applyPowerCode). Hashed while powerCodes_ is on.
     bool powerCodes_ = false;
-    DamageMode damageMode_ = DamageMode::Normal;   // DoubleShot / HalfShot: every player's damage
+    bool doubleShot_ = false, halfShot_ = false;   // game flags 0x80 / 0x100: every player's damage
+    // The storm (0x5122e8..0x512338). Times are game ticks; target and origin
+    // are 16 px cells, signed words as retail keeps them.
+    struct MeteorStorm {
+        const Weapon* weapon = nullptr;
+        int32_t radius = 0, hitTicks = 0, durationTicks = 0, intervalTicks = 0;
+        bool armed = false, active = false;
+        uint32_t nextStrike = 0, strikeEnd = 0, nextHit = 0;
+        int16_t targetX = 0, targetZ = 0, originX = 0, originZ = 0;
+    } meteor_;
+    void tickMeteorStorm();
+    void startMeteorStrike();
     uint16_t powerLosOff_ = 0, powerMappingOff_ = 0;   // per-player bits
     bool patrolRepairs_ = true;
     bool shootAll_ = true;   // setShootAll; hashed only when off
@@ -4671,6 +4702,7 @@ private:
     // TotalA.exe 0x49bc19..0x49bd41 plus 0x49b090: one ballistic or dropped
     // shot's tick (move, wind, gravity, then one collision test).
     void tickTaBallistic(Projectile& p,std::span<const int> airGrid);
+    void tickTaMeteor(Projectile& p,std::span<const int> airGrid);
     void tickTaLineOfSight(Projectile& p,std::span<const int> airGrid);
     // 0x49e070's per-slot part at creation: the barrel words (Unit::taBarrel).
     void initTaWeaponSlots(Unit& u,uint16_t birthHeading);

@@ -202,13 +202,41 @@ From the selected `[Schema N]`:
 | `ComputerEnergy` | 0x43669a | Starting energy for player index 1 (`M+0xd88`). |
 | `SurfaceMetal` | 0x4366b8 | `M+0xd30`. |
 | `aiprofile` | 0x4366e1 | AI profile path in slot 7. |
-| `MeteorWeapon` (str ≤31), `MeteorRadius` (int), `MeteorDensity`, `MeteorDuration`, `MeteorInterval` (double) | 0x436743–0x4367ac | Meteor storm. The storm is armed (0x437d40) only when the weapon name is non-empty and radius, density, duration and interval are all non-zero. Otherwise 0x437d50 / 0x438320 [I]. |
+| `MeteorWeapon` (str ≤31), `MeteorRadius` (int), `MeteorDensity`, `MeteorDuration`, `MeteorInterval` (double) | 0x436743–0x4367ac | Meteor storm. A non-empty weapon name arms it (0x437d40); if radius, density, duration or interval is 0 it is still armed, with every value, the weapon too, from `gamedata\meteor.tdf` `[Default]` (0x438320). An empty name disarms it (0x437d50), with the default numbers loaded for `+Meteor` [S]. Timing and strikes: section 2.3.1. |
 | `MohoMetal` | — | Not read in this routine [C]. |
 
 The starting resources are applied in 0x465e30: for each player i in 0..9,
 `stored metal = M[+0xd5c+4i]` and `stored energy = M[+0xd84+4i]`, through 0x496e90. Only
 indices 0 and 1 are filled by the loader. Players 2–9 get whatever is in the object [U];
 retail campaign maps use only Player=1 and Player=2 [D].
+
+#### 2.3.1 The meteor storm (0x437cd0..0x438441) [S]
+
+- 0x437d60 converts the numbers to game ticks with `_ftol` of x87 products: the hit
+  spacing is 30.0 / density, the duration and the interval are each × 30.0.
+- At game start (0x437cd0, from 0x4919be) no strike is active and the first strike falls
+  due at the hit spacing. The weapon resolves by name (0x49e5b0), else the table's first
+  record (game +0x2cf3).
+- Once a game tick, after the projectiles (0x437de0 from 0x495594): when the next-strike
+  time is reached, a strike starts. It is active, ends at now + duration, the next is due
+  an interval after that end, and the first hit is now. Its target is a random 16-px cell,
+  `rand()·H/32768` then `rand()·W/32768` (game +0x14237 / +0x14233), and its origin is the
+  target + (`rand()·30/32768 − 15`, `rand()·10/32768 − 15`) cells in x and z. While the
+  storm is disarmed the strike is called off at once (0x437ef5), but its draws are made.
+- During a strike, each hit spacing one meteor falls (0x437f16..0x438044). Velocity:
+  ((target − origin) << 20) / 90 across, −15.0 px/tick down. Start: 1350 px up, at the
+  origin minus (sin, cos)(angle) × distance (0x4b70ef / 0x4b7123), where distance is
+  `rand()·radius/32768` px and angle is `rand()·2`. It lands 90 ticks later, offset the
+  same way from the target. 0x49df10 launches it with no owner (player 10, 0x49c853), and
+  the host broadcasts it (packet 0x0d). The strike ends once its end tick is reached.
+- Flight (0x49bd46): straight, with +0x34 / +0x38 spun by the whole-pixel x / z speed
+  << 8; then the ordinary hit test (0x49b090).
+- `+Meteor` (0x417760): with an argument, its `atoi` arms (≠ 0) or disarms the storm.
+  Without one, a strike starts now (0x438070), armed or not.
+
+Engine: `World::setMeteorStorm` / `tickMeteorStorm` / `tickTaMeteor`, set up from the
+schema in `sim/matchsetup.cpp`. A disarmed storm makes no draws there, so a map without
+a storm leaves the CRT stream alone.
 
 ### 2.4 `[units]`, `[specials]`, `[features]` (0x436c30) [C]
 

@@ -59,12 +59,12 @@ struct MatchConfig {
     // copy's [TAPlaytest] opt-in runs them regardless. Off by default, so fixtures and
     // rooms that leave it off keep plain skirmish setup.
     bool mapScenario = false;
-    // The room's POWER CODES option (GameOptions::powerCodes): World::applyPowerCode
+    // The room's CHEAT CODES option (GameOptions::powerCodes): World::applyPowerCode
     // honours Cmd::PowerCode only when it is on. Never on for a campaign mission.
     bool powerCodes = false;
     // The room starts with the map revealed (FOG OF WAR: EXPLORED or FULL VISION), so
     // +Mapping starts with the shroud off (World::setPowerCodes). Only read with
-    // powerCodes on; replays carry it in the POWER CODES byte (bit 1).
+    // powerCodes on; replays carry it in the CHEAT CODES byte (bit 1).
     bool powerMapRevealed = false;
     // The room's FOG OF WAR option as the sim reads it (World::setRoomVision):
     // EXPLORED and FULL VISION start with the map revealed, FULL VISION also with

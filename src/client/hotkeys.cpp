@@ -63,9 +63,9 @@ const std::vector<HotkeyDef>& hotkeyDefs() {
         // retail binds nothing to it (gamedata/keys.tdf) and nothing else here does.
         {Act::PushToTalk,     "voice.ptt",          "PUSH TO TALK",    "VOICE",     {SDLK_SPACE, 0}},
         // The +MakePoster power code on a key: a whole-map picture into the screenshots
-        // folder. Only in a match with POWER CODES on. Retail has no key for it; Print
+        // folder. Only in a match with CHEAT CODES on. Retail has no key for it; Print
         // Screen is free (gamedata/keys.tdf binds nothing to it).
-        {Act::MakePoster,     "view.poster",        "MAKE POSTER",     "POWER CODES",{SDLK_p, HK_SHIFT}},
+        {Act::MakePoster,     "view.poster",        "MAKE POSTER",     "CHEAT CODES",{SDLK_p, HK_SHIFT}},
     };
     return defs;
 }

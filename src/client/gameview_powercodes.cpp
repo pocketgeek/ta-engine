@@ -1,10 +1,10 @@
 #include "client/gameview.h"
 
-// Out-of-line GameView methods for the power codes (sim/powercodes.h): what a +CODE
+// Out-of-line GameView methods for the cheat codes (sim/powercodes.h): what a +CODE
 // chat line does on this client, and MakePoster's whole-map picture. The sim codes
 // leave here as Cmd::PowerCode and change the game only when the server sequences
-// them (it drops them while the room has POWER CODES off); Radar and MakePoster are
-// local display.
+// them (it drops them while the room has CHEAT CODES off); Radar, View and
+// MakePoster are local display.
 
 #include <algorithm>
 #include <chrono>
@@ -45,7 +45,7 @@ namespace {
         // Retail's chat handler 0x4b4fb0 runs a '+' line through the command table and
         // then sends it as chat anyway, to every human (not the chosen recipients) --
         // so everyone sees a code typed. Here only a code that can act goes to all:
-        // with POWER CODES off a +line is ordinary chat to the chosen recipients.
+        // with CHEAT CODES off a +line is ordinary chat to the chosen recipients.
         const auto code = ta::sim::parsePowerCode(line);
         const bool acts = code && powerCodesOn();
         if (acts) {
@@ -84,15 +84,25 @@ namespace {
 
     void GameView::powerCode(const ta::sim::PowerCodeInput& in) {
         using ta::sim::PowerCode;
-        // Retail 0x428f10 skips a group-2 handler unless the match allows cheating:
-        // with POWER CODES off the line is ordinary chat and does nothing else.
+        // TotalA.exe runs a group-2 handler only when the match allows cheating
+        // (mask bit 2, 0x493e25..0x493e2f; executor 0x4b79cd): with CHEAT CODES off
+        // the line is ordinary chat and does nothing else.
         if (!powerCodesOn()) return;
         switch (in.code) {
             case PowerCode::Radar: radarCode_ = !radarCode_; return;
             case PowerCode::MakePoster: startPoster(); return;
-            case PowerCode::Los:
-                if (in.arg == ta::sim::PowerArg::Invalid) return;   // retail ignores any other word
-                break;
+            case PowerCode::View: {
+                // 0x416b50: player n (0..9) if it is a live seat in the game -- a
+                // human or AI player (+0x73 1..3) that is not watching (+0x146 != 10);
+                // anything else changes nothing. Seeing as yourself again is +View
+                // with your own number.
+                const int n = in.value;
+                if (n < 0 || n >= 10 || n >= int(ta::sim::kMaxPlayers)) return;
+                const auto& slot = mp_->room().slots[size_t(n)];   // seat n is player n
+                if (slot.type != 1 && slot.type != 2) return;      // open or closed
+                viewPlayer_ = n == localPlayer_ ? -1 : n;
+                return;
+            }
             default: break;
         }
         if (!ta::sim::simPowerCode(in.code)) return;
@@ -100,6 +110,7 @@ namespace {
         c.kind = ta::net::Cmd::PowerCode;
         c.targetId = int32_t(in.code);
         c.queue = uint8_t(in.arg);
+        if (in.code == PowerCode::Atm && viewPlayer_ >= 0) c.unitId = viewPlayer_ + 1;   // 0x4170c8: the viewed player
         std::lock_guard<std::mutex> lock(simMutex_);
         issue(c);
     }
