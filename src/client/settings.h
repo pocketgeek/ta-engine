@@ -59,6 +59,15 @@ struct Settings {
     int   textureFilter = 2;
     int   buildBarAlign = 1;       // conjure/build icon row: 0=left, 1=center, 2=right
     float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.5..4.0
+    // The in-game HUD's other pieces (gameview_tahud.cpp), each with its own scale ON
+    // TOP of uiScale: the right-hand column's minimap, its stats (the selected unit's
+    // readout and the STATS PANEL) and the order buttons; and the metal / energy bar,
+    // which floats over the top of the map at 0=left, 1=center, 2=right.
+    float minimapScale = 1.0f;     // 0.5..4.0
+    float statsScale = 1.0f;       // 0.5..4.0
+    float ordersScale = 1.0f;      // 0.5..4.0
+    int   resourceBarAlign = 1;
+    float resourceBarScale = 1.0f; // 0.5..4.0
     // IDLE BUILDERS: a column of portraits, one per type of idle mobile builder or
     // factory, at the right edge of the play area: 0 = off, 1 = top, 2 = middle, 3 = bottom.
     int   idleBuilders = 2;
@@ -300,7 +309,9 @@ struct Settings {
         for (int i = 0; i < 8; ++i) if (a.chanGain[i] != b.chanGain[i]) return false;
         return a.fullscreen == b.fullscreen && a.vsync == b.vsync && a.maxFps == b.maxFps
             && a.scorecardScale == b.scorecardScale && a.uiScale == b.uiScale && a.textureFilter == b.textureFilter
-            && a.buildBarAlign == b.buildBarAlign && a.buildBarScale == b.buildBarScale && a.idleBuilders == b.idleBuilders && a.idleBuildersScale == b.idleBuildersScale
+            && a.buildBarAlign == b.buildBarAlign && a.buildBarScale == b.buildBarScale
+            && a.minimapScale == b.minimapScale && a.statsScale == b.statsScale && a.ordersScale == b.ordersScale
+            && a.resourceBarAlign == b.resourceBarAlign && a.resourceBarScale == b.resourceBarScale && a.idleBuilders == b.idleBuilders && a.idleBuildersScale == b.idleBuildersScale
             && a.chatScale == b.chatScale && a.chatAlign == b.chatAlign && a.uiFont == b.uiFont
             && a.treeSway == b.treeSway && a.tacticalDots == b.tacticalDots
             && a.tacticalDotsZoom == b.tacticalDotsZoom && a.hiddenUnits == b.hiddenUnits
@@ -474,6 +485,8 @@ inline Settings uiDefaults(const Settings& cur) {   // UI: interface, camera (+ 
     d.uiFont = f.uiFont; d.scorecardScale = f.scorecardScale; d.uiScale = f.uiScale;
     d.healthBars = f.healthBars; d.statsPanel = f.statsPanel;
     d.buildBarAlign = f.buildBarAlign; d.buildBarScale = f.buildBarScale;
+    d.minimapScale = f.minimapScale; d.statsScale = f.statsScale; d.ordersScale = f.ordersScale;
+    d.resourceBarAlign = f.resourceBarAlign; d.resourceBarScale = f.resourceBarScale;
     d.idleBuilders = f.idleBuilders; d.idleBuildersScale = f.idleBuildersScale;
     d.chatAlign = f.chatAlign; d.chatScale = f.chatScale; d.unitChatText = f.unitChatText;
     d.hardwareCursor = f.hardwareCursor; d.cursorScale = f.cursorScale;

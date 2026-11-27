@@ -262,11 +262,10 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     SDL_StartTextInput();
     if (setup.seats.empty()) setup = defaultSkirmish(vfs_);
     // GUI sounds: each press plays the allsound.tdf entry its retail handler names
-    // (client/guisound.h), at the Options MASTER / SOUND EFFECTS levels. Leaving the
-    // front end lets the last click finish (the device closes with `sfx`).
+    // (client/guisound.h), at the Options MASTER / SOUND EFFECTS levels. The click
+    // device is shared and stays open, so leaving the front end doesn't cut one off.
     MenuSfx sfx(vfs_);
     sfx.settings = &cursorSettings_;   // loadSettings(): the saved levels
-    struct Drain { MenuSfx& s; ~Drain() { s.drain(); } } drain{sfx};
     auto pressSound = [&](const std::string& screen, const std::string& gadget) {
         const std::string entry = guisound::frontEnd(screen, gadget);
         if (entry.empty()) return;
@@ -337,6 +336,12 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     std::string narrationWav;
     std::string seqRotate, seqPan, seqSolar;
     int briefFrames[3] = {1, 1, 1};
+    // The briefing art's clock (TotalA.exe 0x4b6340: GetTickCount*30/1000) and each
+    // stepped sequence's frame durations in those ticks (the GAF's per-frame word,
+    // as 0x4b8b90 reloads it) and loop flag (sequence byte 2, 0x4b8bb0).
+    Uint64 briefT0 = 0;
+    std::vector<int> briefDelay[3];
+    bool briefLoop[3] = {true, true, true};
     auto fillMissions = [&](TaGuiView& v, const TaCampaign& c, bool marks) {
         std::vector<std::string> rows;
         for (size_t i = 0; i < c.missions.size(); ++i) {
@@ -398,10 +403,17 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             for (const auto& s : seqs) {
                 const std::string n = upper(s.name);
                 auto ends = [&](const char* suf) { const std::string x = suf; return n.size() >= x.size() && n.compare(n.size() - x.size(), x.size(), x) == 0; };
-                if (ends("ROTATE")) { seqRotate = s.name; briefFrames[0] = std::max<int>(1, int(s.frames.size())); }
-                else if (ends("PAN") && n != "PANMASK") { seqPan = s.name; briefFrames[1] = std::max<int>(1, int(s.frames.size())); }
-                else if (ends("SOLAR")) { seqSolar = s.name; briefFrames[2] = std::max<int>(1, int(s.frames.size())); }
+                int k = -1;
+                if (ends("ROTATE")) { seqRotate = s.name; k = 0; }
+                else if (ends("PAN") && n != "PANMASK") { seqPan = s.name; k = 1; }
+                else if (ends("SOLAR")) { seqSolar = s.name; k = 2; }
+                if (k < 0) continue;
+                briefFrames[k] = std::max<int>(1, int(s.frames.size()));
+                briefDelay[k].clear();
+                for (const auto& f : s.frames) briefDelay[k].push_back(std::max<int>(1, f.retailDelayTicks));
+                briefLoop[k] = s.loopFlag != 0;
             }
+            briefT0 = SDL_GetTicks64();
         } catch (...) {}
         // camps/briefs/<brief>.txt raw: &X opens colour X, a lone & closes it, 0xFF ends.
         std::string text;
@@ -799,10 +811,54 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         if (picker) picker->render(w, h);
         else if (view) view->draw(L);
         if (page_ == Page::Brief && view && briefFont) {
-            const int frame = int(SDL_GetTicks() / 66);
-            if (!seqRotate.empty()) view->drawSequence(briefGaf, seqRotate, frame % briefFrames[0], 0, 0, L);
-            if (!seqPan.empty()) view->drawSequence(briefGaf, seqPan, frame % briefFrames[1], 45, 130, L);
-            if (!seqSolar.empty()) view->drawSequence(briefGaf, seqSolar, frame % briefFrames[2], 415, 0, L);
+            // Retail's briefing clock: 30 ticks a second of wall time (0x4b6340).
+            const Uint64 t = (SDL_GetTicks64() - briefT0) * 30 / 1000;
+            // A stepped sequence (0x4b8b90, once per tick change): each frame holds for
+            // its own GAF duration, then the next; a non-looping one stops on its last.
+            auto stepped = [&](int k) {
+                const auto& d = briefDelay[k];
+                if (d.empty()) return 0;
+                Uint64 total = 0;
+                for (int x : d) total += Uint64(x);
+                Uint64 at = t;
+                if (at >= total) {
+                    if (!briefLoop[k]) return int(d.size()) - 1;
+                    at %= total;
+                }
+                for (size_t i = 0; i < d.size(); ++i) {
+                    if (at < Uint64(d[i])) return int(i);
+                    at -= Uint64(d[i]);
+                }
+                return int(d.size()) - 1;
+            };
+            // PLANET (0,0): <planet>Rotate, stepped (the PLANET callback 0x478b40, its
+            // anim set up at 0x479435).
+            if (!seqRotate.empty()) view->drawSequence(briefGaf, seqRotate, stepped(0), 0, 0, L);
+            // PANORAMA (45,130 550x123): <planet>Pan's frames are one landscape laid side
+            // by side (640 px each), scrolled left 1 px every 2 ticks and wrapped, frame 0
+            // again after the last to close the seam (the PANORAMA callback 0x478790,
+            // 0x478992..0x4789c5 and 0x478a77..0x478ac2), clipped to the gadget.
+            if (!seqPan.empty()) {
+                int strip = 0;
+                for (int i = 0; i < briefFrames[1]; ++i) strip += view->sequenceSize(briefGaf, seqPan, i).x;
+                if (strip > 0) {
+                    const SDL_FRect box = L.rect(45, 130, 550, 123);
+                    const SDL_Rect clip{int(std::floor(box.x)), int(std::floor(box.y)),
+                                        int(std::ceil(box.x + box.w)) - int(std::floor(box.x)),
+                                        int(std::ceil(box.y + box.h)) - int(std::floor(box.y))};
+                    SDL_RenderSetClipRect(ren_, &clip);
+                    float x = 45.0f - float((t / 2) % Uint64(strip));
+                    for (int i = 0; i <= briefFrames[1]; ++i) {
+                        const int f = i % briefFrames[1];
+                        view->drawSequence(briefGaf, seqPan, f, x, 130, L);
+                        x += float(view->sequenceSize(briefGaf, seqPan, f).x);
+                    }
+                    SDL_RenderSetClipRect(ren_, nullptr);
+                }
+            }
+            // SOLARSYSTEM (415,0): <planet>Solar at its GAF durations [U: retail's
+            // driver for this gadget not traced].
+            if (!seqSolar.empty()) view->drawSequence(briefGaf, seqSolar, stepped(2), 415, 0, L);
             // TextRegion 48,285 360x148; the wheel scrolls it.
             const int lh = std::max(10, briefFont->height() + 1);
             const int rows = 148 / lh;

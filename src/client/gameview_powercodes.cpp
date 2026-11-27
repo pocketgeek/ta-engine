@@ -55,7 +55,7 @@ namespace {
             powerCode(*code);
             if (heldSystemChat_.empty()) { chatEchoMs_ = 0; chatEcho_.clear(); }   // nothing to hold
         }
-        mp_->chat(line, acts ? uint8_t(0xff) : chatRecipients_, acts || chatSpectators_);
+        mp_->chat(line, acts ? ta::net::kEverySlot : chatRecipients_, acts || chatSpectators_);
     }
 
     void GameView::powerScriptStep() {

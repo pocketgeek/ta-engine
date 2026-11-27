@@ -19,9 +19,10 @@ std::string upper(std::string s, size_t limit) {
     if (s.size() > limit) s.resize(limit);
     return s;
 }
-int seatCount(uint8_t seats) {
+static_assert(kAllSeats == (1u << kMaxPlayers) - 1, "a SeatMask holds every seat");
+int seatCount(SeatMask seats) {
     int n = 0;
-    for (; seats; seats &= uint8_t(seats - 1)) ++n;
+    for (; seats; seats &= SeatMask(seats - 1)) ++n;
     return n;
 }
 }  // namespace
@@ -74,17 +75,18 @@ ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, co
         if (info.crtValid) {
             info.placed = int(scenario.units.size());
             for (const auto& unit : scenario.units) {
-                if (unit.player >= 0 && unit.player < kMaxPlayers) info.placedSeats |= uint8_t(1u << unit.player);
-                else if (unit.player != kMaxPlayers) badOwner = true;   // 8 is the neutral owner
+                if (unit.player >= 0 && unit.player < kMaxPlayers) info.placedSeats |= SeatMask(1u << unit.player);
+                else if (unit.player != kNeutralPlayer) badOwner = true;
             }
-            // Bank 0 is All Players, banks 1..8 belong to owners 0..7 (setupMatch's seat
-            // rule). A Cartographer CRT has exactly nine; a later bank would name the
-            // neutral owner (no seat) or no owner at all, which setupMatch refuses.
+            // Bank 0 is All Players, banks 1..10 belong to owners 0..9 (setupMatch's seat
+            // rule; crt::parse renumbers an eight-player file). A Cartographer CRT has
+            // exactly eleven; a later bank would name the neutral owner (no seat) or no
+            // owner at all, which setupMatch refuses.
             for (size_t p = 0; p < scenario.players.size(); ++p) {
                 const auto& groups = scenario.players[p];
                 const bool rules = std::any_of(groups.begin(), groups.end(), crt::hasRules);
                 if (p == 0) info.sharedRules = rules;
-                else if (p <= size_t(kMaxPlayers)) { if (rules) info.ruleSeats |= uint8_t(1u << (p - 1)); }
+                else if (p <= size_t(kMaxPlayers)) { if (rules) info.ruleSeats |= SeatMask(1u << (p - 1)); }
                 else if (p > size_t(kMaxPlayers) + 1 && !groups.empty()) badOwner = true;
                 for (const auto& group : groups)
                     for (const auto& action : group.actions)
@@ -113,18 +115,18 @@ ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, co
                 };
                 const bool everyone = creates(0);
                 for (int p = 0; p < kMaxPlayers; ++p)
-                    if (everyone || creates(size_t(p) + 1)) info.armySeats |= uint8_t(1u << p);
+                    if (everyone || creates(size_t(p) + 1)) info.armySeats |= SeatMask(1u << p);
                 for (const auto& unit : scenario.units) {
                     if (unit.player < 0 || unit.player >= kMaxPlayers) continue;
                     // A type this install lacks may come from a game mod pack (MissingType
                     // already refuses or warns): it is not held against the seat.
                     const auto* type = reg->find(lower(unit.objectName));
-                    if (!type) { info.armySeats |= uint8_t(1u << unit.player); continue; }
+                    if (!type) { info.armySeats |= SeatMask(1u << unit.player); continue; }
                     const auto side = lower(type->side);
                     if (side == "lif" || side == "npc" || side == "mon") continue;
                     bool armed = false;
                     for (const auto& weapon : type->weapons) armed = armed || weapon.damage > 0;
-                    if (armed || type->isBuilder || !type->isStructure()) info.armySeats |= uint8_t(1u << unit.player);
+                    if (armed || type->isBuilder || !type->isStructure()) info.armySeats |= SeatMask(1u << unit.player);
                 }
             }
         }
@@ -147,7 +149,7 @@ ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, co
     return info;
 }
 
-std::string seatList(uint8_t seats) {
+std::string seatList(SeatMask seats) {
     std::string out;
     for (int i = 0; i < kMaxPlayers;) {
         if (!(seats >> i & 1)) { ++i; continue; }
@@ -193,7 +195,7 @@ std::vector<ScenarioLine> scenarioSummary(const ScenarioInfo& info, bool compact
     } else {
         lines.push_back({compact ? "RULES ONLY: MONARCHS STAY" : "RULES ONLY: EVERYONE KEEPS A MONARCH"});
     }
-    const uint8_t seats = info.requiredSeats();
+    const SeatMask seats = info.requiredSeats();
     lines.push_back({seats ? "NEEDS SEATS " + seatList(seats) : std::string("NEEDS NO SEATS")});
     if (auto useOnly = scenarioUseOnlyLine(info, compact); !useOnly.empty()) lines.push_back({std::move(useOnly)});
     if (info.outcomes) lines.push_back({compact ? "ENDS BY SCENARIO RULES" : "ENDS ONLY BY THE SCENARIO'S RULES"});

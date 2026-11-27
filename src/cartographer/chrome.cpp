@@ -273,9 +273,9 @@ bool cart::Editor::handleShortcuts(SDL_Event& e) {
     } else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_a && !(e.key.keysym.mod & (KMOD_CTRL|KMOD_GUI|KMOD_ALT))) {
         openAiProfiles();        // Scenario -> AI Profiles
     } else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_LEFTBRACKET) {
-        currentPlayer = (currentPlayer + 7) % 8;   // UNITS: pick placement player
+        currentPlayer = (currentPlayer + ta::crt::kMaxOwners - 1) % ta::crt::kMaxOwners;   // UNITS: pick placement player
     } else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RIGHTBRACKET) {
-        currentPlayer = (currentPlayer + 1) % 8;
+        currentPlayer = (currentPlayer + 1) % ta::crt::kMaxOwners;
     } else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_m) {
         if(e.key.keysym.mod & KMOD_SHIFT) openModal(M_SYMMETRIZE);   // Symmetry -> Symmetrize
         else toggleLiveSymmetry();                                    // Symmetry -> Live symmetry

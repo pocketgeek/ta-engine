@@ -69,8 +69,8 @@ static void formats() {
     const auto back=crt::parse(fresh);
     check(back.units[0].kills==13 && back.customTypes[0].stat[3]==7 && crt::write(back)==fresh,
           "a 2.0 file does not round-trip its kill counts");
-    check(crt::Scenario{}.version==crt::kVersionKills,"a new scenario is not a kill-count file");
-    auto bad=fresh;const float v3=3.0f;std::memcpy(bad.data(),&v3,4);
+    check(crt::Scenario{}.version==crt::kVersionCurrent,"a new scenario is not a kill-count, ten-player (3.0) file");
+    auto bad=fresh;const float v4=4.0f;std::memcpy(bad.data(),&v4,4);
     check(crt::parse(bad).version==0,"an unknown .crt version was accepted");
     check(crt::killsForRank(9)==45 && crt::killsForRank(0)==0,"rank to kills");
     std::puts("PASS: .crt 1.0 rank converts to kills (x5) and round-trips; 2.0 keeps the count");
@@ -83,14 +83,14 @@ static void cartographer() {
     cart::PlacedUnit p;p.type="ARMPW";p.player=1;p.x=168;p.z=200;p.kills=37;p.name="Old Hand";
     const auto saved=cart::saveScenario(crt::Scenario{},{p});
     const auto s=crt::parse(saved);
-    check(s.version==crt::kVersionKills && s.units.size()==1 && s.units[0].kills==37,"Cartographer did not save the kills");
+    check(s.version==crt::kVersionCurrent && s.units.size()==1 && s.units[0].kills==37,"Cartographer did not save the kills");
     const auto placed=cart::toPlaced(s);
     check(placed.size()==1 && placed[0].kills==37 && placed[0].name=="Old Hand","Cartographer did not load the kills");
     check(cart::saveScenario(s,placed)==saved,"Cartographer save/load/save is not stable");
     const auto legacy=cart::toPlaced(crt::parse(crt::write(scene(crt::kVersionRank,15,0))));
     check(legacy.size()==1 && legacy[0].kills==15,"an old rank 3 did not open as 15 kills");
     const auto upgraded=crt::parse(cart::saveScenario(crt::parse(crt::write(scene(crt::kVersionRank,15,0))),legacy));
-    check(upgraded.version==crt::kVersionKills && upgraded.units[0].kills==15,"an old file was not saved upgraded");
+    check(upgraded.version==crt::kVersionCurrent && upgraded.units[0].kills==15,"an old file was not saved upgraded");
     p.kills=70000;
     check(crt::parse(cart::saveScenario(crt::Scenario{},{p})).units[0].kills==65535,"kills past the word were not clamped");
     std::puts("PASS: Cartographer saves and loads the kill count; an old rank opens as rank x 5");

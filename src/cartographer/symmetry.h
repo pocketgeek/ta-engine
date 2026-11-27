@@ -66,11 +66,11 @@ std::optional<PlacedUnit> mirrorUnit(const PlacedUnit&,Xf,int mapWidthCells,int 
 std::optional<std::pair<int,int>> mirrorFeature(int x,int z,int fx,int fz,Xf,int width,int height);
 std::optional<ta::tnt::StartPos> mirrorStart(const ta::tnt::StartPos&,Xf,int width,int height);
 std::optional<ta::crt::Region> mirrorRegion(const ta::crt::Region&,Xf,int width,int height);
-// Next free start number 1..8, or 0 when all eight are used.
+// Next free start number 1..10, or 0 when all ten are used.
 int nextStartNumber(const std::vector<ta::tnt::StartPos>&);
 // Owner remap from symmetric starts: player p (start p+1) maps to the owner of
 // the start at the mirror of start p+1's position; others are unchanged.
-std::array<int,9> mirrorPlayers(const std::vector<ta::tnt::StartPos>&,Xf,int width,int height);
+std::array<int,ta::crt::kNeutralOwner + 1> mirrorPlayers(const std::vector<ta::tnt::StartPos>&,Xf,int width,int height);
 // "Base mirror", "Base mirror 2"...: unique (case-insensitive), at most 63 bytes.
 std::string uniqueRegionName(const std::vector<ta::crt::Region>&,const std::string& base);
 

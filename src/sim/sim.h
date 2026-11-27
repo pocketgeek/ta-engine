@@ -950,7 +950,7 @@ struct alignas(64) Order {
     uint8_t reviveKind = 0;
     // A HelpBuild (World::assist, or one a guarding builder put ahead of its
     // guard): the unfinished unit it helps. A ground builder's leg is the job
-    // itself, run on `mission` with the rectangle controller (tickGroundHelp);
+    // itself, run on `mission` with its ring controller (helpRing, tickGroundHelp);
     // a flyer's is only its approach. The leg goes when that job ends, however
     // it ends. Hashed with a tag when set.
     int helpSite = 0;
@@ -1032,6 +1032,13 @@ struct alignas(64) Order {
     // (+0x36, 0x438650). Hashed with a tag when set.
     int reclaimUnit = 0;
     int32_t reclaimUnitRate = 0;
+    // A ground HelpBuild leg's approach (TotalA.exe HelpBuild 0x403f70 stage
+    // 0, 0x403fd9..0x404053): the ring controller 0x44d3b0 round the site's
+    // position, from half its footprint's quirk diagonal out to builddistance
+    // more (retailHelpBuildRing). Installed when the leg's stage 0 runs
+    // (prepareHelpApproach); the navigator reads it as the leg's goal
+    // (navigationMissionOrder, groundMissionAccepts). Hashed when set.
+    HeapOptional<RetailRingGoal> helpRing;
 };
 // Which line each field sits on (WE D2). Moving a field across a line, or
 // growing line 0/1 past 64 bytes, is a compile error here. (offsetof on a type
@@ -1067,7 +1074,7 @@ TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(padSuppress0_, 5); TA_ORDER_LINE(suppr
 TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(padSuppress1_, 5);
 TA_ORDER_LINE(airPoint, 5); TA_ORDER_LINE(attackFormation, 5); TA_ORDER_LINE(resumeSite, 5);
 TA_ORDER_LINE(transportHeading, 5); TA_ORDER_LINE(airPadId, 5);
-TA_ORDER_LINE(reclaimUnit, 5); TA_ORDER_LINE(reclaimUnitRate, 5);
+TA_ORDER_LINE(reclaimUnit, 5); TA_ORDER_LINE(reclaimUnitRate, 5); TA_ORDER_LINE(helpRing, 5);
 static_assert(offsetof(Order, suppress) == 320, "lines 0-4 are full; line 5 starts with SUPPRESS");
 static_assert(sizeof(Order) == 384, "Order is six cache lines (line 5 has room left); a new field names its line above");
 #undef TA_ORDER_LINE
@@ -2165,8 +2172,15 @@ struct Player {
 
 };
 
-// Max simultaneous players/teams (the retail map ceiling is 8 start positions).
-constexpr int kMaxPlayers = 8;
+// Max simultaneous players/teams: retail's ten. TotalA.exe's game struct holds ten
+// 0x14b-byte player records at game+0x1b63 (index math 0x4473b1..0x4473c3:
+// idx*0x14b + 0x1b63; the loop at 0x445799..0x4457ae steps them up to +0x2851, and
+// 0x2851-0x1b63 = 0xcee = 10*0x14b). Shipped maps define StartPos1..StartPos10 (98 of
+// them) and textures/logos.gaf has the ten colour frames.
+constexpr int kMaxPlayers = 10;
+// The map scenario's neutral (scenery) owner: the first id past the real players. A .crt
+// older than 3.0 stores it as 8 (crt::kOldNeutralOwner); crt::parse renumbers it.
+constexpr int kNeutralPlayer = kMaxPlayers;
 
 class MissionScript;   // src/sim/mission.h -- optional campaign "god" script + win/lose
 class ScenarioScript;  // src/sim/scenario.h -- optional .crt per-player trigger runner
@@ -2221,6 +2235,13 @@ public:
     bool unitScriptActivated(int unitId) const {
         const auto* script=unitScript(unitId);
         return script && script->activated;
+    }
+    // A unit script piece's turn targets (x, y, z; COB angle words), or none;
+    // tests.
+    std::optional<std::array<int32_t,3>> unitScriptPieceTurnTarget(int unitId,int piece) const {
+        const auto* script=unitScript(unitId);
+        if (!script || piece<0 || size_t(piece)>=script->peek().pieces.size()) return std::nullopt;
+        return script->peek().pieces[size_t(piece)].turnTarget;
     }
 
     // A finished creation or completion of an isfeature type (the walls):
@@ -2695,13 +2716,13 @@ public:
     Player& player(int i) { return players_[size_t(i)]; }
     const Player& player(int i) const { return players_[size_t(i)]; }
     int numPlayers() const { return scenarioParticipantCount_ >= 0 ? scenarioParticipantCount_ : int(players_.size()); }
-    bool isNeutralPlayer(int p) const { return scenarioParticipantCount_ >= 0 && p == 8; }
+    bool isNeutralPlayer(int p) const { return scenarioParticipantCount_ >= 0 && p == kNeutralPlayer; }
     bool validUnitOwner(int p) const { return (p >= 0 && p < numPlayers()) || isNeutralPlayer(p); }
     void enableScenarioNeutralPlayer() {
         if (scenarioParticipantCount_ >= 0) return;
         scenarioParticipantCount_ = int(players_.size());
-        players_.resize(9);
-        for (int p = scenarioParticipantCount_; p < 9; ++p) players_[size_t(p)].team = -1;
+        players_.resize(size_t(kNeutralPlayer) + 1);
+        for (int p = scenarioParticipantCount_; p <= kNeutralPlayer; ++p) players_[size_t(p)].team = -1;
     }
     // Retail CRT type defaults apply to every subsequent spawn; health is not consumed.
     // `kills`: the kill count every new unit of the type starts with.
@@ -2754,7 +2775,7 @@ public:
     // Construction/repair/weapon economy hooks (sim/taeconomy.h semantics).
     bool econBuildStep(Unit& builder, Unit& site);
     float econBuildFraction(Unit& builder, Unit& site);   // < 0: stalled by debt
-    bool taProductionWork(Unit& worker, Unit& producer, Unit& site);
+    bool taProductionWork(Unit& worker, Unit& producer, Unit& site, bool* paid=nullptr);
     bool econRepairStep(Unit& builder, Unit& target);
     bool econPayShot(Unit& u, const Weapon& w);
     // A shot's price: a stockpile weapon spends one of its slot's stock
@@ -3812,9 +3833,11 @@ private:
     void creditReclaimDeath(const Unit& dead);
     // 406250 stage 0: install the reclaim leg's rectangle controller.
     void prepareReclaimApproach(Unit& u);
-    // Ground HelpBuild (405cf0) and RepairUnit (407190) on their legs: stage 0
-    // installs the rectangle controller round the target's footprint (the
-    // dispatch, like prepareReclaimApproach); tickGroundHelp/tickGroundRepair
+    // Ground HelpBuild (TotalA.exe 0x403f70) and RepairUnit on their legs:
+    // stage 0 installs the approach -- HelpBuild's ring within builddistance
+    // of the site (retailHelpBuildRing), RepairUnit's rectangle round the
+    // target's footprint -- on the dispatch, like prepareReclaimApproach;
+    // tickGroundHelp/tickGroundRepair
     // answer the approach events and do the work, measuring no distance once
     // it has started. A leg that is not current waits from its start.
     void prepareHelpApproach(Unit& u);
@@ -4688,7 +4711,7 @@ private:
     // given, for its Legion headway window. Scratch, rewritten every tick.
     std::vector<std::pair<uint32_t,int32_t>> legionPace_;
     bool scoreAutomaticDisabled_=false;
-    int scenarioParticipantCount_ = -1; // ninth owner is scenery, never a lobby participant
+    int scenarioParticipantCount_ = -1; // owner kNeutralPlayer is scenery, never a lobby participant
     std::map<std::string, std::array<int,3>> scenarioTypeStats_;
     std::vector<Player> players_ = []{
         std::vector<Player> v(4);

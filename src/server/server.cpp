@@ -433,7 +433,7 @@ struct Room {
     std::array<bool,kMaxSlots> defeated{}; // last completed tick; safe during a worker tick
     // The match's standing after the last completed tick (TickResult): who has fielded
     // units so far, whether the result is in, and the winning team then (-1: nobody).
-    uint8_t fielded = 0;
+    uint16_t fielded = 0;
     bool decided = false;
     int8_t winningTeam = -1;
     // The game has ended here with someone still watching (Server::endGame): no tick
@@ -1500,7 +1500,8 @@ bool Server::voiceBehind(Client& d, const Room& r, uint64_t now) {
 void Server::relayVoice(Client& c, Room& r, const Frame& f) {
     Reader rd(f.payload.data(), f.payload.size());
     const uint16_t seq = rd.u16();
-    const uint8_t recipients = rd.u8(), flags = rd.u8();
+    const SlotMask recipients = rd.u16();
+    const uint8_t flags = rd.u8();
     const uint16_t len = rd.u16();
     // An END marker carries no audio and opens nothing: audio, or START, with END is malformed
     // (the client never sends it), as is an audio frame without audio.
@@ -2416,18 +2417,22 @@ void Server::tryStart(Client& c) {
                 // set-pieces. The AI lives server-side and emits ordinary commands
                 // into the tick stream, exactly as it does for a skirmish, so
                 // lockstep is unaffected. A "passive neutral" gets nothing: it is
-                // scenery. Income is deliberately NOT multiplied here -- a
-                // mission is balanced around its placements, not a skirmish curve.
-                // Mission opponents always play Classic, retail's own AI: it bakes the
+                // scenery. Mission opponents play retail's own AI at the mission's
+                // difficulty (RETAIL EASY / CLASSIC (Medium) / RETAIL HARD): it bakes the
                 // mission's aiprofile file (ai/<aiprofile>.txt, else ai/default.txt, by
-                // the data set's precedence) and plays the mission as retail's scenario
-                // mode 1, massattack included. There is no choice of level.
-                constexpr auto missionDiff = ta::ai::Difficulty::Classic;
+                // the data set's precedence), reads its plan sections for that
+                // difficulty word (0x406c90, G+0x37eee), and plays the mission as
+                // retail's scenario mode 1, massattack included. Its income scale is
+                // set by setupTaMission from the same difficulty.
+                const auto missionDiff = ms.difficulty == 0 ? ta::ai::Difficulty::RetailEasy
+                                       : ms.difficulty == 2 ? ta::ai::Difficulty::RetailHard
+                                                            : ta::ai::Difficulty::Classic;
                 const ta::ai::Profile& prof = r->aiProfiles[size_t(missionDiff)];
                 const auto classicProfile = classicProfileFor(*r, ms.aiProfile, ds->vfs, true);
                 for (int slot : ms.aiSlots) {
                     r->ai.emplace_back(slot, *r->reg, prof, r->seed + uint32_t(slot), missionDiff);
                     r->ai.back().setClassicProfile(classicProfile);
+                    r->ai.back().setCampaign(true);
                 }
                 r->classicProfile = classicProfile;
                 r->slotPos = ms.slotPos;
@@ -2898,7 +2903,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
         case Msg::Chat: {
             Reader rd(f.payload.data(), f.payload.size());
             std::string text = rd.str();
-            const uint8_t recipients = rd.u8();
+            const SlotMask recipients = rd.u16();
             // Spectators read it only when the player ticks them (the Diplomacy
             // SPECTATORS row); before the game starts the whole room does. A
             // spectator in a running game cannot chat at all.
@@ -3491,6 +3496,7 @@ void Server::takeOver(Room& r, int slot) {
         // mission's) aiprofile script. Without it the TA AI knows no build
         // preferences and builds nothing.
         r.ai.back().setClassicProfile(r.classicProfile);
+        r.ai.back().setCampaign(!r.mission.empty());   // scenario mode 1 (0x40bb70)
     }
     std::fprintf(stderr, "game %u: player %d stopped communicating -- AI (Normal) takes over\n", r.id, slot);
     // The host's seat is gone for good: its powers pass on, and the room is told.

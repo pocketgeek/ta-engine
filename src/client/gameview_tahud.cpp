@@ -1,12 +1,13 @@
-// Total Annihilation's in-game interface (docs/retail-gui.md section 3), laid out as
-// TotalA.exe lays it out at any resolution: the side panel on the left (PANELSIDE,
-// the minimap in its 128x128 corner and the sidebar page under it), the top bar
-// (PANELTOP with the energy and metal readouts) and the bottom bar (PANELBOT with
-// the selected unit's readouts), the game view taking the rest ((128, 32)-(W-1,
-// H-33), 0x4981c9). The sidebar page is <SIDE>MAIN2 with nothing selected, the
-// builder's guis/<UNIT><n>.GUI build pages (with download/*.tdf add-ons and IGPATCH
-// fillers), and the <SIDE>GEN orders page, switched by the ORDERS/BUILD tabs and
-// paged with PREV/NEXT.
+// Total Annihilation's in-game interface, laid out as the TAK engine lays out its
+// HUD rather than in retail's 640x480 frame (docs/retail-gui.md section 3 has that
+// frame): the world view runs from the window's left edge to a column on the right,
+// the whole height of the window. The column holds, top down, the minimap, the
+// selected unit's readout with the STATS PANEL under it, and the <SIDE>GEN order
+// buttons (retail's art and rules, client/orderpage.h). The selected builder's menu
+// is a row of pictures along the bottom of the view (GameView::drawPanel,
+// client/buildrow.h) and the metal / energy bar (PANELTOP with sidedata's readouts)
+// floats over the top of the view. Each piece has its own scale in Options, and the
+// build row and the resource bar their own left / center / right placement.
 
 #include "client/gameview.h"
 #include "client/artscale.h"
@@ -44,26 +45,14 @@ std::string upperStr(std::string s) {
         return p;
     }
 
-    // The sidebar page for the current selection (section 3 table). TotalA.exe's
-    // 0x41b2e0 counts the shown player's selected units: none shows <SIDE>MAIN2
-    // (0x41b74d -> 0x491d70), exactly one whose type has build pages may show its
-    // build page (0x41b758..0x41b83a), anything else the <SIDE>GEN orders page
-    // (0x41b853..0x41b883 -> 0x41b0f0).
+    // The orders page for the current selection: TotalA.exe's 0x41b2e0 counts the
+    // shown player's selected units, and any selection shows <SIDE>GEN
+    // (0x41b853..0x41b883 -> 0x41b0f0). The build pages are not used: the build row
+    // (drawPanel) shows the builder's menu. Nothing selected shows nothing.
     std::string GameView::taSidebarPage() {
+        if (taOrderUnits().empty()) return {};
         const int side = std::max(0, ta::sides::find(side_));
-        const std::string prefix = ta::sides::at(side).prefix;
-        const auto units = taOrderUnits();
-        if (units.empty()) return prefix + "MAIN2";
-        const UnitR* u = units.front();
-        const auto& pages = registry_.buildPages(u->type->id);
-        if (taBuildTab_ && units.size() == 1 && !pages.empty()) {
-            int maxPage = 1;
-            for (const auto& s : pages) maxPage = std::max(maxPage, s.page);
-            taBuildPage_ = std::clamp(taBuildPage_, 1, maxPage);
-            const std::string gui = u->type->id + std::to_string(taBuildPage_);
-            return ta::tagui::exists(vfs_, gui) ? gui : prefix + "DL";
-        }
-        return prefix + "GEN";
+        return ta::sides::at(side).prefix + "GEN";
     }
 
     std::vector<const UnitR*> GameView::taOrderUnits() const {
@@ -75,26 +64,26 @@ std::string upperStr(std::string s) {
     }
 
     // The <SIDE>GEN page for the selection (client/orderpage.h: TotalA.exe 0x41b2e0
-    // folds the selection, 0x41a120 greys, hides and stages the gadgets).
+    // folds the selection, 0x41a120 greys, hides and stages the gadgets). The
+    // ORDERS / BUILD tabs are hidden: the build row is always on show.
     void GameView::applyTaOrderPage(ta::TaGuiView& page, const std::string& prefix) {
         const auto units = taOrderUnits();
         std::vector<ta::client::OrderPageUnit> sel;
         for (const UnitR* u : units)
             sel.push_back({u->type->orderFlags, u->moveState, u->fireState, u->active, u->cloakOn});
-        const bool tabs = units.size() == 1 && !registry_.buildPages(units.front()->type->id).empty();
-        for (const auto& b : ta::client::orderPage(ta::client::orderSummary(sel), tabs)) {
+        for (const auto& b : ta::client::orderPage(ta::client::orderSummary(sel), false)) {
             const std::string name = prefix + std::string(b.name);
             page.setVisible(name, b.shown);
             page.setGrayed(name, b.grayed);
             page.setStage(name, std::max(0, b.stage));
         }
-        page.setPressed(prefix + "ORDERS", true);
-        page.setPressed(prefix + "BUILD", false);
+        page.setVisible(prefix + "ORDERS", false);
+        page.setVisible(prefix + "BUILD", false);
     }
 
-    // sidedata.tdf's interface rectangles for the shown side, in 640x480 space (the
-    // footer's in `baseheight` space, 0x429efc), read the way TotalA.exe's 0x431950
-    // reads them (x1, y1, x2, y2), and the side's console font.
+    // sidedata.tdf's interface rectangles for the shown side, in 640x480 space,
+    // read the way TotalA.exe's 0x431950 reads them (x1, y1, x2, y2), and the side's
+    // console font.
     void GameView::loadTaFrame() {
         const int side = std::max(0, ta::sides::find(side_));
         const auto& s = ta::sides::at(side);
@@ -105,22 +94,16 @@ std::string upperStr(std::string s) {
         sc.gadgets.push_back(ta::tagui::Gadget{});
         taTopBar_ = std::make_unique<ta::TaGuiView>(ren_, vfs_, sc, false);   // palette.pal
         taBarRects_.clear();
-        taBaseHeight_ = 480;
         try {
             auto b = vread("gamedata/sidedata.tdf");
             auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), "sidedata.tdf");
             if (const auto* n = root.child("SIDE" + std::to_string(side))) {
                 for (const char* key : {"LOGO", "METALBAR", "ENERGYBAR", "METALNUM", "ENERGYNUM", "METALMAX",
                                         "ENERGYMAX", "METAL0", "ENERGY0", "METALPRODUCED", "METALCONSUMED",
-                                        "ENERGYPRODUCED", "ENERGYCONSUMED", "LOGO2", "UNITNAME", "DAMAGEBAR",
-                                        "UNITMETALMAKE", "UNITMETALUSE", "UNITENERGYMAKE", "UNITENERGYUSE",
-                                        "UNITNAME2", "DAMAGEBAR2", "NAME", "DESCRIPTION"})
+                                        "ENERGYPRODUCED", "ENERGYCONSUMED"})
                     if (const auto* r = n->child(key))
                         taBarRects_[key] = SDL_Rect{int(r->numberOr("x1", 0)), int(r->numberOr("y1", 0)),
                                                     int(r->numberOr("x2", 0)), int(r->numberOr("y2", 0))};
-                // 0x429efc: `baseheight` (default 480) -- the footer regions sit
-                // H - baseheight lower on a taller screen (0x46a86f..0x46a87e).
-                taBaseHeight_ = int(n->numberOr("baseheight", 480));
             }
         } catch (...) {}
         taConsole_ = std::make_unique<ta::TaFont>();
@@ -147,99 +130,210 @@ std::string upperStr(std::string s) {
         return tex;
     }
 
-    // TA's frame (docs/retail-gui.md section 3), in window coordinates at UI SCALE.
-    // TotalA.exe clears its offscreen surface to colour 0 and draws the side's INT
-    // gaf (0x467d70): PANELSIDE at (0, 0), nothing below it (the 480 rows it has);
-    // the top bar is PANELTOP at x 129 with PANELBOT copies after it to the screen's
-    // width (0x469050..0x46909d); the bottom bar is PANELBOT copies from x 129 at
-    // H - 32 (0x46a8b5..0x46a929). Frame offsets cancel (0x4b8051..0x4b805a).
-    void GameView::renderTaFrame(int winW, int winH) {
-        loadTaFrame();
-        const auto& s = ta::sides::at(taFrameSide_);
-        const float sc = uiScale_;
-        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
-        const SDL_FRect side{0, 0, float(taSideW()), float(winH)};
-        const SDL_FRect top{float(taSideW()), 0, float(winW - taSideW()), float(taTopH())};
-        const SDL_FRect bottom{float(taSideW()), float(winH - barH()), float(winW - taSideW()), float(barH())};
-        for (const auto* r : {&side, &top, &bottom}) SDL_RenderFillRectF(ren_, r);
-        ta::GuiLayout L;
-        L.scale = sc;
-        taTopBar_->drawSequence(s.intGaf, "PANELSIDE", 0, 0, 0, L);
-        const SDL_Point topArt = taTopBar_->sequenceSize(s.intGaf, "PANELTOP");
-        const SDL_Point botArt = taTopBar_->sequenceSize(s.intGaf, "PANELBOT");
-        {   // the top bar: 32 rows (the view starts at y 32, 0x4981d9)
-            const SDL_Rect clip{0, 0, winW, taTopH()};
-            SDL_RenderSetClipRect(ren_, &clip);
-            float x = 129;
-            taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, x, 0, L);
-            x += float(std::max(1, topArt.x));
-            while (botArt.x > 0 && x * sc < float(winW)) {
-                taTopBar_->drawSequence(s.intGaf, "PANELBOT", 0, x, 0, L);
-                x += float(botArt.x);
-            }
-        }
-        {   // the bottom bar
-            const SDL_Rect clip{0, winH - barH(), winW, barH()};
-            SDL_RenderSetClipRect(ren_, &clip);
-            ta::GuiLayout F = L;
-            F.oy = float(winH) - 480.0f * sc;
-            for (float x = 129; botArt.x > 0 && x * sc < float(winW); x += float(botArt.x))
-                taTopBar_->drawSequence(s.intGaf, "PANELBOT", 0, x, 448, F);
-        }
-        SDL_RenderSetClipRect(ren_, nullptr);
-    }
-
-    void GameView::renderTaHud(int winW, int winH) {
-        const float scale = uiScale_;
-        const std::string pageName = taSidebarPage();
-        ta::TaGuiView* page = taPage(pageName);
-        taHudPage_ = pageName;
-        if (page) {
-            // The page is authored at (0, 128) in 640x480 space, under the minimap's
-            // 128x128 corner (docs/retail-gui.md section 3), and TA draws it there at
-            // every resolution: the side panel keeps its size.
-            ta::GuiLayout L;
-            L.scale = scale;
-            L.ox = 0;
-            L.oy = 0;
-            taHudLayout_ = L;
-            // Build pages: slots the registry does not place on this page are fillers;
-            // download add-ons take their slot (gadget BUTTON + 4).
-            const std::string prefix = ta::sides::at(std::max(0, ta::sides::find(side_))).prefix;
-            const auto units = taOrderUnits();
-            const UnitR* u = units.empty() ? nullptr : units.front();
-            if (pageName == prefix + "GEN") {
-                applyTaOrderPage(*page, prefix);
-            } else if (u && pageName != prefix + "MAIN2") {
-                for (const auto& g : page->screen().gadgets) {
-                    if (g.type != ta::tagui::Type::Button) continue;
+    // The stockpile button on a type's first build page: guis\\<UNIT>1.GUI's
+    // MAKENUKE / MAKEANTI gadget (0x4199b0, gadget flag 8), "" when it has none.
+    // Stockpilers (the silos, the anti-nukes) are not builders, so the registry has
+    // no build pages for them; the button is the whole of their menu.
+    const std::string& GameView::stockButtonOf(const std::string& typeId) const {
+        auto it = stockButtons_.find(typeId);
+        if (it != stockButtons_.end()) return it->second;
+        std::string found;
+        try {
+            const std::string gui = typeId + "1";
+            if (ta::tagui::exists(vfs_, gui))
+                for (const auto& g : ta::tagui::load(vfs_, gui).gadgets) {
                     const std::string n = upperStr(g.name);
-                    if (const auto* t = registry_.find(g.name)) {
-                        const bool allowed = worldTables().buildAllowed(t);
-                        page->setGrayed(g.name, !allowed);
-                    }
-                    // The stockpile button's caption (0x4199b0, gadget flag 8):
-                    // the slot-0 stock ("%d", when there is any) then the stock
-                    // still queued (" +%d", 0x439d80).
-                    if (n.size() >= 8 && (n.compare(n.size() - 8, 8, "MAKENUKE") == 0 ||
-                                          n.compare(n.size() - 8, 8, "MAKEANTI") == 0)) {
-                        std::string caption;
-                        if (u->stock[0]) caption = std::to_string(int(u->stock[0]));
-                        if (u->stockQueued) caption += " +" + std::to_string(u->stockQueued);
-                        page->setText(g.name, caption);
+                    if (g.type == ta::tagui::Type::Button && n.size() >= 8 &&
+                        (n.compare(n.size() - 8, 8, "MAKENUKE") == 0 || n.compare(n.size() - 8, 8, "MAKEANTI") == 0)) {
+                        found = n.substr(n.size() - 8);
+                        break;
                     }
                 }
-                page->setPressed(prefix + "BUILD", true);
-                page->setPressed(prefix + "ORDERS", false);
-            }
-            page->draw(L);
-        }
-        renderTaTopBar(winW);
-        renderTaBottomBar(winW, winH);
+        } catch (...) {}
+        return stockButtons_[typeId] = found;
     }
 
-    // The top bar's readouts (TotalA.exe 0x4690ab..0x46960b), at sidedata's
-    // coordinates in 640x480 space, which TA keeps at every width:
+    // The right-hand column's backing, behind the minimap and everything under it.
+    void GameView::renderTaFrame(int winW, int winH) {
+        loadTaFrame();
+        const float x = float(winW - hudColW());
+        const SDL_FRect col{x, 0, float(hudColW()), float(winH)};
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
+        SDL_SetRenderDrawColor(ren_, 16, 17, 20, 255);
+        SDL_RenderFillRectF(ren_, &col);
+        SDL_SetRenderDrawColor(ren_, 70, 74, 82, 255);
+        SDL_RenderDrawLineF(ren_, x, 0, x, float(winH));
+        {   // the minimap's well
+            const float pad = hudColPad(), box = miniBoxSize();
+            const SDL_FRect well{x + (float(hudColW()) - box) / 2 - 1, pad - 1, box + 2, box + 2};
+            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
+            SDL_RenderFillRectF(ren_, &well);
+            SDL_SetRenderDrawColor(ren_, 70, 74, 82, 255);
+            SDL_RenderDrawRectF(ren_, &well);
+        }
+    }
+
+    // Everything of the HUD but the minimap, in window coordinates: down the column
+    // the selected unit's readout, the STATS PANEL and the order buttons; then the
+    // metal / energy bar and the build row over the view.
+    void GameView::renderTaHud(int winW, int winH) {
+        loadTaFrame();
+        taHudPage_.clear();
+        taOrdersRect_ = {};
+        statsBottom_ = 0;
+        const float pad = hudColPad();
+        const float colX = float(winW - hudColW());
+        float y = pad + miniBoxSize() + pad;
+        if (hudShown()) y = renderTaUnitInfo(winW, y);
+        {   // the STATS PANEL drops rows rather than push the order buttons off the window
+            const float floor = float(winH) - pad - (hudShown() ? taOrdersHeight() + pad : 0.0f);
+            const float bottom = drawStatsPanel(colX + pad, float(winW) - pad, y + pad / 2, floor);
+            if (bottom > y) y = bottom + pad;
+        }
+        if (hudShown()) {
+            renderTaOrders(winW, y);
+            renderTaResourceBar(winW, winH);
+            drawPanel(winW, winH);
+        }
+    }
+
+    // The <SIDE>GEN order buttons at `top` in the column, at UI SCALE x ORDERS SCALE,
+    // the page's tab strip (ORDERS / BUILD, rows 0..30) cut off.
+    // The orders page's size in its own units, less the tab strip: its width, its
+    // height and the rows cut off its top (4 above the highest button not a tab).
+    GameView::TaOrdersCrop GameView::taOrdersCrop(ta::TaGuiView& page) const {
+        const std::string prefix = ta::sides::at(std::max(0, ta::sides::find(side_))).prefix;
+        const auto& gads = page.screen().gadgets;
+        TaOrdersCrop c;
+        c.w = gads.empty() ? 128.0f : float(std::max(1, gads.front().w));
+        c.h = gads.empty() ? 352.0f : float(std::max(1, gads.front().h));
+        c.top = c.h;
+        for (const auto& g : gads) {
+            if (g.index == 0 || g.type != ta::tagui::Type::Button) continue;
+            const std::string n = upperStr(g.name);
+            if (n == prefix + "ORDERS" || n == prefix + "BUILD") continue;
+            c.top = std::min(c.top, float(g.y) - 4.0f);
+        }
+        c.top = std::clamp(c.top, 0.0f, c.h - 1);
+        return c;
+    }
+
+    float GameView::taOrdersHeight() {
+        const std::string pageName = taSidebarPage();
+        ta::TaGuiView* page = pageName.empty() ? nullptr : taPage(pageName);
+        if (!page) return 0;
+        const TaOrdersCrop c = taOrdersCrop(*page);
+        return (c.h - c.top) * ordersScaleEff();
+    }
+
+    float GameView::renderTaOrders(int winW, float top) {
+        const std::string pageName = taSidebarPage();
+        if (pageName.empty()) return top;
+        ta::TaGuiView* page = taPage(pageName);
+        if (!page) return top;
+        taHudPage_ = pageName;
+        const std::string prefix = ta::sides::at(std::max(0, ta::sides::find(side_))).prefix;
+        applyTaOrderPage(*page, prefix);
+        const TaOrdersCrop crop = taOrdersCrop(*page);
+        const float pageW = crop.w, pageH = crop.h, cropTop = crop.top;
+        const float s = ordersScaleEff();
+        const float colX = float(winW - hudColW());
+        ta::GuiLayout L;
+        L.scale = s;
+        L.ox = std::round(colX + (float(hudColW()) - pageW * s) / 2) - float(page->originX()) * s;
+        L.oy = std::round(top) - (float(page->originY()) + cropTop) * s;
+        taHudLayout_ = L;
+        taOrdersRect_ = {L.px(float(page->originX())), std::round(top), pageW * s, (pageH - cropTop) * s};
+        const SDL_Rect clip{int(taOrdersRect_.x), int(taOrdersRect_.y), int(std::ceil(taOrdersRect_.w)),
+                            int(std::ceil(taOrdersRect_.h))};
+        SDL_RenderSetClipRect(ren_, &clip);
+        page->draw(L);
+        SDL_RenderSetClipRect(ren_, nullptr);
+        return taOrdersRect_.y + taOrdersRect_.h;
+    }
+
+    // The selected unit's readout at `top` in the column (retail's footer, 0x46a860..
+    // 0x46b789, as a block): its owner's emblem and its name (palette colour 0x53),
+    // its health (hp / maxdamage, the rest of the bar in the empty colour), its kills
+    // ("%d kill(s)", " - Veteran" past 4); for one of the shown player's own units
+    // its metal make / use "+%.1f" / "-%.1f" and energy "+%.0f" / "-%.0f"
+    // (0x46b16d..0x46b2b3); then the unit under the pointer, its name and health
+    // (0x46b492..0x46b55f). At UI SCALE x STATS SCALE.
+    float GameView::renderTaUnitInfo(int winW, float top) {
+        if (!taConsole_ || !taTopBar_) return top;
+        const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
+        if (u && (!u->alive() || !u->type)) u = nullptr;
+        const UnitR* h = nullptr;
+        if (inView(screenMouseX_, screenMouseY_))
+            if (const UnitR* hv = hoveredUnit(ta::client::PointerArea::World); hv && hv->alive() && hv->type && hv != u)
+                h = hv;
+        if (!u && !h) return top;
+        const float k = statsScaleEff(), pad = hudColPad();
+        ta::GuiLayout F;
+        F.scale = k;
+        F.ox = float(winW - hudColW()) + pad;
+        F.oy = top;
+        const float w = (float(hudColW()) - 2 * pad) / k;   // the block's width in its own units
+        const float fh = float(std::max(8, taConsole_->height()));
+        const SDL_Color nameC = taTopBar_->paletteColor(0x53);
+        const SDL_Color white{255, 255, 255, 255}, made{0, 255, 0, 255}, spent{255, 64, 64, 255}, dim{170, 175, 185, 255};
+        auto health = [&](float y, const UnitR& v) {
+            if (v.type->maxHp <= 0) return;
+            const float frac = std::clamp(v.hp / float(v.type->maxHp), 0.0f, 1.0f);
+            const float filled = std::floor(w * frac);
+            const SDL_FRect full = F.rect(0, y, filled, 3), rest = F.rect(filled, y, w - filled, 3);
+            SDL_SetRenderDrawColor(ren_, 0, 220, 0, 255);
+            SDL_RenderFillRectF(ren_, &full);
+            SDL_SetRenderDrawColor(ren_, 200, 0, 0, 255);
+            SDL_RenderFillRectF(ren_, &rest);
+        };
+        auto heading = [&](float y, const UnitR& v) {   // emblem + name; returns the next row
+            const float logo = std::max(fh, 16.0f);
+            if (SDL_Texture* t = taLogo(playerColorSlot(v.player))) {
+                const SDL_FRect d = F.rect(0, y, logo, logo);
+                SDL_RenderCopyF(ren_, t, nullptr, &d);
+            }
+            taConsole_->draw(ren_, F, logo + 4, y + (logo - fh) / 2, v.displayName(), nameC);
+            return y + logo + 3;
+        };
+        float y = 0;
+        if (u) {
+            y = heading(y, *u);
+            health(y, *u);
+            y += 6;
+            if (u->kills > 0) {
+                std::string kl = std::to_string(u->kills) + (u->kills == 1 ? " kill" : " kills");
+                if (u->kills > 4) kl += " - Veteran";
+                taConsole_->draw(ren_, F, 0, y, kl, white);
+                y += fh + 2;
+            }
+            if (u->player == hudPlayer()) {
+                char b[32];
+                auto row = [&](const char* label, const char* mfmt, float mk, const char* ufmt, float us) {
+                    taConsole_->draw(ren_, F, 0, y, label, dim);
+                    std::snprintf(b, sizeof b, mfmt, double(std::max(0.0f, mk)));
+                    taConsole_->draw(ren_, F, w * 0.45f, y, b, made);
+                    std::snprintf(b, sizeof b, ufmt, double(std::max(0.0f, us)));
+                    taConsole_->draw(ren_, F, w * 0.73f, y, b, spent);
+                    y += fh + 2;
+                };
+                row("Metal", "+%.1f", u->make[1], "-%.1f", u->use[1]);
+                row("Energy", "+%.0f", u->make[0], "-%.0f", u->use[0]);
+            }
+        }
+        if (h) {
+            if (u) y += 4;
+            y = heading(y, *h);
+            health(y, *h);
+            y += 6;
+        }
+        return F.py(y) + pad / 2;
+    }
+
+    // The metal / energy bar (TotalA.exe 0x4690ab..0x46960b): the side's PANELTOP art
+    // (x 129..640 of retail's top bar) and sidedata's readouts on it, floating over the
+    // top of the view at RESOURCE BAR (left / center / right) and UI SCALE x RESOURCE
+    // BAR SCALE, shrunk only when the view is too narrow for it:
     //   - the LOGO: the shown player's emblem (0x4690ab -> 0x467c00);
     //   - each bar filled x1 .. x1 + (x2 - x1) * stored / storage over y1..y2, in the
     //     side's energycolor / metalcolor (palette.pal; 0x4690f3..0x46912e);
@@ -247,14 +341,62 @@ std::string upperStr(std::string s) {
     //     left end; <RES>MAX the storage, "%d" right-aligned to x1 (0x469247);
     //   - ENERGYPRODUCED / CONSUMED "%d" ("%dK" past 99999, 0x4692a5 / 0x469336),
     //     METALPRODUCED / CONSUMED "%.1f" (0x469578 / 0x4695cf).
-    void GameView::renderTaTopBar(int winW) {
-        (void)winW;
-        loadTaFrame();
+    void GameView::renderTaResourceBar(int winW, int winH) {
+        (void)winH;
         const auto& s = ta::sides::at(taFrameSide_);
+        constexpr float kArtX = 129, kArtW = 640 - kArtX, kArtH = 32;
+        const float areaW = float(mapViewW(winW));
+        const float sc = std::max(0.1f, std::min(uiScale_ * resourceBarScale_, areaW / kArtW));
+        const float barW = kArtW * sc, barH = kArtH * sc;
+        const float x = resourceBarAlign_ == 0 ? 0.0f
+                      : resourceBarAlign_ == 2 ? areaW - barW
+                                               : std::round((areaW - barW) / 2);
+        const float y = replayMode_ && replayBar_.box.h > 0 ? replayBar_.box.y + replayBar_.box.h + 4 : 0.0f;
+        // The overlays in the view's corners stack under it.
+        if (resourceBarAlign_ != 2) topLeft_.place(y, barH);
+        if (resourceBarAlign_ != 0) statsBottom_ = y + barH;
+        taResourceRect_ = {x, y, barW, barH};
         ta::GuiLayout L;
-        L.scale = uiScale_;
+        L.scale = sc;
+        L.ox = x - kArtX * sc;
+        L.oy = y;
+        {
+            const SDL_Rect clip{int(x), int(y), int(std::ceil(barW)), int(std::ceil(barH))};
+            SDL_RenderSetClipRect(ren_, &clip);
+            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
+            const SDL_FRect back{x, y, barW, barH};
+            SDL_RenderFillRectF(ren_, &back);
+            taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, kArtX, 0, L);
+        }
         const int shown = std::clamp(hudPlayer(), 0, std::max(0, frameNumPlayers() - 1));
         const PlayerR& p = framePlayer(shown);
+        // The stored amounts as TotalA.exe shows them (0x468e7b..0x468f6c): a display
+        // copy (game +0x37e3f, saved back at 0x468fec) steps toward the stored whole
+        // number by a truncated eighth of the gap, at least one, then is held to the
+        // storage cap -- energy then metal. It moves once per main-loop pass (the bar
+        // is drawn at the end of 0x496790, which runs at most one sim tick), so the
+        // readout rolls between the once-a-second settles and counts up from 0 at the
+        // start. Stepped here 30 times a second of wall time, at any frame rate. The
+        // bars fill from the same shown values (0x4690f3, 0x469184).
+        {
+            const uint64_t now = SDL_GetTicks64();
+            if (!taShownAt_) taShownAt_ = now;
+            int steps = int(std::min<uint64_t>((now - taShownAt_) * 30 / 1000, 30));
+            taShownAt_ += uint64_t(steps) * 1000 / 30;
+            if (steps == 30) taShownAt_ = now;   // a long stall: no catching up
+            auto step = [](float shownV, float real) {
+                const int a = int(shownV), b = int(real);   // _ftol (0x4e43a0) truncates
+                int d = b - a;
+                d = d / 8 != 0 ? d / 8 : (d > 0 ? 1 : d < 0 ? -1 : 0);
+                return float(a + d);
+            };
+            while (steps-- > 0) {
+                taShownE_ = step(taShownE_, p.energy);
+                taShownM_ = step(taShownM_, p.metal);
+                if (taShownE_ > p.energyCap) taShownE_ = p.energyCap;
+                if (taShownM_ > p.metalCap) taShownM_ = p.metalCap;
+            }
+        }
         if (auto it = taBarRects_.find("LOGO"); it != taBarRects_.end())
             if (SDL_Texture* logo = taLogo(playerColorSlot(shown))) {
                 const SDL_Rect r = it->second;
@@ -273,9 +415,9 @@ std::string upperStr(std::string s) {
         auto text = [&](const char* key, const std::string& t, SDL_Color c, bool right) {
             auto it = taBarRects_.find(key);
             if (it == taBarRects_.end() || !taConsole_) return;
-            float x = float(it->second.x);
-            if (right) x -= float(taConsole_->width(t));
-            taConsole_->draw(ren_, L, x, float(it->second.y), t, c);
+            float tx = float(it->second.x);
+            if (right) tx -= float(taConsole_->width(t));
+            taConsole_->draw(ren_, L, tx, float(it->second.y), t, c);
         };
         auto whole = [](float v) { return std::to_string(int(v)); };
         auto big = [](float v) {   // 0x46927a / 0x469308: past +-99999 the count goes in thousands
@@ -287,138 +429,34 @@ std::string upperStr(std::string s) {
         // The produced / consumed colours are entries of TA's interface colour table
         // (game +0xdcb, +0xa / +0xc); which palette slots those are is not traced.
         const SDL_Color made{0, 255, 0, 255}, spent{255, 64, 64, 255};
-        bar("ENERGYBAR", p.energy, p.energyCap, taTopBar_->paletteColor(s.energyColor ? s.energyColor : 208));
-        bar("METALBAR", p.metal, p.metalCap, taTopBar_->paletteColor(s.metalColor ? s.metalColor : 224));
-        text("ENERGYNUM", whole(p.energy), white, false);
+        bar("ENERGYBAR", taShownE_, p.energyCap, taTopBar_->paletteColor(s.energyColor ? s.energyColor : 208));
+        bar("METALBAR", taShownM_, p.metalCap, taTopBar_->paletteColor(s.metalColor ? s.metalColor : 224));
+        text("ENERGYNUM", whole(taShownE_), white, false);
         text("ENERGY0", "0", white, false);
         text("ENERGYMAX", whole(p.energyCap), white, true);
         text("ENERGYPRODUCED", big(p.energyIncome), made, false);
         text("ENERGYCONSUMED", big(p.energyExpense), spent, false);
-        text("METALNUM", whole(p.metal), white, false);
+        text("METALNUM", whole(taShownM_), white, false);
         text("METAL0", "0", white, false);
         text("METALMAX", whole(p.metalCap), white, true);
         text("METALPRODUCED", tenth(p.metalIncome), made, false);
         text("METALCONSUMED", tenth(p.metalExpense), spent, false);
+        SDL_RenderSetClipRect(ren_, nullptr);
     }
 
-    // The bottom bar's readouts (TotalA.exe 0x46a860..0x46b789), sidedata's footer
-    // rectangles moved down by H - baseheight (0x46a86f..0x46a87e):
-    //   - the selected unit: its owner's emblem in LOGO2 (0x46b105), its name centred
-    //     on UNITNAME.x1 (0x46afcf..0x46b00e, palette colour 0x53), its health in
-    //     DAMAGEBAR (0x46b04c..0x46b0f0: x1 .. x1 + (x2 - x1) * hp / maxdamage, the
-    //     rest of the bar in the empty colour) and its kills under the bar ("%d
-    //     kill(s)", " - Veteran" past 4, 0x46b2b8..0x46b3ae); for one of the shown
-    //     player's units its make / use, UNITMETALMAKE "+%.1f", UNITENERGYMAKE
-    //     "+%.0f", UNITMETALUSE "-%.1f", UNITENERGYUSE "-%.0f" (0x46b16d..0x46b2b3);
-    //   - the unit under the pointer in UNITNAME2 / DAMAGEBAR2 (0x46b492..0x46b55f).
-    void GameView::renderTaBottomBar(int winW, int winH) {
-        (void)winW;
-        if (taBarRects_.empty() || !taConsole_) return;
-        ta::GuiLayout F;
-        F.scale = uiScale_;
-        F.oy = float(winH) - float(taBaseHeight_) * uiScale_;
-        auto rectOf = [&](const char* key) -> const SDL_Rect* {
-            auto it = taBarRects_.find(key);
-            return it == taBarRects_.end() ? nullptr : &it->second;
-        };
-        const SDL_Color nameC = taTopBar_->paletteColor(0x53);
-        const SDL_Color white{255, 255, 255, 255}, made{0, 255, 0, 255}, spent{255, 64, 64, 255};
-        auto centred = [&](const char* key, const std::string& t, SDL_Color c) {
-            if (const SDL_Rect* r = rectOf(key))
-                taConsole_->draw(ren_, F, float(r->x) - float(taConsole_->width(t) / 2), float(r->y), t, c);
-        };
-        auto at = [&](const char* key, const std::string& t, SDL_Color c) {
-            if (const SDL_Rect* r = rectOf(key)) taConsole_->draw(ren_, F, float(r->x), float(r->y), t, c);
-        };
-        auto health = [&](const char* key, const UnitR& u) {
-            const SDL_Rect* r = rectOf(key);
-            if (!r || !u.type || u.type->maxHp <= 0) return;
-            const float frac = std::clamp(u.hp / float(u.type->maxHp), 0.0f, 1.0f);
-            const float w = float(r->w - r->x), h = float(r->h - r->y + 1);
-            const float filled = std::floor(w * frac);
-            const SDL_FRect full = F.rect(float(r->x), float(r->y), filled, h);
-            const SDL_FRect rest = F.rect(float(r->x) + filled, float(r->y), w - filled, h);
-            SDL_SetRenderDrawColor(ren_, 0, 220, 0, 255);
-            SDL_RenderFillRectF(ren_, &full);
-            SDL_SetRenderDrawColor(ren_, 200, 0, 0, 255);
-            SDL_RenderFillRectF(ren_, &rest);
-        };
-        const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
-        if (u && u->alive() && u->type) {
-            if (const SDL_Rect* r = rectOf("LOGO2"))
-                if (SDL_Texture* logo = taLogo(playerColorSlot(u->player))) {
-                    const SDL_FRect d = F.rect(float(r->x), float(r->y), float(r->w - r->x + 1), float(r->h - r->y + 1));
-                    SDL_RenderCopyF(ren_, logo, nullptr, &d);
-                }
-            centred("UNITNAME", u->displayName(), nameC);
-            health("DAMAGEBAR", *u);
-            if (u->kills > 0)
-                if (const SDL_Rect* r = rectOf("DAMAGEBAR")) {
-                    std::string k = std::to_string(u->kills) + (u->kills == 1 ? " kill" : " kills");
-                    if (u->kills > 4) k += " - Veteran";
-                    taConsole_->draw(ren_, F, float(r->x), float(r->h + 2), k, white);
-                }
-            if (u->player == hudPlayer()) {
-                char b[32];
-                std::snprintf(b, sizeof b, "+%.1f", double(std::max(0.0f, u->make[1]))); at("UNITMETALMAKE", b, made);
-                std::snprintf(b, sizeof b, "+%.0f", double(std::max(0.0f, u->make[0]))); at("UNITENERGYMAKE", b, made);
-                std::snprintf(b, sizeof b, "-%.1f", double(std::max(0.0f, u->use[1]))); at("UNITMETALUSE", b, spent);
-                std::snprintf(b, sizeof b, "-%.0f", double(std::max(0.0f, u->use[0]))); at("UNITENERGYUSE", b, spent);
-            }
-        }
-        // The unit under the pointer, when it is in the world view.
-        if (inView(screenMouseX_, screenMouseY_))
-            if (const UnitR* h = hoveredUnit(ta::client::PointerArea::World); h && h->alive() && h->type) {
-                centred("UNITNAME2", h->displayName(), nameC);
-                health("DAMAGEBAR2", *h);
-            }
-    }
-
-    // Clicks on the sidebar page. True when the click belonged to it.
+    // Clicks on the order buttons. True when the click belonged to them.
     bool GameView::taHudEvent(const SDL_Event& e) {
         if (taHudPage_.empty()) return false;
         ta::TaGuiView* page = taPage(taHudPage_);
         if (!page) return false;
         const bool mouse = e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP;
-        if (mouse && !page->at(float(e.button.x), float(e.button.y), taHudLayout_)) return false;
-        if (watchOnly()) return mouse;
-        // A build page picture (TotalA.exe's build-menu handler 0x41aa00). The
-        // gadget's name is the unit (0x41aa39 -> 0x488b10). A unit that is placed
-        // on the map -- its type's bmcode byte (+0x22f, stored at 0x42c422) is 0 --
-        // arms the placement (0x41ab7f..0x41ab9c; either button). Anything else, a
-        // mobile unit or the stockpile button (MAKENUKE / MAKEANTI, no unit), is
-        // queued in the unit whose menu this is (0x41abd9..0x41ac3c -> 0x419b00:
-        // MOBILEBUILD / BUILDINGBUILD, or BUILDWEAPON): a left click +1, a right
-        // click -1, Shift five.
-        if (e.type == SDL_MOUSEBUTTONDOWN && taBuildTab_ && !selection_.empty() &&
-            (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT)) {
-            if (const auto* g = page->at(float(e.button.x), float(e.button.y), taHudLayout_);
-                g && g->type == ta::tagui::Type::Button && !g->grayedOut) {
-                const std::string name = upperStr(g->name);
-                const size_t at = name.size() >= 8 ? name.size() - 8 : 0;
-                const std::string tail = name.substr(at);
-                const bool stock = tail == "MAKENUKE" || tail == "MAKEANTI";
-                const ta::sim::UnitType* t = stock ? nullptr : registry_.find(g->name);
-                if (t && t->buildMovementCode == 0) {
-                    playGuiSound(ta::guisound::sidebar(name, true), "sidebar", name);   // addbuild, 0x41ab97
-                    placing_ = t;
-                    shiftBuildPlaced_ = false;
-                    return true;
-                }
-                if (stock || t) {
-                    // addbuild / subbuild by the count's sign (0x419b1d..0x419b33).
-                    playGuiSound(ta::guisound::sidebar(stock ? tail : name, true, e.button.button == SDL_BUTTON_RIGHT),
-                                 "sidebar", stock ? tail : name);
-                    ta::net::Command c;
-                    c.kind = e.button.button == SDL_BUTTON_LEFT ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
-                    c.unitId = taOrderUnits().empty() ? selection_.front() : taOrderUnits().front()->id;   // the page's unit
-                    c.targetId = (SDL_GetModState() & KMOD_SHIFT) ? 5 : 1;
-                    std::snprintf(c.type, sizeof c.type, "%s", stock ? tail.c_str() : t->id.c_str());
-                    issue(c);
-                    return true;
-                }
-            }
+        if (mouse) {
+            const float mx = float(e.button.x), my = float(e.button.y);
+            const SDL_FRect& r = taOrdersRect_;
+            if (mx < r.x || my < r.y || mx >= r.x + r.w || my >= r.y + r.h) return false;   // the crop
+            if (!page->at(mx, my, taHudLayout_)) return false;
         }
+        if (watchOnly()) return mouse;
         if (mouse && e.button.button != SDL_BUTTON_LEFT) return true;   // any other press on the page
         const std::string hit = page->handle(e, taHudLayout_);
         if (hit.empty()) return mouse;
@@ -426,13 +464,8 @@ std::string upperStr(std::string s) {
         const std::string prefix = upperStr(ta::sides::at(side).prefix);
         std::string n = upperStr(hit);
         if (n.rfind(prefix, 0) == 0) n = n.substr(prefix.size());
-        // The press's retail sound (client/guisound.h: 0x419be0 orders, 0x41aa60 tabs/pages/builds).
-        playGuiSound(ta::guisound::sidebar(n, taBuildTab_ && registry_.find(hit)), "sidebar", n);
-        if (n == "BUILD") { taBuildTab_ = true; return true; }
-        if (n == "ORDERS") { taBuildTab_ = false; return true; }
-        if (n == "NEXT") { ++taBuildPage_; return true; }
-        if (n == "PREV") { taBuildPage_ = std::max(1, taBuildPage_ - 1); return true; }
-        if (registry_.find(hit) && taBuildTab_) return true;   // a build picture: taken on the press
+        // The press's retail sound (client/guisound.h: 0x419be0 orders).
+        playGuiSound(ta::guisound::sidebar(n), "sidebar", n);
         auto stopAll = [&] {
             for (int id : selection_) {
                 ta::net::Command c;

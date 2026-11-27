@@ -16,6 +16,10 @@
 //   5. The reload is (ticks*(100-6k)/100)*(120-h)/100 (0x49e468): full health,
 //      half health and a 10-kill veteran.
 //   6. Paired Worlds stay hash-identical through all of it.
+//   7. HitByWeapon gets (400 cos h, 400 sin h) (0x489f04): armstump's base
+//      rocks by them; a killing hit starts none (0x489ebc).
+//   8. A ship on an attack stops and turns its turrets, not its hull
+//      (Attack_Chase 0x4035b7 posts no heading).
 //
 // A dev harness; not shipped in a game.
 
@@ -488,6 +492,118 @@ int main(int argc, char** argv) {
             const int want = (ticks * (100 - 6 * kk) / 100) * (120 - h) / 100;
             check(got == want, std::string("reload at ") + c.what,
                   "got " + std::to_string(got) + ", want " + std::to_string(want));
+            check(p.paired, "paired Worlds keep the same state hash");
+        }
+    }
+
+    // ---- 7. HitByWeapon -----------------------------------------------------
+    // TotalA.exe 0x489f04..0x489f43: HitByWeapon(400 cos h, 400 sin h), two
+    // arguments, h the hit bearing relative to the body (high byte, 0x489c81);
+    // armstump's script turns its base about z by the second and about x by
+    // the first. Only for a hit the unit survives (0x489ebc..0x489eee).
+    std::printf("[HitByWeapon]\n");
+    {
+        const sim::UnitType* tank = reg.find("armstump");
+        const sim::UnitType* pw = reg.find("armpw");
+        for (bool lethal : {false, true}) {
+            Pair p;
+            setup(p, reg, vfs, map);
+            float x = 0, z = 0;
+            openApron(p.a, tank, 20, x, z, 20, 20);
+            int ids[2][2];
+            int k = 0;
+            for (auto* w : {&p.a, &p.b}) {
+                ids[k][0] = w->spawn(pw, x, z, 0.0f, 0);
+                ids[k][1] = w->spawn(tank, x + 120, z + 50, 1.0f, 1);
+                if (lethal) w->unit(ids[k][1])->hp = sim::Fixed::fromInt(1);
+                w->attack(ids[k][0], ids[k][1], false);
+                ++k;
+            }
+            const int victim = ids[0][1];
+            int hitTick = -1, deathTick = -1;
+            uint16_t bearing = 0;
+            bool hitOnDeath = false, rocked = false;
+            std::string detail;
+            for (int tick = 1; tick <= 300; ++tick) {
+                p.tick();
+                const sim::Unit* v = p.a.unit(victim);
+                if (!v) break;
+                bool hit = false;
+                for (unsigned i = 0; i < v->weaponAnimations.count; ++i)
+                    if (v->weaponAnimations.at(i).kind == RetailWeaponAnimation::Hit) {
+                        hit = true;
+                        if (hitTick < 0) { hitTick = tick; bearing = v->weaponAnimations.at(i).heading; }
+                    }
+                if (deathTick < 0 && (!v->alive() || v->hp <= sim::Fixed())) {
+                    deathTick = tick;
+                    hitOnDeath = hit;
+                }
+                if (hitTick > 0 && tick == hitTick + 1 && !lethal) {
+                    // The thread started at the hit runs in the next COB pass.
+                    const auto turn = p.a.unitScriptPieceTurnTarget(victim, 0);
+                    const int32_t wantX = int32_t(uint32_t(sim::retailScaledCosine(bearing, 400)) & 65535);
+                    const int32_t wantZ = int32_t(uint32_t(sim::retailScaledSine(bearing, 400)) & 65535);
+                    rocked = turn && (*turn)[0] == wantX && (*turn)[2] == wantZ;
+                    char buf[160];
+                    std::snprintf(buf, sizeof buf, "bearing %u: base x %d z %d, want x %d z %d", unsigned(bearing),
+                                  turn ? (*turn)[0] : -1, turn ? (*turn)[2] : -1, wantX, wantZ);
+                    detail = buf;
+                }
+                if (deathTick > 0 || (!lethal && hitTick > 0 && tick > hitTick + 1)) break;
+            }
+            if (lethal) {
+                check(deathTick > 0 && !hitOnDeath, "a killing hit starts no HitByWeapon (0x489ebc..0x489eee)",
+                      "death tick " + std::to_string(deathTick));
+            } else {
+                check(hitTick > 0 && (bearing & 0xff) == 0, "a surviving hit reports its bearing's high byte");
+                check(rocked, "HitByWeapon(400 cos h, 400 sin h) rocks armstump's base about x and z", detail);
+            }
+            check(p.paired, "paired Worlds keep the same state hash");
+        }
+    }
+
+    // ---- 8. A ship stops and fights where it stands ---------------------------
+    // TotalA.exe's Attack_Chase stops the path in range (0x4035b7 -> 0x4388d0)
+    // and posts no heading; turrets aim by script. The engine used to pivot a
+    // ship (no turninplacerate) to face its target at its turnrate (Kingdoms).
+    std::printf("[ship holds its heading in an attack]\n");
+    {
+        const sim::UnitType* ship = reg.find("armroy");
+        const sim::UnitType* targetType = reg.find("armtship");
+        if (!ship || !targetType) {
+            check(false, "armroy and armtship load");
+        } else {
+            sim::UnitType victim = *targetType;
+            victim.maxHp = 30000;
+            victim.healTime = 0;
+            victim.weapons.clear();
+            victim.maxVel = {};
+            Pair p;
+            int ids[2][2];
+            int k = 0;
+            const float heading = 1.5708f;   // side on to the target
+            for (auto* w : {&p.a, &p.b}) {
+                w->setTerrain(std::vector<uint8_t>(256 * 128, 10), 256, 128, 64);
+                w->buildNavClasses(reg);
+                w->setStartResources(0, 50000, 50000);
+                ids[k][0] = w->spawn(ship, 1000, 1000, heading, 0);
+                ids[k][1] = w->spawn(&victim, 1000, 1000 + std::min(220.0f, float(ship->weapons[0].range) * 0.6f),
+                                     0.0f, 1);
+                w->attack(ids[k][0], ids[k][1], false);
+                ++k;
+            }
+            const auto h0 = p.a.unit(ids[0][0])->heading;
+            const float hp0 = p.a.unit(ids[0][1])->hp.toFloat();
+            int turned = 0;
+            for (int tick = 1; tick <= 240; ++tick) {
+                p.tick();
+                const sim::Unit* s = p.a.unit(ids[0][0]);
+                turned = std::max(turned, std::abs(int(int16_t(uint16_t(s->heading.v - h0.v)))));
+            }
+            const sim::Unit* t = p.a.unit(ids[0][1]);
+            check(t && t->hp.toFloat() < hp0, "armroy's turret hits a target off its beam",
+                  "target hp " + std::to_string(t ? t->hp.toFloat() : 0.0f) + " of " + std::to_string(hp0));
+            check(turned == 0, "armroy does not pivot toward its target", "turned " + std::to_string(turned) + " BAM");
             check(p.paired, "paired Worlds keep the same state hash");
         }
     }

@@ -62,7 +62,7 @@ TickResult simulateRoomTick(sim::World& world,const sim::TypeRegistry& registry,
         const auto& player=world.player(i);
         result.defeated[size_t(i)]=player.defeated;
         undefeated|=!player.defeated;
-        if(player.unitCount>0)result.fielded|=uint8_t(1u<<i);
+        if(player.unitCount>0)result.fielded|=uint16_t(1u<<i);
     }
     // The standing (TickResult::decided). The teams that have fielded units are
     // counted as World::updateOutcome counts the surviving ones: any team id, once.

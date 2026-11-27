@@ -178,6 +178,9 @@ int retailTaAirToGround(RetailMissionState& m,RetailFlightVector& point,uint32_t
 //            radius 0x10 (0x44e730), at cruisealt (0x44e6c0); wait 0x100e8.
 //            Then under 3/4 health a repair pad takes it to VTOL_LANDING ahead
 //            (0x413a8a..0x413b7c, 0, as AirToGround's stage 4); else 2.
+//            Only the arrival wakes it, so the flyer jinks back and forth
+//            between two holds, nose on the target (tools/re/airhover_emu.py
+//            replays the loop on TotalA.exe; flyer_combat "hover jink").
 // Host: random(bound); seek(target, point); beginFlight(); slotsAuto(); aim()
 // (0x4898b0(0), 0x48a060); install(goal) (a point controller); hold(goal)
 // (the target controller); inReach() (0x49abb0); padDamaged() and

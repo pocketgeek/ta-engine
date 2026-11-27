@@ -29,6 +29,8 @@ public:
     void useProfile(const std::string& text);
     // The engine's defensive levels: build and defend, never launch strike groups.
     void setAggressive(bool on) { aggressive_ = on; }
+    // Retail scenario mode 1 (a campaign mission): never build downloadable units.
+    void setCampaign(bool on) { campaign_ = on; }
     int difficulty() const { return difficulty_; }
     bool aggressive() const { return aggressive_; }
     void tick(const ta::sim::World& world, uint32_t now, const CommandSink& sink);
@@ -88,6 +90,7 @@ private:
     std::vector<int> squadOf_;   // unit id -> squad (0 unassigned)
     int lastCommanderHp_ = -1;
     bool aggressive_ = true;
+    bool campaign_ = false;
 };
 
 }  // namespace ta::ai

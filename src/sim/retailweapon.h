@@ -30,8 +30,13 @@ struct RetailWeaponAnimations {
     }
     void clear() { count=0;overflow.clear(); }
     void add(RetailWeaponAnimation::Kind kind,int slot,uint16_t heading=0,uint16_t pitch=0,uint16_t damage=0) {
-        // Native display packets retain the high byte of each aiming angle.
-        const RetailWeaponAnimation event{kind,uint8_t(slot),uint16_t(heading&0xff00),uint16_t(pitch&0xff00),damage};
+        // Full angles: TotalA.exe hands the local unit's AimX the whole words
+        // (0x49e2da..0x49e3ab) and RockUnit the shot heading (0x49cbe6); the
+        // display VM plays that unit. Even the multiplayer copy, packet 0x10
+        // (0x456200), sends the script arguments as whole dwords. (The
+        // high-byte packets were Kingdoms'.) The hit bearing arrives already
+        // cut to its high byte (0x489c81).
+        const RetailWeaponAnimation event{kind,uint8_t(slot),heading,pitch,damage};
         if(count<events.size())events[count]=event;else overflow.push_back(event);
         ++count;
     }

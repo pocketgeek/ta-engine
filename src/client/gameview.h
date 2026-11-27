@@ -48,6 +48,8 @@
 #include "net/replaywriter.h"    // the replay recording, streamed as the game is played
 #include "client/situation.h"    // TA_SITUATION (debug builds)
 #include "client/guisound.h"     // TA GUI sounds (allsound.tdf)
+#include "client/metalspots.h"
+#include "client/retailnano.h"    // the nanolathe spray (0x4720d0 / 0x473d50)
 #include "client/pacelog.h"       // TA_PACELOG (debug builds)
 #include <future>
 #include "util/procmetrics.h"   // benchmark: cross-platform CPU/RSS sampling
@@ -222,10 +224,10 @@ public:
     ta::battlemusic::BattleMusic battleMusic_;   // in-game music by battle status
     uint32_t musicEventsSeen_ = 0;
     int musicKillsSeen_ = 0;
-    ta::EmoteTiming emoteTiming_[8];
+    ta::EmoteTiming emoteTiming_[ta::sim::kMaxPlayers];
     uint64_t emoteNowMs_ = 0; // captured once per rendered frame, safe for geometry workers
-    bool discoWas_[8] = {};       // per-player disco state, to fire the track once on start
-    bool headbangWas_[8] = {};    // ...and the headbang state
+    bool discoWas_[ta::sim::kMaxPlayers] = {};       // per-player disco state, to fire the track once on start
+    bool headbangWas_[ta::sim::kMaxPlayers] = {};    // ...and the headbang state
 
     // On the rising edge of a player's disco (Shift+D), play the 10s disco loop as a
     // positional SFX from each of that player's dancing commanders (enemies only if in
@@ -266,23 +268,33 @@ public:
     std::map<std::string, SDL_Rect> taBarRects_;   // sidedata x1,y1,x2,y2
     std::string taHudPage_;
     ta::GuiLayout taHudLayout_;
-    bool taBuildTab_ = true;
+    SDL_FRect taOrdersRect_{};   // where the order buttons are on show (window coordinates), empty when none
+    SDL_FRect taResourceRect_{};  // the resource bar this frame (window coordinates), empty when none
+    float taShownE_ = 0, taShownM_ = 0;   // the resource bar's display copy (TotalA.exe game +0x37e3f)
+    uint64_t taShownAt_ = 0;              // wall time its 30 Hz steps are counted from
     uint32_t lastFireSoundTick_ = 0;   // TA soundstart: shots launched after this tick play
-    int taBuildPage_ = 1;
     ta::TaGuiView* taPage(const std::string& name);
     std::string taSidebarPage();
-    // The selected units the sidebar's ORDERS page counts: the shown player's own
+    // The selected units the ORDERS page counts: the shown player's own
     // live ones (TotalA.exe 0x41b3a6..0x41b3de walks that player's units).
     std::vector<const UnitR*> taOrderUnits() const;
     void applyTaOrderPage(ta::TaGuiView& page, const std::string& prefix);
     void renderTaHud(int winW, int winH);
-    void renderTaTopBar(int winW);
-    void renderTaBottomBar(int winW, int winH);
-    void renderTaFrame(int winW, int winH);   // PANELSIDE, the top and bottom bars' art
+    struct TaOrdersCrop { float w = 128, h = 352, top = 0; };
+    TaOrdersCrop taOrdersCrop(ta::TaGuiView& page) const;
+    float taOrdersHeight();                              // the order buttons' height on screen, 0 for none
+    float renderTaOrders(int winW, float top);           // returns the bottom
+    float renderTaUnitInfo(int winW, float top);         // returns the bottom
+    void renderTaResourceBar(int winW, int winH);
+    void renderTaFrame(int winW, int winH);   // the right-hand column's backing
     void loadTaFrame();
     SDL_Texture* taLogo(int colorSlot);
+    // The stockpile button a type's build page carries (MAKENUKE / MAKEANTI), "" for none.
+    const std::string& stockButtonOf(const std::string& typeId) const;
+    mutable std::map<std::string, std::string> stockButtons_;
+    SDL_FRect stockIconRect_{};   // the build row's stockpile entry this frame, empty when none
+    std::string stockIconName_;
     int taFrameSide_ = -1;      // the side whose frame art and sidedata rectangles are loaded
-    int taBaseHeight_ = 480;    // sidedata baseheight (0x429efc): the footer's authored screen height
     std::map<int, SDL_Texture*> taLogos_;   // textures/logos.gaf 32xlogos by colour
     bool taHudEvent(const SDL_Event& e);
 public:
@@ -369,7 +381,7 @@ public:
     // The WAITING FOR <name> countdowns (MpClient::waiting) and, while reconnecting,
     // our own; above the HUD.
     void drawNetWaiting(int winW);
-    // The map's player capacity = its start-position count (2..8). The server has
+    // The map's player capacity = its start-position count (2..10). The server has
     // no map data, so a creating client tells it how many slots the map supports.
     // A room that plays its map's scenario (`mapScenario`: the room's MAP SCENARIO
     // option; a Test Map copy always does) also opens every seat the scenario needs.
@@ -379,7 +391,7 @@ public:
     // the harness; the room's own map uses its verified package instead.
     uint8_t capacityFor(const std::string& mapId, const std::string& path, bool mapScenario) const;
     // The seats a map gives a room: its start positions, widened to every seat its scenario
-    // needs when it plays one (scenario.active(on): a Test Map copy always does). 2..8.
+    // needs when it plays one (scenario.active(on): a Test Map copy always does). 2..10.
     static uint8_t seatsFor(int starts, const ta::sim::ScenarioInfo& s, bool scenarioOn);
     // MAP SCENARIO facts of an installed map (sim::inspectScenario with this client's
     // registry). A MapCache entry's companions live in its archive, not the plain VFS.
@@ -959,9 +971,9 @@ public:
     // (two or more having fielded units): the banner names the winner there, as a watcher
     // of the game saw it. Read from the frame on show, so a jump back takes it down.
     bool replayResult() const;
-    bool frameDiscoActive(int p) const { return p>=0 && p<8 && emoteTiming_[p].active(emoteNowMs_) && framePlayer(p).emoteDisco; }
-    bool frameHeadbangActive(int p) const { return p>=0 && p<8 && emoteTiming_[p].active(emoteNowMs_) && !framePlayer(p).emoteDisco; }
-    float emoteSeconds(int p) const { return p>=0 && p<8 ? emoteTiming_[p].seconds(emoteNowMs_) : 0.f; }
+    bool frameDiscoActive(int p) const { return p>=0 && p<ta::sim::kMaxPlayers && emoteTiming_[p].active(emoteNowMs_) && framePlayer(p).emoteDisco; }
+    bool frameHeadbangActive(int p) const { return p>=0 && p<ta::sim::kMaxPlayers && emoteTiming_[p].active(emoteNowMs_) && !framePlayer(p).emoteDisco; }
+    float emoteSeconds(int p) const { return p>=0 && p<ta::sim::kMaxPlayers ? emoteTiming_[p].seconds(emoteNowMs_) : 0.f; }
     // Count this type in the builder's snapshotted production queue.
     int frameQueuedCount(int builderId, const ta::sim::UnitType* type) const;
 
@@ -1458,19 +1470,30 @@ private:
         const EffectAnim* smokeFx = nullptr;
         float fireT = 1e9f, smokeT = 1e9f;
         int firePiece = -1, smokePiece = -1;   // follow the animated emitting pieces
-        // Nanolathe spray (nanoStep): the work target last seen and its progress /
-        // hp then, so a tick only sprays when the work actually advanced.
+        // Nanolathe spray (nanoStep). A factory's own production: the job last
+        // seen and its progress then, so a tick only sprays when the work
+        // advanced. Every other job: the sim's count of work wakes that spray
+        // (Unit::constructionEmissions[0]) when last seen.
         int nanoTarget = 0;
         float nanoLevel = -1;
+        uint32_t nanoEmits = 0;
+        bool nanoEmitsSeen = false;
     };
-    // TotalA.exe's nanolathe spray (0x4720d0 / 0x473d50): every tick a builder's
-    // work advances, 5 particles from its QueryNanoPiece piece to the middle of
-    // the target (reclaim: the reverse). Cosmetic, client-only.
+    // TotalA.exe's nanolathe spray (client/retailnano.h): each work wake makes
+    // one spray object (0x4720d0, the reverse 0x472200; feature reclaim two),
+    // which emits five one-pixel particles at once and five on the next tick
+    // from its QueryNanoPiece point to the middle of the target's box.
+    // Cosmetic, client-only; the cadence is the sim's.
     void nanoStep();
-    struct NanoBox { float x, z, alt, w, d, h; };   // centre x/z, base alt (projected), extents
-    // One builder's (or repair pad's) emits for `ticks` ticks: 0x4720d0 / 0x472200.
-    void nanoSpray(const UnitR& source, Anim& a, const NanoBox& box, bool reclaim, uint32_t ticks);
+    // One work wake's `calls` spray objects between a unit's QueryNanoPiece
+    // point (0x43e400) and `box`.
+    void nanoSpray(const UnitR& source, Anim& a, const ta::client::nano::Box& box, bool reverse, int calls);
+    ta::client::nano::Box nanoUnitBox(const UnitR& t) const;          // 0x40252e..0x4025a5
     uint32_t nanoTick_ = 0;
+    ta::client::nano::Sprayer nanoSprayer_;          // effect list 6
+    std::vector<ta::client::nano::Dot> nanoDots_;    // its particles
+    uint32_t nanoRand_ = 1;                          // the spray's own rand() stream
+    uint32_t nanoRand() { nanoRand_ = nanoRand_ * 0x343fdu + 0x269ec3u; return (nanoRand_ >> 16) & 0x7fffu; }
     // Each pad rider's hp last tick: a pad sprays on a tick its repair took.
     std::unordered_map<int, float> padRepairHp_;
 
@@ -1763,6 +1786,7 @@ private:
     std::vector<SDL_Vertex> bodyVerts_;
     size_t bodyVertexTotal_ = 0;   // body vertices drawn this frame (assembled + arena)
     struct FeatureInst;   // defined below; DrawOp only needs the pointer type
+    ta::client::nano::Box nanoFeatureBox(const FeatureInst& f);   // 0x404ceb..0x404d37
     // `layer` puts AIRBORNE units in a pass of their own, after every feature.
     // Retail paints the world as bucketed z rows -- ground units interleaved with
     // tall features -- and then makes a SECOND full sweep over every row for the
@@ -1791,7 +1815,7 @@ private:
     // painter list; the rest (far outside the view) draw in the late pass, in the
     // old family order, so nothing is ever dropped.
     enum class FxKind : uint8_t { Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
-                                  Debris, Glow, Effect, Point, Smoke, DamageFlame, UnitFx };
+                                  Debris, Glow, Effect, Point, Smoke, DamageFlame, UnitFx, Nano };
     struct FxItem { const void* p; uint32_t a, b; FxKind kind; bool queued; };
     std::vector<FxItem> fxItems_;
     std::vector<uint32_t> fxOrder_;   // fxItems_ indices in painter order (DrawOp::fxFirst)
@@ -2175,6 +2199,11 @@ public:
 private:
     int buildBarAlign_ = 1;     // conjure/build row: 0=left 1=center 2=right (Options)
     float buildBarScale_ = 1.0f;   // extra row scale on top of uiScale_ (Options)
+    float minimapScale_ = 1.0f;    // the right column's minimap, on top of uiScale_ (Options)
+    float statsScale_ = 1.0f;      // its unit readout and STATS PANEL, on top of uiScale_
+    float ordersScale_ = 1.0f;     // its order buttons, on top of uiScale_
+    int resourceBarAlign_ = 1;     // the metal / energy bar: 0=left 1=center 2=right (Options)
+    float resourceBarScale_ = 1.0f;   // its scale on top of uiScale_
     int idleBuilders_ = 2;         // IDLE BUILDERS strip: 0 off, 1 top, 2 middle, 3 bottom (Options)
     float idleBuildersScale_ = 0.5f;   // its icon scale on top of uiScale_ (Options IDLE BUILDERS SCALE)
     // The strip as drawn this frame: one portrait per type, the idle units of that type
@@ -2205,8 +2234,8 @@ private:
     ta::proc::Sample statsServer_;
     ta::proc::GpuSample statsGpu_;
     std::future<ta::proc::GpuSample> statsGpuPending_;
-    bool statsPanel_ = true;    // Options: live readout in the world view's top-right corner
-    float statsBottom_ = 0;     // its last drawn bottom edge (view coordinates), 0 when hidden
+    bool statsPanel_ = true;    // Options: live readout in the right-hand column
+    float statsBottom_ = 0;     // the top-right of the view's first free y (under a right-aligned resource bar)
     // Animation stall gate (see animFrame): the sim tick last observed, and when it
     // last CHANGED. Animation freezes when the sim clock stops, so a network stall looks
     // paused instead of leaving units walking on the spot.
@@ -2721,20 +2750,20 @@ private:
     std::vector<DiplomacyHot> giveUnitsHots_;
     // Who reads this player's chat: the diplomacy CHAT column. Each game starts with your
     // allies only (your team's slots; everyone for a spectator) -- resetDiplomacy.
-    uint8_t chatRecipients_ = 0xff;
+    ta::net::SlotMask chatRecipients_ = ta::net::kEverySlot;
     // Who hears this player's voice: the diplomacy VOICE column, with chat's defaults and
     // rules (allies only; reset each game; sent with every frame, enforced by the server).
-    uint8_t voiceRecipients_ = 0xff;
+    ta::net::SlotMask voiceRecipients_ = ta::net::kEverySlot;
     // The Diplomacy SPECTATORS row: whether spectators read this player's chat / hear its
     // voice. Off at the start of each game. Spectators themselves never
     // chat or talk in a running game (client and server).
     bool chatSpectators_ = false, voiceSpectators_ = false;
-    static constexpr int kDiplomacySpectators = 8;   // DiplomacyHot::player of that row
+    static constexpr int kDiplomacySpectators = ta::sim::kMaxPlayers;   // DiplomacyHot::player of that row (no player's)
     // How loud each player's voice plays here: the diplomacy VOLUME sliders, 0..100 by
     // slot, 100 by default. Local only (never sent, hashed or recorded); reset each game
     // like the columns above. Only human players other than you get a slider.
-    std::array<uint8_t, 8> voiceVolume_{100, 100, 100, 100, 100, 100, 100, 100};
-    uint8_t humanSlots_ = 0;      // this game's human players (room slot type 1), by slot
+    std::array<uint8_t, ta::sim::kMaxPlayers> voiceVolume_{100, 100, 100, 100, 100, 100, 100, 100, 100, 100};
+    uint16_t humanSlots_ = 0;     // this game's human players (room slot type 1), by slot
     int voiceVolumeDrag_ = -1;    // the player whose VOLUME slider is being dragged
     bool voiceVolumeSlider(int p) const;   // does player p's row get a VOLUME slider?
     // The diplomacy screen's choices as a new game starts: chat and voice to everyone, the
@@ -2760,8 +2789,8 @@ private:
     // The auto-share switches as last clicked (Player::shareResources bits), until
     // the sim's own copy catches up with the command.
     std::optional<uint8_t> requestedSharing_;
-    std::array<bool,8> eligibleGiftRecipients();
-    std::array<bool,8> giftEligibleLast_{};   // its answer when the worker held the world
+    std::array<bool,ta::sim::kMaxPlayers> eligibleGiftRecipients();
+    std::array<bool,ta::sim::kMaxPlayers> giftEligibleLast_{};   // its answer when the worker held the world
     void drawGiveUnitsMenu(int winW, int winH);
     void giveSelectedUnits(int recipient);
     bool showCounts_ = false;   // F4: player names, kills, losses, and score
@@ -2783,9 +2812,9 @@ private:
     // survives a replay jump.
     std::array<std::vector<int>, 10> watchSquads_;
     void assignWatchSquad(int num, bool append);
-    std::string playerName_[8];   // net games: display name per player (from lobby)
-    std::optional<uint8_t> resultParticipants_; // frozen starting roster; keep defeated/disconnected players
-    bool playerAi_[8] = {};       // net games: which players are server-run AI
+    std::string playerName_[ta::sim::kMaxPlayers];   // net games: display name per player (from lobby)
+    std::optional<uint16_t> resultParticipants_; // frozen starting roster; keep defeated/disconnected players
+    bool playerAi_[ta::sim::kMaxPlayers] = {};       // net games: which players are server-run AI
     bool showHDebug_ = false;   // terrain-height / lift diagnostic overlay (TA_HDEBUG env)
     float fps_ = 0;             // smoothed render FPS, shown on the F4 overlay
     int winW_ = 0, winH_ = 0;   // last-known window size (for centering/culling)
@@ -2836,7 +2865,7 @@ private:
     struct ReplayKeyframe {
         uint32_t tick = 0;
         uint64_t hash = 0, bytes = 0;
-        std::array<bool, 8> playerAi{};
+        std::array<bool, ta::sim::kMaxPlayers> playerAi{};
         std::unique_ptr<ta::sim::World> world;
     };
     std::vector<ReplayKeyframe> replayKeys_;     // ascending; the first is tick 0
@@ -3209,7 +3238,7 @@ private:
     // Player-colour slot per player (which colour variant of each unit texture to
     // use); defaults to the player index. Overridable via --color / --aicolor and
     // the in-game picker.
-    int colorSlot_[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+    int colorSlot_[ta::sim::kMaxPlayers] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     // The 10 player-colour RGBs (sampled from a player-coloured logo texture at
     // load; the fallback below is a sensible distinct palette). Used so the HUD
     // and minimap match whatever slot a player renders in.
@@ -3221,7 +3250,11 @@ private:
     bool sampledColors_ = false;
     // RGB a player's units render in (its slot's player colour). The argument is
     // the sim ownership index (Unit::player) -- one player per slot in skirmish.
-    int playerColorSlot(int player) const { return player == 8 ? 9 : (player >= 0 && player < 8 ? colorSlot_[player] : 0); }
+    // The scenario's neutral owner keeps the last of TA's ten colours (slot 9), which a
+    // tenth player may also wear: retail has no neutral owner in skirmish to follow.
+    int playerColorSlot(int player) const {
+        return player == ta::sim::kNeutralPlayer ? 9 : (player >= 0 && player < ta::sim::kMaxPlayers ? colorSlot_[player] : 0);
+    }
     SDL_Color playerColor(int player) const;
 
     // Height-aware 2.5D: the world-pixel lift for a point, from the terrain height
@@ -3747,6 +3780,25 @@ private:
     std::optional<std::pair<float,float>> initialCamera_;
     int playerCommanderId_ = -1, aiCommanderId_ = -1;
     const ta::sim::UnitType* placing_ = nullptr;
+    // Metal extractors on a map with deposits (client/metalspots.h): they snap onto
+    // the nearest deposit, and a left drag boxes deposits to build on them all.
+    bool mexDrag_ = false;                       // a left press with an extractor armed, until its release
+    float mdX0_ = 0, mdZ0_ = 0;                  // the press on the map
+    uint8_t mdQueue_ = 0;                        // keyQueue() at the press
+    ta::client::areadrag::Anchor mdAnchor_;      // the press on the map plane, for the box test
+    std::map<int, std::vector<ta::client::metalspots::Spot>> metalSpots_;   // by footprint (fx << 8 | fz)
+    std::vector<uint8_t> metalCellBuf_;
+    int metalCellsW_ = -1, metalCellsH_ = -1, metalCellsSurface_ = -1;
+    bool metalPlanet_ = true;
+    void loadMetalCells();
+    bool snapsToMetal(const ta::sim::UnitType* t);
+    const std::vector<ta::client::metalspots::Spot>& metalSpots(const ta::sim::UnitType* t);
+    // An extractor's build point: the nearest deposit's within reach (true), or false
+    // when there is none. Anything that does not snap is left where it is (true).
+    bool snapToMetal(const ta::sim::UnitType* t, float& wx, float& wz);
+    bool placeMetalAt(float wx, float wz, uint8_t queue);   // one extractor on the deposit nearest (wx, wz)
+    bool placeMetalBox(float x0, float z0, float x1, float z1, uint8_t queue);   // one on every free deposit in the box
+    std::vector<ta::client::metalspots::Spot> metalBoxSpots(float x0, float z0, float x1, float z1);
     bool shiftBuildPlaced_ = false; // disarm placement on Shift release after queued work
     // An armed order issued with Shift stays armed for the next click, as
     // retail does (0x526620 keeps the mode and flags it; it disarms once
@@ -3925,25 +3977,38 @@ private:
     // scaled by its height, and UI SCALE is the single knob that changes it.
     static constexpr float kHudBase = 1080.0f / 700.0f;
     float guiS() const { return uiScale_ * kHudBase; }
-    // TA's in-game frame (docs/retail-gui.md section 3). TotalA.exe sets the game view
-    // to (128, 32)-(W-1, H-33) at any resolution (0x4981c9..0x498237): the side panel
-    // on the left keeps its width, the top bar and the bottom bar keep their height,
-    // and the view takes everything else. In screen pixels times UI SCALE.
-    int taSideW() const { return int(std::lround(128 * uiScale_)); }
-    int taTopH() const { return int(std::lround(32 * uiScale_)); }
+    // The in-game frame, laid out as the TAK engine lays it out (not retail's 640x480
+    // frame): the world view starts at the window's top-left corner and runs to the
+    // right-hand column (hudColW), the whole height of the window. The column holds,
+    // top down, the minimap, the stats (the selected unit's readout and the STATS
+    // PANEL) and the order buttons; the build row and the metal / energy bar float
+    // over the bottom and the top of the view (gameview_tahud.cpp). Each piece has its
+    // own scale (Options) on top of UI SCALE; the column is as wide as its widest piece.
+    float hudColPad() const { return std::round(6 * uiScale_); }
+    float miniBoxSize() const { return std::round(126 * uiScale_ * minimapScale_); }
+    float ordersScaleEff() const { return uiScale_ * ordersScale_; }
+    float statsScaleEff() const { return uiScale_ * statsScale_; }
+    int hudColW() const {
+        if (posterFrame_) return 0;
+        float w = std::max(miniBoxSize(), 128.0f * ordersScaleEff());
+        w = std::max(w, 128.0f * statsScaleEff());                           // the unit readout
+        if (statsPanel_) w = std::max(w, 190.0f * statsScaleEff());          // the STATS PANEL's columns
+        return int(std::lround(w + 2 * hudColPad()));
+    }
     // The world view's top-left corner on screen. The world (and every overlay drawn
     // over it) is drawn in view coordinates through an SDL viewport there; mouseX_ /
-    // mouseY_ are view coordinates, screenMouseX_ / screenMouseY_ the window's.
-    int viewX0() const { return posterFrame_ ? 0 : taSideW(); }   // a poster tile is the world alone
-    int viewY0() const { return posterFrame_ ? 0 : taTopH(); }
-    // Width of the left-hand side panel (retail 128, the PANELSIDE art 129).
+    // mouseY_ are view coordinates, screenMouseX_ / screenMouseY_ the window's. With
+    // the column on the right both are the window's corner.
+    int viewX0() const { return 0; }
+    int viewY0() const { return 0; }
+    // Width of the right-hand column.
     int cmdPanelW() const;
     int mapViewW(int winW) const { return std::max(64, winW - cmdPanelW()); }
-    // Height of the world view: the window less the top bar and the bottom bar. With
+    // Height of the world view: the whole window (no top or bottom bar). With
     // mapViewW, the area the map is actually seen in -- the zoom-out floor and the
     // scroll limits are measured against it. Every watcher has the same frame, so the
     // zoom floor and the scroll limits never jump on a click.
-    int mapViewH(int winH) const { return std::max(64, winH - taTopH() - barH()); }
+    int mapViewH(int winH) const { return std::max(64, winH - barH()); }
     // A window point inside the world view.
     bool inView(float sx, float sy) const {
         return sx >= float(viewX0()) && sy >= float(viewY0()) && sx < float(viewX0() + mapViewW(winW_)) &&
@@ -3995,7 +4060,7 @@ private:
     // measures the gap, fits as many rows from a priority-ordered list as will go, and
     // draws nothing when even one row would not fit. Display only; reads the render
     // snapshot, never the live world. Toggled by Settings::statsPanel.
-    void drawStatsPanel(int winW, int winH);
+    float drawStatsPanel(float x0, float x1, float top, float bottom);   // returns its bottom
     // Retail's full-screen radar (TAB). It is the SAME radar, drawn at a bigger
     // rect: the setter (icd 0x4f9ce0) flips one bool and recomputes the radar
     // rectangle from the 126x126 corner box to the whole world viewport, then
@@ -4086,6 +4151,8 @@ private:
         // TDF height below 10 (ta::hiddenunits::lowFeature): drawn under every unit,
         // as retail draws such features before any unit. Follows the burnt swap.
         bool low = false;
+        // TDF height, the byte retail keeps (feature +0xfa): the nano spray's box.
+        uint8_t tdfHeight = 0;
     };
     std::vector<FeatureInst> features_;
     ta::FeatureIndex featureIndex_;
@@ -4188,9 +4255,12 @@ private:
     // Load one GAF sequence frame (anims/<gaf>, sequence seq, frame idx) to a texture.
     SDL_Texture* loadGuiFrame(const std::string& gaf, const std::string& seq, int frame);
 
-    // TA's bottom bar: the PANELBOT strip from H-32 (0x46a8f2), under the view's last
-    // row H-33 (0x498200). UI-scale (Options).
-    int barH() const { return int(std::lround(32 * uiScale_)); }
+    // The bottom bar's height: none -- the world view runs to the window's foot and
+    // the build row floats over it (gameview_tahud.cpp).
+    int barH() const { return 0; }
+    // The build row's reference height (client/buildrow.h's bar height: its icons are
+    // this less 10, times BUILD MENU SCALE). UI-scale (Options).
+    float buildRowBaseH() const { return float(kBarHBase) * uiScale_; }
     // The engine's portrait size (IDLE BUILDERS column), formerly its bottom bar's height.
     static constexpr int kBarHBase = 72;
 
@@ -4571,7 +4641,7 @@ private:
         // copy) as the verified package says it can, and the seats that scenario needs; the
         // room's own MAP SCENARIO line reads ON from the option alone, before verification.
         bool scenarioOn = false, scenarioShown = false;
-        uint8_t needSeats = 0;
+        uint16_t needSeats = 0;
         bool needHuman = false;             // a multiplayer room with fewer than two human players
     };
     RoomFrame roomFrame(int winW);   // refreshes scenarioLobby_ for the room's package
@@ -4737,7 +4807,7 @@ private:
     ta::sim::ScenarioInfo scenarioLobby_;
     // `solo`: the room plays its map's scenario, which may be a one-player objective.
     // `needSeats`: the seats that scenario needs, each of which must be played.
-    static bool startValid(const ta::net::RoomView& room, bool solo = false, uint8_t needSeats = 0) {
+    static bool startValid(const ta::net::RoomView& room, bool solo = false, uint16_t needSeats = 0) {
         int used = 0; bool color[10] = {};
         for (int i = 0; i < ta::net::kMaxSlots; ++i) {
             const auto& s = room.slots[i];
@@ -4959,6 +5029,12 @@ private:
     // Play the named explosion class (a random variant) at (x,z). Returns false
     // if the class/art is unavailable; absence does not request substitute art.
     bool spawnEffect(const std::string& cls, float x, float z, float alt = 0);
+    // TotalA.exe's effect list entry 0x420a30(point, sequence, light, quiet): the
+    // GAF sequence `anim` ("bank:sequence", through the game palette) played on its
+    // own frame clock at `position`, plus explosion glow `light` (0..2, -1 none).
+    // The fourth argument (a dirt burst 0x472630 over the sea line) is not drawn.
+    bool spawnRetailEffect(const std::string& anim, const std::array<int32_t,3>& position,
+                           int light, uint32_t started);
     void updateEffects(float dt);
     // A shockwave ring: `sprites` copies of an effect anim arranged around a
     // circle that expands from the centre to maxR over `dur` (TA radiusart).
@@ -4989,8 +5065,7 @@ private:
         float x = 0, z = 0, vx = 0, vz = 0, alt = 0, valt = 0;
         float life = 0, maxLife = 1, size = 3;
         Uint8 r = 255, g = 200, b = 80;
-        int kind = 0;   // 0 spark/blood (gravity), 1 smoke (rises, fades),
-                        // 2 nanolathe (straight line, constant velocity, solid dot)
+        int kind = 0;   // 0 spark/blood (gravity), 1 smoke (rises, fades)
     };
     std::vector<Particle> particles_;
     struct DetachedPiece {
@@ -5116,7 +5191,7 @@ private:
 #endif
     Font hudFont_, bigFont_, statFont_, scoreboardFont_;
     std::unordered_map<std::string, SDL_Texture*> scoreboardLogos_;
-    std::string scoreboardSides_[8];
+    std::string scoreboardSides_[ta::sim::kMaxPlayers];
 
     std::string notice_;
     float noticeTimer_ = 0;

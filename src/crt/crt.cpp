@@ -68,7 +68,8 @@ Scenario parse(const std::vector<uint8_t>& d) {
     std::memcpy(&version, &versionBits, 4);
     if (!std::isfinite(version)) return invalid();
     const bool rankFile = std::abs(version - kVersionRank) <= 0.01f;
-    if (!rankFile && std::abs(version - kVersionKills) > 0.01f) return invalid();
+    const bool eightFile = rankFile || std::abs(version - kVersionKills) <= 0.01f;
+    if (!eightFile && std::abs(version - kVersionTenPlayers) > 0.01f) return invalid();
     const auto kills = [&](int32_t v) { return rankFile ? killsForRank(v) : v; };
 
     size_t p = 4;
@@ -100,6 +101,7 @@ Scenario parse(const std::vector<uint8_t>& d) {
         u.y = i32(d, o + 0x204);
         u.z = i32(d, o + 0x208);
         u.player = i32(d, o + 0x20c);
+        if (eightFile && u.player == kOldNeutralOwner) u.player = kNeutralOwner;   // see Owners
         u.health = i32(d, o + 0x210);
         u.armor = i32(d, o + 0x214);
         u.weapon = i32(d, o + 0x218);
@@ -148,16 +150,32 @@ Scenario parse(const std::vector<uint8_t>& d) {
         p += kRegionRec;
     }
 
+    // An eight-player file's banks from 9 on (the neutral owner's, then nobody's) move
+    // up past the two new players' banks.
+    if (eightFile && s.players.size() > kOldBanks)
+        s.players.insert(s.players.begin() + std::ptrdiff_t(kOldBanks), kBanks - kOldBanks, {});
+
     s.version = version;
     return s;
 }
 
 std::vector<uint8_t> write(const Scenario& s) {
     Writer w;
-    const float version = s.version == 0.0f ? kVersionKills : s.version;
-    w.f32v(version);
+    float version = s.version == 0.0f ? kVersionCurrent : s.version;
     const bool rankFile = std::abs(version - kVersionRank) <= 0.01f;
-    const auto kills = [&](int32_t v) { return rankFile ? rankForKills(v) : v; };
+    bool eightFile = rankFile || std::abs(version - kVersionKills) <= 0.01f;
+    // The old numbering cannot name owners 8 and 9 nor hold their banks: save as 3.0
+    // (the kills form) rather than misfile them as the neutral owner.
+    if (eightFile) {
+        bool fits = true;
+        for (const auto& u : s.units) fits = fits && u.player != kOldNeutralOwner && u.player != kOldNeutralOwner + 1;
+        for (size_t p = kOldBanks; p < kBanks && p < s.players.size(); ++p) fits = fits && s.players[p].empty();
+        if (!fits) { version = kVersionTenPlayers; eightFile = false; }
+    }
+    const bool rankForm = eightFile && rankFile;
+    w.f32v(version);
+    const auto kills = [&](int32_t v) { return rankForm ? rankForKills(v) : v; };
+    const auto owner = [&](int32_t p) { return eightFile && p == kNeutralOwner ? kOldNeutralOwner : p; };
 
     w.i32v(int32_t(s.customTypes.size()));
     for (const auto& c : s.customTypes) {
@@ -174,7 +192,7 @@ std::vector<uint8_t> write(const Scenario& s) {
         w.i32v(u.x);                             // 0x200
         w.i32v(u.y);                             // 0x204
         w.i32v(u.z);                             // 0x208
-        w.i32v(u.player);                        // 0x20c
+        w.i32v(owner(u.player));                 // 0x20c
         w.i32v(u.health);                        // 0x210
         w.i32v(u.armor);                         // 0x214
         w.i32v(u.weapon);                        // 0x218
@@ -183,8 +201,13 @@ std::vector<uint8_t> write(const Scenario& s) {
         w.zero(kUnitRec - (w.b.size() - start)); // 0x224..0x238 residue -> zero
     }
 
-    w.i32v(int32_t(s.players.size()));
-    for (const auto& groups : s.players) {
+    // An eight-player file drops the two empty new banks (9 and 10) again.
+    std::vector<const std::vector<RuleGroup>*> banks;
+    for (size_t p = 0; p < s.players.size(); ++p)
+        if (!eightFile || p < kOldBanks || p >= kBanks) banks.push_back(&s.players[p]);
+    w.i32v(int32_t(banks.size()));
+    for (const auto* bank : banks) {
+        const auto& groups = *bank;
         w.i32v(int32_t(groups.size()));
         for (const auto& g : groups) {
             w.i32v(int32_t(g.conditions.size()));

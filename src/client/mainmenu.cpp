@@ -230,22 +230,6 @@ struct MainMenu::Impl {
         for (auto& b : buttons) if (b.hover) { sfx_.play(b.sound); return; }
     }
 
-    // A click that transitions away destroys this MainMenu (closing the SFX
-    // device), so let the short click finish first -- keep rendering so the menu
-    // doesn't freeze. Bounded well above the longest click (~140ms).
-    // The Replay, Benchmark or server window a pick came from stays drawn until it closes, so the
-    // screen goes straight from it to the launch rather than flashing the bare title.
-    void flushSfx(int winW, int winH, const Settings* settings = nullptr) {
-        for (int i = 0; i < 30 && sfx_.busy(); ++i) {
-            render(winW, winH);
-            if (serverSelect) renderServerSelect(winW, winH);   // a CONNECT pick
-            if (replayMenu_) renderReplayMenu(winW, winH);
-            if (benchMenu_) renderBenchMenu(winW, winH, settings);
-            SDL_RenderPresent(ren);
-            SDL_Delay(10);
-        }
-    }
-
     // ---- asset loading --------------------------------------------------------
 
     gaf::Palette palette(const std::string& gaf) {
@@ -2123,7 +2107,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                     const bool shift = (e.key.keysym.mod & KMOD_SHIFT) != 0;
                     if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && d_->canConnect()) {
                         d_->sfx_.play(menuclick::kOk);
-                        if (connect()) { d_->flushSfx(w, h); return Choice::Multiplayer; }
+                        if (connect()) return Choice::Multiplayer;
                     }
                     // UP/DOWN still walk the server list; TAB walks the text fields,
                     // which is what a keyboard user reaches for between name and
@@ -2173,11 +2157,11 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                     if (in(d_->loginPassRect)) d_->field = 3;
                     if (in(d_->serverConnectRect)) {
                         d_->sfx_.play(menuclick::kOk);
-                        if (connect()) { d_->flushSfx(w, h); return Choice::Multiplayer; }
+                        if (connect()) return Choice::Multiplayer;
                     }
                     if (in(d_->serverSpectateRect)) {
                         d_->sfx_.play(menuclick::kOk);
-                        if (connect(true)) { d_->flushSfx(w, h); return Choice::Multiplayer; }
+                        if (connect(true)) return Choice::Multiplayer;
                     }
                     if (in(d_->serverBackRect)) {
                         d_->sfx_.play(menuclick::kBack);
@@ -2311,7 +2295,6 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                             d_->sfx_.play(menuclick::kOk);
                             d_->chosenReplay_ = d_->replayFiles_[k];
                             d_->replayError_.clear();
-                            d_->flushSfx(w, h);
                             d_->replayMenu_ = false;
                             return Choice::Replay;
                         }
@@ -2340,7 +2323,6 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                         if (hit(d_->benchBtnRect_[i])) {
                             d_->sfx_.play(menuclick::kOk);
                             d_->chosenBenchmark_ = i + 1;   // 1=Low .. 6=Extra Absurd
-                            d_->flushSfx(w, h, settings);
                             d_->benchMenu_ = false;
                             return Choice::Benchmark;
                         }
@@ -2354,7 +2336,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                     if (picked) { d_->chosenMission_ = d_->campaign_->pickedStem();
                                   d_->chosenCampaign_ = d_->campaign_->pickedCampaign(); }
                     d_->campaign_.reset();
-                    if (picked) { d_->flushSfx(w, h); return Choice::Campaign; }
+                    if (picked) return Choice::Campaign;
                 }
                 continue;
             }
@@ -2406,7 +2388,6 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                         ta::u8path(d_->install));
                 }
                 else if (c != Choice::None && c != Choice::Campaign) {
-                    d_->flushSfx(w, h);   // let the click sound finish before we tear down
                     return c;
                 }
             }
@@ -2495,14 +2476,26 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
     if (!f) return;
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
                                std::istreambuf_iterator<char>());
+    // A Smacker movie's Y mode, header flags (+0x14) & 6: 2 Y-interlaced, 4 Y-doubled.
+    // TotalA.exe opens its movies with no Y override (SmackOpen flags 0xfe100,
+    // 0x47be2a), so the file's own mode holds: smackw32's SmackOpen (0x4059f5..
+    // 0x405a25) doubles the reported height, and SmackToBuffer (0x403b4c..0x403b72)
+    // writes an interlaced movie's rows at twice the pitch -- picture rows on the even
+    // lines, the odd lines never written and left black. TA's 1..4.zrb are interlaced.
+    const bool smacker = bytes.size() >= 0x18 && std::memcmp(bytes.data(), "SMK", 3) == 0;
+    const bool scanlines = smacker && (bytes[0x14] & 6) == 2;
     video::BinkVideo vid;
     if (!vid.open(std::move(bytes))) return;
     const int vw = vid.width(), vh = vid.height();
     if (vw <= 0 || vh <= 0) return;
+    const int th = scanlines ? vh * 2 : vh;   // the texture: the interlaced frame at full height
     SDL_Texture* tex = gpuvram::create(ren, SDL_PIXELFORMAT_ABGR8888,
-                                         SDL_TEXTUREACCESS_STREAMING, vw, vh);
+                                         SDL_TEXTUREACCESS_STREAMING, vw, th);
     if (!tex) return;
-    SDL_SetTextureScaleMode(tex, SDL_ScaleModeLinear);   // smooth when scaled to the window
+    // Smooth when scaled to the window -- but nearest for scanlines, which a linear
+    // filter would smear into grey bands.
+    SDL_SetTextureScaleMode(tex, scanlines ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+    std::vector<uint8_t> lined(scanlines ? size_t(vw) * size_t(th) * 4 : 0, 0);   // odd rows stay black
     SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_NONE);
     // Play the clip's soundtrack (if it has one) on a queue-driven device -- the video
     // decode buffers its audio, and we keep it fed each frame. The video is paced by
@@ -2589,11 +2582,27 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
         // on screen -- filtering it again each time would smooth the same pixels over and
         // over, and by an amount that depended on the machine's frame rate.
         if (decoded && ta::video::g_deblock) ta::video::deblock(rgba, vw, vh, 3);
-        SDL_UpdateTexture(tex, nullptr, rgba.data(), vw * 4);
+        if (scanlines) {
+            for (int y = 0; y < vh && size_t(y + 1) * size_t(vw) * 4 <= rgba.size(); ++y)
+                std::memcpy(&lined[size_t(2 * y) * size_t(vw) * 4], &rgba[size_t(y) * size_t(vw) * 4], size_t(vw) * 4);
+            SDL_UpdateTexture(tex, nullptr, lined.data(), vw * 4);
+        } else {
+            SDL_UpdateTexture(tex, nullptr, rgba.data(), vw * 4);
+        }
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);
-        const float sc = std::min(float(ww) / vw, float(wh) / vh);   // fit + letterbox, no distortion
-        SDL_FRect dst{(ww - vw * sc) * 0.5f, (wh - vh * sc) * 0.5f, vw * sc, vh * sc};
+        // Fit + letterbox at the movie's DISPLAY size: its pixels need not be square
+        // (a Y-doubled movie is 1:2 -- BinkVideo::pixelAspect; an interlaced one is
+        // already full height in its texture).
+        const float dw = scanlines ? float(vw) : float(vw) * float(vid.pixelAspect());
+        const float dh = float(th);
+        float sc = std::min(float(ww) / dw, float(wh) / dh);
+        // Scanlines at a whole-number scale, so every line is the same thickness (at
+        // 2.25x some would be 2 px and some 3); the rest of the window is border.
+        // Below 1x (a window under 640x480) the plain fit.
+        if (scanlines && sc >= 1.0f) sc = std::floor(sc);
+        SDL_FRect dst{(ww - dw * sc) * 0.5f, (wh - dh * sc) * 0.5f, dw * sc, dh * sc};
+        if (scanlines) { dst.x = std::floor(dst.x); dst.y = std::floor(dst.y); }   // on whole pixels
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopyF(ren, tex, nullptr, &dst);

@@ -65,10 +65,10 @@
         // The diplomacy VOLUME sliders, by slot. They belong to the game: in a room the
         // slots may hold other people, so everyone plays at 100 there.
         const bool inGame = mp_ && mp_->state() == ta::net::MpClient::State::InGame;
-        for (int p = 0; p < 8; ++p) voice_->setPlayerVolume(p, inGame ? voiceVolume_[size_t(p)] : 100);
+        for (int p = 0; p < ta::sim::kMaxPlayers; ++p) voice_->setPlayerVolume(p, inGame ? voiceVolume_[size_t(p)] : 100);
         // Before the game runs the server sends to the whole room whatever the mask says,
         // as it does chat.
-        const uint8_t mask = voiceRecipients_;
+        const ta::net::SlotMask mask = voiceRecipients_;
         const uint8_t spectators = voiceSpectators_ ? ta::net::kVoiceSpectators : 0;
         // Voice activation: allowed whenever voice is on in the room; the engine's gate
         // opens on the microphone's level, typing or not, focused or not.
@@ -79,11 +79,11 @@
 
     bool GameView::voiceVolumeSlider(int p) const {
         // Humans only (an AI has no voice), and never yourself (you never hear yourself).
-        return p >= 0 && p < 8 && p != localPlayer_ && (humanSlots_ & (1u << p));
+        return p >= 0 && p < ta::sim::kMaxPlayers && p != localPlayer_ && (humanSlots_ & (1u << p));
     }
 
     void GameView::setVoiceVolumeAt(const SDL_FRect& track, int p, float mx) {
-        if (p < 0 || p >= 8 || track.w <= 0) return;
+        if (p < 0 || p >= ta::sim::kMaxPlayers || track.w <= 0) return;
         const float frac = std::clamp((mx - track.x) / track.w, 0.0f, 1.0f);
         voiceVolume_[size_t(p)] = uint8_t(std::lround(frac * 100.0f));
     }
@@ -115,9 +115,9 @@
             rows.push_back({"MIC OFF", {150, 155, 165, 255}});
         for (const auto& t : voice_->speaking()) {
             std::string name = t.name;
-            if (name.empty() && t.slot < 8) name = playerName_[t.slot];
-            if (name.empty()) name = t.slot < 8 ? "PLAYER " + std::to_string(t.slot + 1) : "SPECTATOR";
-            SDL_Color c = t.slot < 8 ? playerColor(t.slot) : SDL_Color{200, 205, 215, 255};
+            if (name.empty() && t.slot < ta::sim::kMaxPlayers) name = playerName_[t.slot];
+            if (name.empty()) name = t.slot < ta::sim::kMaxPlayers ? "PLAYER " + std::to_string(t.slot + 1) : "SPECTATOR";
+            SDL_Color c = t.slot < ta::sim::kMaxPlayers ? playerColor(t.slot) : SDL_Color{200, 205, 215, 255};
             rows.push_back({name, c});
         }
         if (rows.empty()) return;

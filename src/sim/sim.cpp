@@ -509,7 +509,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             }
             // 4c082e..4c0837: read as an integer, stored as a word.
             t.attackRunLength = uint16_t(int32_t(info->numberOr("attackrunlength", 0)));
-            t.bankScale = Fixed::fromRetailNumber(info->numberOr("bankscale", 0.5));
+            // TotalA.exe 0x42c186: bankscale defaults to 0x10000 (1.0). TA reads
+            // it only in the flight attitude (0x43d1af), so a flyer takes TA's
+            // default; the 0.5 is the engine's ground tilt's (retailSupportedHeight).
+            t.bankScale = Fixed::fromRetailNumber(info->numberOr("bankscale", t.canFly ? 1.0 : 0.5));
             // TA: mobilestandorders / firestandorders (flagsB bits 0, 1; atol & 1,
             // absent = 0). The engine's single stance control serves either.
             t.canSetStance = ((int32_t(info->numberOr("mobilestandorders", 0)) |
@@ -1750,6 +1753,7 @@ void World::replaceLeg(Unit& u, const std::vector<Order>& path) {
             o.guardRepair = tmpl.guardRepair;
             o.patrolOpen = tmpl.patrolOpen;
             o.buildRectangle = tmpl.buildRectangle;
+            o.helpRing = tmpl.helpRing;
             o.buildX = tmpl.buildX; o.buildZ = tmpl.buildZ;
         }
         next.push_back(o);
@@ -1779,7 +1783,7 @@ void World::dropLeg(Unit& u) {
     // (4d4d40 -> navigator -> 415f30), before any later route delivery.
     cancelPath(u);
     const size_t end = currentLeg(u.orders);
-    if (u.orders[end].groundMission || u.orders[end].buildRectangle) {
+    if (u.orders[end].groundMission || u.orders[end].buildRectangle || u.orders[end].helpRing) {
         // Detachment keeps a recent admission, otherwise clears it to zero.
         // A -1 sentinel suppresses the next mission's native retry RNG draw.
         if (u.orders[end].controller && uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
@@ -1923,7 +1927,7 @@ void World::insertOrderFront(int unitId, bool rally, const std::function<void()>
     // The route stamp as the current leg's detachment leaves it (dropLeg).
     {
         const Order& cur = u->orders[currentLeg(u->orders)];
-        if (cur.groundMission || cur.buildRectangle) {
+        if (cur.groundMission || cur.buildRectangle || cur.helpRing) {
             if (cur.controller && uint32_t(u->routeStamp) <= tickCounter_ - 10u) u->routeStamp = 0;
         } else u->routeStamp = -1;
     }
@@ -2217,7 +2221,7 @@ Order* World::navigationMissionOrder(Unit& u) {
     if (auto* goal=groundMissionOrder(u,true)) return goal;
     if (!u.type || u.type->canFly || u.orders.empty()) return nullptr;
     auto& goal=u.orders[currentLeg(u.orders)];
-    return goal.buildRectangle || goal.load ? &goal : nullptr;
+    return goal.buildRectangle || goal.load || goal.helpRing ? &goal : nullptr;
 }
 
 bool World::groundMissionAccepts(const Unit& u,const Order& goal) {
@@ -2232,6 +2236,9 @@ bool World::groundMissionAccepts(const Unit& u,const Order& goal) {
         const int zClear=u.type->footZ*16;
         if(std::abs(dx)>=xClear || std::abs(dz)>=zClear)return true;
     }
+    // A ground HelpBuild's approach: its ring (TotalA.exe 0x44d7c0).
+    if (goal.helpRing)
+        return goal.helpRing->accepts(footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
     const int radius=std::bit_cast<int32_t>(goal.missionRadius+4u);
     const RetailCircleGoal circle{footprintOrigin(goal.missionTarget ? goal.missionTarget->first : goal.x,u.type->footX),
         footprintOrigin(goal.missionTarget ? goal.missionTarget->second : goal.z,u.type->footZ),radius,retailCircleRadiusSquared(radius)};
@@ -2706,7 +2713,9 @@ void World::tickFlightBody(Unit& u) {
     const auto attitude=retailFlightAttitude(u.flightAcceleration,
         {delta(u.flightVelocity.x,previousVelocity.x),delta(u.flightVelocity.y,previousVelocity.y),
          delta(u.flightVelocity.z,previousVelocity.z)},portHeadingToRetail(u.heading),
-        u.type->bankScale.v,u.type->pitchScale.v,8155); // native map initialization 50f240
+        // TotalA.exe 0x43d186: the denominator is the map's gravity (game
+        // +0x14263, ballisticGravityRaw_), not a constant.
+        u.type->bankScale.v,u.type->pitchScale.v,ballisticGravityRaw_);
     u.groundRoll=attitude[0];u.groundPitch=attitude[1];
     const auto& v=u.flightVelocity;
     u.speed=Fixed::raw(truncSat32(std::sqrt((double(v.z)*v.z+double(v.y)*v.y)+double(v.x)*v.x)));
@@ -4358,7 +4367,7 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
         void finish() {
             if(u.flightGroundMode!=1) {
                 const auto attitude=retailFlightAttitude(u.flightAcceleration,{},portHeadingToRetail(u.heading),
-                    u.type->bankScale.v,u.type->pitchScale.v,8155);
+                    u.type->bankScale.v,u.type->pitchScale.v,w.ballisticGravityRaw_);   // 0x43d186: game +0x14263
                 u.groundRoll=attitude[0];u.groundPitch=attitude[1];
             }
             if(u.flightGroundMode!=1) {
@@ -4523,7 +4532,8 @@ bool World::requestPath(Unit& u, float x, float z) {
                    tolerance, mission ? mission->controller : 0,
                    mission ? retailCircleRadiusSquared(tolerance) : 0,
                    u.orders.empty() ? std::nullopt : u.orders[currentLeg(u.orders)].buildRectangle,
-                   mission && mission->park ? mission->park->ring : std::nullopt);
+                   mission && mission->park ? mission->park->ring :
+                   mission && mission->helpRing ? std::optional<RetailRingGoal>(*mission->helpRing) : std::nullopt);
     // 4e4f50 clears prior outcome bits only when first marking a request pending.
     if (newlyPending) u.routeCrowded=u.routeTraffic=u.routeFailed=u.routeDetour=false;
     return true;
@@ -6853,10 +6863,18 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // -hp (the overkill below) is representable too.
         e.hp = Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(e.hp.v) - int64_t(dealt) * Fixed::kOne,
                                                       -int64_t(INT32_MAX), INT32_MAX)));
-        // 52a40a forms the hit bearing from the impact position, relative to
-        // the victim's current native heading. 51a140 retains its high byte;
-        // 51a4d2 notifies each normal/fire/explosion recipient, including splash.
-        if(w.status==Weapon::Status::None && w.dmgType>=1 && w.dmgType<=3) {
+        // TotalA.exe HitByWeapon: the weapon hit 0x499d84..0x499da3 takes the
+        // bearing atan2(impact - victim) minus the victim's heading (+0x66);
+        // 0x489bb0 keeps its high byte in the hit record (+7, 0x489c81). The
+        // record handler 0x489ce0 starts HitByWeapon only for an ordinary
+        // weapon record (+8 == 1, 0x489efa: a paralyzer's is 2) on a unit the
+        // hit did not kill (0x489ebc..0x489eee return first), with TWO
+        // arguments, 400 cos h and 400 sin h (0x489f04..0x489f43: 0x4b7123,
+        // 0x4b70ef; not immediate). The shipped scripts rock the body with
+        // them: `turn base to z-axis anglez; turn base to x-axis anglex`
+        // (armstump, armflash, corlevlr ... 45 units). Kingdoms' four-argument
+        // form (damage type, cos, sin, damage) put the damage type in anglex.
+        if(w.status==Weapon::Status::None && e.hp>Fixed()) {
             if(auto script=unitScripts_.find(e.id);script!=unitScripts_.end()) {
                 const auto& file=*e.type->script();
                 const int callback=file.scriptIndex("HitByWeapon");
@@ -6866,8 +6884,8 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
                     const uint16_t damage=uint16_t(dealt);
                     e.weaponAnimations.add(ta::RetailWeaponAnimation::Hit,w.dmgType,bearing,0,damage);
                     script->second.state().startArguments(file,callback,
-                        {uint32_t(w.dmgType),uint32_t(retailScaledCosine(bearing,400)),
-                         uint32_t(retailScaledSine(bearing,400)),damage},4);
+                        {uint32_t(retailScaledCosine(bearing,400)),
+                         uint32_t(retailScaledSine(bearing,400)),0,0},2);
                 }
             }
         }
@@ -9147,17 +9165,18 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         // movement walks the route on; the weapons below still fire if they aim
     } else if (!u.type->canFly && !u.type->isStructure()) {
         if (legion_ && isLegionPathfinding(pathfindingMode_)) legion_->noteEngaged(u);   // W5 step 0 counter
+        // Ships as well as ground units: TotalA.exe's Attack_Chase, once its
+        // slot reaches the target (0x4035d6), stops the path (0x4035b7 ->
+        // 0x4388d0) and hands the slot the target (0x4035f2..0x403606); it
+        // posts no heading, and the weapon update 0x49e1a0 has no facing
+        // request (turrets aim by script; the non-turret naval weapons,
+        // torpedoes and depth charges, carry tolerance 32767, so 0x49d880
+        // passes them at any heading). A ship stops where it is and its
+        // turrets turn. (Kingdoms pivoted a ship without turninplacerate at
+        // its turnrate to face the target.) A TA type has no turninplacerate
+        // key, so brakeGround's pivot is idle for TA bodies too.
         if (facingHeld) brakeGround(u);
-        else if (u.type->domain==UnitType::Domain::Water && !u.type->turnInPlaceRate) {
-            // Ships commonly specify only turnrate. Once in firing range they
-            // still need to face the target instead of waiting on a zero pivot rate.
-            brakeGround(u);
-            if (u.speed==Fixed()) {
-                const int32_t turn=retailTurnRequest(want,u.heading);
-                u.heading=u.heading+Bam(std::clamp(turn,-u.type->turnRate,u.type->turnRate));
-                u.turnReqBam=turn;
-            }
-        } else brakeGround(u,want);
+        else brakeGround(u,want);
         groundMovementHandled=true;
     } else if (!hovering && !airRun && !airToAir && !strike && !u.type->isStructure()) {
         u.speed=fxMax(Fixed(),u.speed-u.type->brake);
@@ -11785,12 +11804,10 @@ Unit* World::productionOwnerOf(const Unit& site) {
     return p;
 }
 
-// A ground helper's leg is the HelpBuild itself (0x405cf0, emulated
-// 2026-10-30): when it becomes current, stage 0 installs the rectangle
-// controller round the site's footprint (prepareHelpApproach), so each
-// helper walks to the nearest cell where its footprint touches the site's,
-// from wherever it comes. (Ours walked every helper to one point south of
-// the site and worked from builddistance.) A flyer's VTOL_HelpBuild stage 1
+// A ground helper's leg is the HelpBuild itself (TotalA.exe 0x403f70): when
+// it becomes current, stage 0 installs the ring controller round the site
+// (prepareHelpApproach), so each helper walks until it is within its
+// builddistance of the site, from wherever it comes. A flyer's VTOL_HelpBuild stage 1
 // (0x41f7f0) installs one point goal at the site's centre that accepts within
 // 2 x builddistance (flags 0x30): no VTOL_Move, so none of its draws.
 void World::helpApproach(Unit& b, const Unit& site, bool queue) {
@@ -15105,6 +15122,9 @@ void World::tickConstruction(Unit& b, float dt) {
         // A help job holds no build order of its own: the queued build after
         // it (if any) is not this job's to retire.
         const bool help=groundHelpLeg(b,b.buildSiteId)>=0;
+        // The job's mission goes: its destructor calls StopBuilding when
+        // StartBuilding was called (TotalA.exe 0x43a21e).
+        stopWorkAnimation(b);
         endHelp(*this,b,b.buildSiteId);
         b.buildSiteId = 0;
         if (!help) popBuildOrder(b);
@@ -15154,6 +15174,7 @@ void World::tickConstruction(Unit& b, float dt) {
                 groundRemove(*site);
                 site->deadFor = kRetiredTicks;
             }
+            stopWorkAnimation(b);
             endHelp(*this,b,b.buildSiteId);
             b.buildSiteId = 0;
             popBuildOrder(b);
@@ -15170,7 +15191,12 @@ void World::tickConstruction(Unit& b, float dt) {
     if (!b.type->canFly) blockCloak(b, 300);
     // HelpBuild's work stage owns the weapons, like the MobileBuild placement.
     setSlotsManual(b,kSlotsWork);
-    site->buildBegun = true;   // in range: the site starts materialising now
+    // In range: the site starts materialising now -- a ground builder's
+    // once its stance is up (below). Until then the walk's site-work note
+    // above goes on: retail places the site only now, its GetBuilt sleeping
+    // 300 ticks (0x402da0 stage 0) before it could decay, longer than any
+    // stance takes; ours was placed earlier and woken by those notes.
+    if (b.type->canFly) site->buildBegun = true;
     // Drop the APPROACH leg, but never the queued build order itself: that entry
     // IS the job, and it is what holds the rest of the queue back until the
     // building is finished (popBuildOrder retires it when the job ends).
@@ -15179,34 +15205,59 @@ void World::tickConstruction(Unit& b, float dt) {
     if (b.orders.empty() || (!b.orders.front().buildType && !b.orders.front().guard)) dropLeg(b);
     b.constructionHolding = true;
     if (b.type->canFly) tickConjureHover(b,*site);
-    else b.speed = Fixed();
-    // Face what we're building/conjuring: turn toward the site at the unit's turn
-    // rate (a building has turnRate 0, so it simply doesn't rotate).
-    if (!b.type->canFly) turnBuilderToSite(b,*site);
+    else {
+        b.speed = Fixed();
+        // TotalA.exe MobileBuild (0x403a20): the placement stage calls
+        // StartBuilding with the heading to the new site less the body's
+        // (0x403dca..0x403de1, 0x438590) and the next stage waits for the
+        // script's INBUILDSTANCE (0x403df5: 0x438700(.., 0xa)) before the
+        // first work (0x403e0c). No stage turns the body: the script aims
+        // its nanolathe by that heading. (Ours pivoted the builder to face
+        // the site, Kingdoms' way, and worked at once.)
+        startWorkAnimation(b,site->x,site->z);
+        if (const auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.ready) return;
+        site->buildBegun = true;
+    }
     const int builderId=b.id;
     if (constructionWork(b,*site,dt)) {
         Unit* builder=unit(builderId);   // finishing an output can reallocate units_
+        stopWorkAnimation(*builder);
         endHelp(*this,*builder,builder->buildSiteId);
         builder->buildSiteId=0;
         popBuildOrder(*builder);
     }
 }
 
-// HelpBuild (0x405cf0) for a ground builder, on its leg (emulated 2026-10-30).
-// Stage 0 installs the rectangle controller round the site's footprint
-// (prepareHelpApproach). Stage 1 waits on the approach alone (mask 0x708, no
-// timer): arrival starts the work; a failed approach (0x200) starts it only
-// within MobileBuild's reach of the site (retailBuildWithinReach), else the
-// help ends (UNITCHATTER_CANNOTGETTHERE; no unit-chatter channel here, so
-// silently). Ours gave up after 8 s without 20 px of progress. The work
-// stage (stage 3; ours skips the stance wait of stage 2, as before) never
-// measures distance again: a helper pushed away keeps working. A leg that is
-// not current waits; one an order went ahead of starts again from stage 0.
+// TotalA.exe HelpBuild (0x403f70) for a ground builder, on its leg:
+//   head    (0x403f99) no target: "Construction terminated" (7), the job ends;
+//   stage 0 (0x403fd9) the ring approach (prepareHelpApproach), mask 0xe8;
+//   stage 1 (0x404069) a failed approach (0x40, World's 0x200) says "I can't
+//           get there" (7) and ends the job -- no builddistance fallback,
+//           unlike MobileBuild's. An arrival on a finished site (+0x104 ==
+//           0.0) ends it (5). Otherwise every slot goes manual (0x4898b0(3))
+//           and StartBuilding gets the heading to the site less the body's
+//           (0x438590 with 0x48a980 - unit +0x66): startWorkAnimation;
+//   stage 2 (0x4040ee) 0x438700(.., 0xa): on until the script's
+//           INBUILDSTANCE (+0x10f bit 0) is set, waking on its SET (event 4);
+//   stage 3 (0x404105) every tick: workertime/30 of the site (0x41ba60), the
+//           nano stream only when that worked (0x43e400 / 0x4720d0), visible
+//           for 300 ticks paid or not (+0xb0, 0x4041d8), sleep 1 until the
+//           site's remaining work is 0.0, then "Building complete" (8).
+// No stage turns the body (the script turns its nanolathe by StartBuilding's
+// heading) or measures distance once the work has started: a helper pushed
+// away keeps working. StopBuilding comes from the mission's destructor
+// (0x43a21e, +0x42 & 0x400000), whatever ended the job (stopWorkAnimation).
+// So a helper sent to a far site or factory output does nothing -- draws no
+// resources, sprays no nano, plays no build animation -- until its footprint
+// is in the ring, its stance is up, and its work stage runs.
+// A leg that is not current waits; one an order went ahead of starts again
+// from stage 0.
 void World::tickGroundHelp(Unit& b, Unit& site, size_t index, float dt) {
     if (index!=currentLeg(b.orders)) {
         Order& leg=b.orders[index];
         if (leg.mission.stage) {
-            leg.buildRectangle.reset();leg.controller=0;leg.mission.stage=0;
+            stopWorkAnimation(b);
+            leg.buildRectangle.reset();leg.helpRing.reset();leg.controller=0;leg.mission.stage=0;
             leg.mission.waitMask=0;leg.mission.pending=0;
             leg.navigationExhausted=leg.navigationConsumed=false;leg.hasSegment=false;
         }
@@ -15219,9 +15270,9 @@ void World::tickGroundHelp(Unit& b, Unit& site, size_t index, float dt) {
         const uint32_t events=(b.missionEvents|m.pending)&m.waitMask;
         if (!events) return;
         b.missionEvents&=~events;m.pending&=~events;m.waitMask=0;
-        if ((events&0x200) && !retailBuildWithinReach(b.x,b.z,leg->buildX,leg->buildZ,
-                int16_t(b.type->footX),int16_t(b.type->footZ),
-                int16_t(site.type->footX),int16_t(site.type->footZ),uint16_t(b.type->buildDist))) {
+        if (events&0x200) {
+            // 0x404069: the approach failed.
+            unitSpeech_.push_back({b.id,7,"I can't get there"});
             endHelp(*this,b,site.id);
             b.buildSiteId=0;
             return;
@@ -15231,30 +15282,46 @@ void World::tickGroundHelp(Unit& b, Unit& site, size_t index, float dt) {
         cancelPath(b);
         if (index) { b.orders.erase(b.orders.begin(),b.orders.begin()+long(index));leg=&b.orders.front(); }
         leg->controller=0;leg->navigationExhausted=true;
+        b.speed=Fixed();
+        // 0x4040b4..0x4040d4: the weapons, then StartBuilding with the heading.
+        setSlotsManual(b,kSlotsWork);
+        startWorkAnimation(b,site.x,site.z);
+        leg->mission.stage=2;
+    }
+    b.constructionHolding = true;
+    b.speed = Fixed();
+    if (leg->mission.stage==2) {
+        // 0x438700: the stance first (no script: no stance to wait for).
+        if (const auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.ready) return;
         leg->mission.stage=3;
     }
-    // HelpBuild's work stage (0x4060bb) keeps a ground builder visible for
-    // 300 ticks on every work tick, paid or not, and owns the weapons.
+    // HelpBuild's work stage (0x4041c7..0x4041d8) keeps a ground builder
+    // visible for 300 ticks on every work tick, paid or not, and owns the
+    // weapons.
     blockCloak(b, 300);
     setSlotsManual(b,kSlotsWork);
     site.buildBegun = true;
-    b.constructionHolding = true;
-    b.speed = Fixed();
-    turnBuilderToSite(b,site);
     const int builderId=b.id,siteId=site.id;
     if (constructionWork(b,site,dt)) {
         Unit* helper=unit(builderId);   // finishing an output can reallocate units_
+        unitSpeech_.push_back({builderId,8,"Building complete"});   // 0x404223
+        stopWorkAnimation(*helper);
         endHelp(*this,*helper,siteId);
         helper->buildSiteId=0;
         leaveFactoryYard(builderId);
     }
 }
 
-// HelpBuild stage 0 (0x405d70) when its leg is current: the helper may still
-// help the site (0x519e60; a site finished or gone ends the job), then
-// 4d4e80 installs the rectangle controller round the site's footprint (its
-// +0x74 cell, its type's footprint) with wait mask 0x708. The job latches
-// here when an assist was queued behind other orders.
+// HelpBuild stage 0 (TotalA.exe 0x403fd9) when its leg is current: the
+// helper may still help the site (0x519e60; a site finished or gone ends the
+// job: ours, retail walks on and ends at stage 1), then 0x438a00 installs the
+// ring controller 0x44d3b0 round the site's position -- from half the site's
+// footprint diagonal out to builddistance more (retailHelpBuildRing) -- with
+// wait mask 0xe8. The helper walks to the ring's point on its own bearing
+// (0x44d720) and stops wherever its footprint enters the band: within
+// builddistance of the site, not touching it. (Kingdoms' HelpBuild, which
+// this engine ported first, walked to the rectangle round the footprint.)
+// The job latches here when an assist was queued behind other orders.
 void World::prepareHelpApproach(Unit& u) {
     if (u.orders.empty() || !u.type || u.type->canFly) return;
     Order& goal=u.orders[currentLeg(u.orders)];
@@ -15267,12 +15334,12 @@ void World::prepareHelpApproach(Unit& u) {
     }
     u.buildSiteId=goal.helpSite;
     goal.buildX=site->x;goal.buildZ=site->z;
-    goal.buildRectangle=retailReclaimRectangle(footprintOrigin(site->x,site->type->footX),
-        footprintOrigin(site->z,site->type->footZ),site->type->footX,site->type->footZ,u.type->footX,u.type->footZ);
-    const auto [x,z]=goal.buildRectangle->navigationCell(
-        footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
-    goal.x=Fixed::fromInt(x*16+u.type->footX*8);
-    goal.z=Fixed::fromInt(z*16+u.type->footZ*8);
+    goal.buildRectangle.reset();
+    goal.helpRing=retailHelpBuildRing(site->x,site->z,int16_t(site->type->footX),int16_t(site->type->footZ),
+        u.type->footX,u.type->footZ,uint16_t(u.type->buildDist));
+    const auto point=goal.helpRing->navigationPoint(u.x,u.z,u.type->footX,u.type->footZ);
+    goal.x=point.x;goal.z=point.z;
+    goal.missionTarget.reset();
     goal.segmentX=Fixed::fromInt(u.x.floorInt());
     goal.segmentZ=Fixed::fromInt(u.z.floorInt());
     goal.hasSegment=true;
@@ -15283,6 +15350,8 @@ void World::prepareHelpApproach(Unit& u) {
     goal.mission.pending&=~0x3700u;
     if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
     cancelPath(u);
+    // Already in the band: the navigator's first update (0x44f1a0) reports the
+    // arrival without a search (World's movement pass, groundMissionAccepts).
     requestPath(u,goal.x.toFloat(),goal.z.toFloat());
 }
 
@@ -15312,7 +15381,11 @@ bool World::constructionWork(Unit& b, Unit& site, float dt) {
             // TA build step (docs/retail-economy.md): the helper's WorkerTime/30
             // per tick of BuildTime, paid in metal and energy through its books.
             (void)ptotal;
-            done=taProductionWork(b,*producer,site);
+            bool paid=false;
+            done=taProductionWork(b,*producer,site,&paid);
+            // 0x404140 / 0x403e4a: the nano stream only when 0x41ba60 worked;
+            // a helper in debt sprays nothing.
+            if (!paid) return false;
         }
         emitConstruction(b,false);
         if (!done) return false;
@@ -18829,8 +18902,10 @@ void World::tickProduction(Unit& u, float dt) {
 // does WorkerTime/30 of BuildTime, paid through its books; the factory's
 // buildProgress follows the remaining fraction for its scripts and HUD bar.
 // True when the output is complete.
-bool World::taProductionWork(Unit& worker,Unit& producer,Unit& site) {
+bool World::taProductionWork(Unit& worker,Unit& producer,Unit& site,bool* paid) {
+    if (paid) *paid=false;
     if (econBuildFraction(worker,site)<0) return false;
+    if (paid) *paid=true;
     const int32_t total=productionTotal(producer,site.type);
     const double done=double(1.0f-site.buildRemaining)*double(total);
     producer.buildProgress=std::min(total,int32_t(done));
@@ -19134,7 +19209,8 @@ void World::deliverSearchRoute(int unitId,const std::vector<PathCell>& route,Fix
         }
         if (i + 1 == useRoute.size() && reachedGoal &&
             !u->orders[currentLeg(u->orders)].missionTarget &&
-            !u->orders[currentLeg(u->orders)].buildRectangle) {
+            !u->orders[currentLeg(u->orders)].buildRectangle &&
+            !u->orders[currentLeg(u->orders)].helpRing) {
             o.x = Fixed::fromFloat(gx); o.z = Fixed::fromFloat(gz);
         }
         path.push_back(o);
@@ -19148,6 +19224,7 @@ void World::deliverSearchRoute(int unitId,const std::vector<PathCell>& route,Fix
     // no-headway watchdog never fired because from its point of view the
     // unit kept reaching its goal. Keep the destination on the end.
     if (!reachedGoal && !u->orders[currentLeg(u->orders)].buildRectangle &&
+        !u->orders[currentLeg(u->orders)].helpRing &&
         !u->orders[currentLeg(u->orders)].groundMission &&
         !u->orders[currentLeg(u->orders)].load) {
         // Clipped OR failed, the ordered point stays on the end. For a clip
@@ -19325,7 +19402,8 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
         }
         const bool routeable = !u.orders.empty() &&
             (!u.orders.front().unload || u.orders.front().transportUnloadApproach) &&
-            ((!u.orders[currentLeg(u.orders)].load && !u.orders[currentLeg(u.orders)].groundMission && !u.orders[currentLeg(u.orders)].buildRectangle) ||
+            ((!u.orders[currentLeg(u.orders)].load && !u.orders[currentLeg(u.orders)].groundMission && !u.orders[currentLeg(u.orders)].buildRectangle &&
+              !u.orders[currentLeg(u.orders)].helpRing) ||
              u.orders[currentLeg(u.orders)].controller);
         if (u.routeStamp < 0 && routeable && !pathPending(u.id)) {
             const Order& legEnd = u.orders[currentLeg(u.orders)];
@@ -20089,7 +20167,16 @@ void World::tick(float dt) {
             sweepDeath(u);
             return true;
         };
-        if (u.constructionHolding && (u.buildSiteId || u.repairId)) { secondList(); continue; }
+        if (u.constructionHolding && (u.buildSiteId || u.repairId)) {
+            // The mover's update still runs under a construction job (TotalA.exe
+            // 0x43dd20 -> MoveRate 0x4db350 every tick): a builder held at its
+            // job reports its stop (StopMoving) like any other. A script whose
+            // StartBuilding waits for its legs to settle (ARMCOM: static 2,
+            // cleared by MotionControl while moving) only then sets
+            // INBUILDSTANCE, which MobileBuild / HelpBuild wait for.
+            notifyMovementRate(u);
+            secondList(); continue;
+        }
         if (u.legionLift && tickLegionLift(u)) { secondList(); continue; }
         if (tickHoldLift(u)) { secondList(); continue; }
         // MobileBuild/FlyingBuild standing (or hovering) at its site, waiting
@@ -20155,7 +20242,11 @@ void World::tick(float dt) {
                         // or a ground-builder pivot on this same update.
                         tickFlightBody(builder);
                         notifyFlightOccupancy(builder);
-                    } else turnBuilderToSite(builder,*unit(siteId));
+                    } else {
+                        // 0x403dca..0x403de1: StartBuilding with the heading
+                        // to the new site; MobileBuild never turns the body.
+                        startWorkAnimation(builder,unit(siteId)->x,unit(siteId)->z);
+                    }
                 } else {
                     // 405824..405911 (FlyingBuild 41f301..41f3e5 alike): a site
                     // refused only by mobile units is retried every 10 ticks
@@ -20632,10 +20723,11 @@ void World::tick(float dt) {
         if (!o.buildType) continue;
         const int siteId=startBuild(bid, o.buildType, o.x.toFloat(), o.z.toFloat() - float(o.buildType->footZ) * 8 - 24,
                                    Approach::None);
-        // Restored perimeter arrival creates its site and begins the pivot on
-        // this dispatch. Do not run a second movement or construction step.
-        if (siteId && (o.mission.pending & o.mission.waitMask & 0x100))
-            turnBuilderToSite(*unit(bid),*unit(siteId));
+        // Restored perimeter arrival creates its site on this dispatch and
+        // calls StartBuilding (MobileBuild 0x403de1; no pivot). Do not run a
+        // second movement or construction step.
+        if (siteId && (o.mission.pending & o.mission.waitMask & 0x100) && !unit(bid)->type->canFly)
+            startWorkAnimation(*unit(bid),unit(siteId)->x,unit(siteId)->z);
         // startBuild may have failed (the spot is taken now). Drop
         // the order rather than parking the builder on it forever.
         if (Unit* b2 = unit(bid); b2 && b2->buildSiteId == 0 && !b2->orders.empty() &&
@@ -21299,6 +21391,11 @@ uint64_t World::stateHash() const {
             }
             if (order.reclaimAreaApproach) mix(0x52434c4d41505052ull);
             if (order.helpSite) { mix(0x48454c50u); mix(uint32_t(order.helpSite)); }
+            if (order.helpRing) {
+                const auto& r=*order.helpRing;
+                mix(0x48524e47u);mix(uint32_t(r.x));mix(uint32_t(r.z));mix(uint32_t(r.innerRadius));
+                mix(uint32_t(r.outerTolerance));mix(uint32_t(order.buildX.v));mix(uint32_t(order.buildZ.v));
+            }
             if (order.resumeSite) { mix(0x52534d45u); mix(uint32_t(order.resumeSite)); }
             if (order.guardRepair) { mix(0x47524550u); mix(uint32_t(order.repairTarget)); }
             // A mission order's own state (ScriptedOrder) and its mission stage.

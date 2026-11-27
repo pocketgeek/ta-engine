@@ -24,13 +24,13 @@ ScenarioScript::ScenarioScript(const ta::crt::Scenario& scen, const TypeRegistry
                                int viewPlayer, int maxPlayer, int mapWCells, int mapHCells,
                                uint32_t participants)
     : reg_(reg), view_(viewPlayer), maxPlayer_(std::max(1, maxPlayer)),
-      participants_(participants & ((1u << std::min(8, maxPlayer_)) - 1)),
+      participants_(participants & ((1u << std::min(int(ta::crt::kMaxOwners), maxPlayer_)) - 1)),
       outcomes_(size_t(maxPlayer_), 0),
       mapW_(mapWCells), mapH_(mapHCells), regions_(scen.regions) {
     // Never transfer an absent player's rules to another owner. Production match
     // setup rejects unseated authored players before constructing the runner.
     players_.assign(size_t(maxPlayer_), {});
-    // CRT bank zero is All Players; banks 1..8 belong to owners 0..7.
+    // CRT bank zero is All Players; banks 1..10 belong to owners 0..9 (crt.h Owners).
     // Native loader 4ccb20 copies global rules first into each seated player's
     // own rule list, so disabling a global rule affects only that player.
     for (size_t p = 0; p < players_.size(); ++p) if (participates(int(p))) {

@@ -37,7 +37,7 @@ Params sanitize(Params p) {
     auto fix = [](uint16_t v) -> uint16_t { return uint16_t(std::clamp(int(v) / 32, 8, 64) * 32); };
     p.widthCells = fix(p.widthCells);
     p.heightCells = fix(p.heightCells);
-    p.players = uint8_t(std::clamp<int>(p.players, 2, 8));
+    p.players = uint8_t(std::clamp<int>(p.players, 2, kMaxPlayers));
     return p;
 }
 

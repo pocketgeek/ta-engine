@@ -1239,7 +1239,7 @@ int main(int argc, char** argv) {
             std::vector<int> grades(size_t(width)*height);
             for (auto& g : grades) std::cin >> g;
             RetailSearchScheduler scheduler; RetailSearchWorker worker;
-            std::array<RetailSearchScheduler::Player,10> players{};
+            std::array<RetailSearchScheduler::Player,RetailSearchScheduler::playerCount> players{};
             players[0] = {true,false,1,4};
             bool pending=true; uint32_t wrap=0;
             for (int tick=1; tick<=5000 && pending; ++tick) {

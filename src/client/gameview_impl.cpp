@@ -1,5 +1,6 @@
 #include "campaign/campaign.h"
 #include "sim/sides.h"
+#include "sim/taweapons.h"
 #include "util/virtualpath.h"
 #include "client/retailaim.h"
 #include "client/tabeamdraw.h"
@@ -137,7 +138,7 @@
     }
 
     void GameView::discoSound() {
-        for (int p = 0; p < 8 && p < worldTables().numPlayers(); ++p) {
+        for (int p = 0; p < ta::sim::kMaxPlayers && p < worldTables().numPlayers(); ++p) {
             bool on = frameDiscoActive(p);
             if (on) {
                 // Centroid of this player's visible dancing units.
@@ -159,7 +160,7 @@
     }
 
     void GameView::headbangSound() {
-        for (int p = 0; p < 8 && p < worldTables().numPlayers(); ++p) {
+        for (int p = 0; p < ta::sim::kMaxPlayers && p < worldTables().numPlayers(); ++p) {
             bool on = frameHeadbangActive(p);
             if (on) {
                 float cx = 0, cz = 0; int n = 0;
@@ -245,6 +246,11 @@
         screenShake_ = s.screenShake;                     // Options: camera shake
         buildBarAlign_ = std::clamp(s.buildBarAlign, 0, 2);   // Options: build-menu row
         buildBarScale_ = std::clamp(s.buildBarScale, 0.5f, 4.0f);
+        minimapScale_ = std::clamp(s.minimapScale, 0.5f, 4.0f);   // Options: the HUD's pieces
+        statsScale_ = std::clamp(s.statsScale, 0.5f, 4.0f);
+        ordersScale_ = std::clamp(s.ordersScale, 0.5f, 4.0f);
+        resourceBarAlign_ = std::clamp(s.resourceBarAlign, 0, 2);
+        resourceBarScale_ = std::clamp(s.resourceBarScale, 0.5f, 4.0f);
         idleBuilders_ = std::clamp(s.idleBuilders, 0, 3);   // Options: IDLE BUILDERS
         idleBuildersScale_ = std::clamp(s.idleBuildersScale, 0.5f, 4.0f);
         chatScale_ = std::clamp(s.chatScale, ta::chatbox::kMinScale, ta::chatbox::kMaxScale);   // Options: chat box
@@ -888,9 +894,9 @@
             if (resultParticipants_ && !(*resultParticipants_ & (1u<<p))) continue;
             const PlayerR& pr = f.players[size_t(p)];
             ta::ResultRow row;
-            row.name = !playerName_[p & 7].empty() ? playerName_[p & 7]
+            row.name = !playerName_[p % ta::sim::kMaxPlayers].empty() ? playerName_[p % ta::sim::kMaxPlayers]
                                                    : "PLAYER " + std::to_string(p + 1);
-            row.colorSlot = colorSlot_[p & 7];
+            row.colorSlot = colorSlot_[p % ta::sim::kMaxPlayers];
             row.side = pr.side;
             row.built = pr.built;
             // TotalA.exe 0x41dd86..0x41de10: the totals _ftol'd, the Score from the
@@ -948,7 +954,7 @@
     }
 
     void GameView::setPlayerColor(int player, int slot) {
-        if (player >= 0 && player < 8 && slot >= 0) colorSlot_[player] = slot;
+        if (player >= 0 && player < ta::sim::kMaxPlayers && slot >= 0) colorSlot_[player] = slot;
     }
 
     void GameView::simStep(float dt) {
@@ -1202,6 +1208,10 @@
         else s.constructionParticles.clear();
         s.buildSiteId = u.buildSiteId; s.productionSiteId = u.productionSiteId;
         s.reclaimId = u.reclaimId; s.repairId = u.repairId;
+        s.reviveTarget = u.reviveTarget;
+        s.reclaimUnitId = u.orders.empty() ? 0
+            : std::max(0, u.orders[ta::sim::World::currentLeg(u.orders)].reclaimUnit);
+        s.workScript = u.workScriptWorking;
         s.yardOpen = world_.scriptYardOpen(u.id);
         s.scriptWords = world_.scriptGetWords(u.id);
         s.moverMoving = u.speed.v != 0;
@@ -2338,9 +2348,13 @@
                     a.vm->start("SwitchWeapon",{event.slot});
                     break;
                 case ta::RetailWeaponAnimation::Hit:
-                    a.vm->start("HitByWeapon",{event.slot,
+                    // TotalA.exe 0x489f04..0x489f43: HitByWeapon(400 cos h,
+                    // 400 sin h), two arguments, h the hit bearing relative to
+                    // the body (high byte); scripts rock about x by the first
+                    // and about z by the second.
+                    a.vm->start("HitByWeapon",{
                         ta::sim::retailScaledCosine(event.heading,400),
-                        ta::sim::retailScaledSine(event.heading,400),event.damage});
+                        ta::sim::retailScaledSine(event.heading,400)});
                     break;
                 }
             }
@@ -2363,9 +2377,16 @@
                 // Each queued output gets its own site id. A non-empty queue
                 // alone is not work: while capped there is no active conjure
                 // site, and consecutive products must retrigger one-shot poses.
+                // A ground builder's stance follows the sim's own StartBuilding /
+                // StopBuilding (Unit::workScriptWorking): TotalA.exe calls it when
+                // the job's work stage begins (MobileBuild 0x403de1, HelpBuild
+                // 0x4040d4, RepairUnit, Reclaim) and the mission's destructor
+                // stops it (0x43a21e), not whenever a builder with a job stands
+                // still on its way there.
+                const bool notWorking = u.type->canFly ? u.walking() : !u.workScript;
                 ta::updateRetailBuilderAnimation(a.building,a.workId,
                     u.buildSiteId,u.repairId,u.reclaimId,!u.buildQueue.empty(),
-                    u.productionSiteId,u.conjuring,u.walking(),u.type->canFly,
+                    u.productionSiteId,u.conjuring,notWorking,u.type->canFly,
                     [&](bool working) {
                         if (!a.flying) {
                             // Ground builder.
@@ -2895,17 +2916,33 @@
     }
 
     bool GameView::explodePiece(const UnitR& u, Anim& a, int piece, int32_t flags) {
+        // TotalA.exe's COB EXPLODE, 0x481140 (docs/retail-weapon-scripts.md "Debris").
         bool accepted=false;
-        float x, z, dAlt;
-        scriptEffectOrigin(u, a, piece, x, z, dAlt);
-        if(!(flags&0x20) && a.pieceNames && piece>=0 &&
-           size_t(piece)<a.pieceNames->size()) {
+        const auto random=[&](unsigned bound) {
+            return unsigned(uint64_t(ta::sim::retailCrtRandom(smokeRandom_))*bound/32768u);
+        };
+        // The point the piece leaves from: the unit's position plus the piece's
+        // origin (0x4216c6..0x4216e8, 0x4217b3..0x4217db; 0x43e060 for the
+        // explosions below).
+        std::array<int32_t,3> origin=u.worldPosition;
+        if(const ta::cob::Vm* vm=a.vm ? a.vm.get() : a.effectQueryVm; vm && u.type && piece>=0)
+            if(const auto cache=cobCache_.find(u.type->id); cache!=cobCache_.end()) {
+                const auto offset=ta::sim::retailPieceOrigin(cache->second.modelPieces,vm->retailPieces(),piece,
+                    uint16_t(u.headingWord+32768),u.bodyPitch,u.bodyRoll);
+                for(unsigned i=0;i<3;++i)
+                    origin[i]=int32_t(uint32_t(origin[i])+uint32_t(offset[i]));
+            }
+        ta::RetailDebrisMotion motion;
+        // BITMAPONLY makes no debris and draws nothing.
+        if(ta::RetailDebrisMotion::launch(uint32_t(flags),random,motion) &&
+           a.pieceNames && piece>=0 && size_t(piece)<a.pieceNames->size()) {
             const auto visualName=unitType_.find(u.id);
             // An immediate corpse handoff may already have swapped the body
             // model. EXPLODE still detaches pieces from the original live model.
             const auto visual=u.corpsePhase && u.type
                 ? visuals_.find(u.type->id)
                 : (visualName==unitType_.end()?visuals_.end():visuals_.find(visualName->second));
+            const ta::tdo::Object* source=nullptr;
             if(visual!=visuals_.end()) {
                 const auto& wanted=(*a.pieceNames)[size_t(piece)];
                 const auto find=[&](auto&& self,const ta::tdo::Object& object)->const ta::tdo::Object* {
@@ -2913,48 +2950,106 @@
                     for(const auto& child:object.children)if(const auto* found=self(self,child))return found;
                     return nullptr;
                 };
-                if(const auto* source=find(find,visual->second.model.root)) {
-                    ta::RetailDebrisMotion motion;
-                    ta::RetailDebrisMotion::launch(uint32_t(flags),[&](unsigned bound) {
-                        return unsigned(uint64_t(ta::sim::retailCrtRandom(smokeRandom_))*bound/32768u);
-                    },motion);
-                    if(detachedPieces_.size()<100) {
-                        DetachedPiece debris;
-                        debris.model=ta::retailDebrisModel(*source,(flags&64)!=0);
-                        debris.names=*a.pieceNames;
-                        debris.poses.assign(a.capturedPose.begin(),a.capturedPose.end());
-                        debris.motion=motion;debris.motion.position=u.worldPosition;
-                        if(size_t(piece)<debris.poses.size())for(unsigned axis=0;axis<3;++axis)
-                            debris.motion.rotation[axis]=uint16_t(int32_t(std::lround(
-                                debris.poses[size_t(piece)].rot[axis]*65536.f/6.28318530717959f)));
-                        debris.tick=front().gameTick;debris.player=u.player;
-                        if(a.effectQueryVm && u.type) {
-                            a.effectQueryVm->call("QueryBlood",{-1});
-                            const auto& output=a.effectQueryVm->lastLocals();
-                            if(!output.empty() && output[0]!=-1)
-                                for(unsigned i=0;i<100;++i)
-                                    debris.blood.push_back(ta::RetailBloodParticle::emit(
-                                        u.worldPosition,u.type->bloodColors,
-                                        [&]{return ta::sim::retailCrtRandom(smokeRandom_);}));
-                        }
-                        detachedPieces_.push_back(std::move(debris));
-                        accepted=true;
+                source=find(find,visual->second.model.root);
+            }
+            if(source && (motion.flags&ta::RetailDebrisMotion::kShatter)) {
+                // SHATTER (0x421700): each of the piece's own quads (not its
+                // children's, not the selection plate) flies as a fragment, while
+                // the 300-entry effect list has room (0x42176d). The fragment is
+                // the quad centred on its middle, drawn at the piece's origin.
+                const int32_t gravity=world_.ballisticGravityRaw();
+                size_t fragments=0;
+                for(const auto& debris:detachedPieces_)fragments+=debris.motion.shatter;
+                for(size_t pi=0;pi<source->primitives.size() && fragments<300;++pi) {
+                    const auto& primitive=source->primitives[pi];
+                    if(int32_t(pi)==source->selectionPrimitive || primitive.indices.size()!=4)continue;
+                    std::array<std::array<int32_t,3>,4> quad{};
+                    bool valid=true;
+                    for(unsigned v=0;v<4;++v) {
+                        if(primitive.indices[v]>=source->verticesRaw.size()) { valid=false; break; }
+                        quad[v]=source->verticesRaw[primitive.indices[v]];
                     }
+                    if(!valid)continue;
+                    std::array<float,3> v0{},v1{},v2{};
+                    for(unsigned i=0;i<3;++i) {
+                        v0[i]=float(quad[0][i])/65536.0f;v1[i]=float(quad[1][i])/65536.0f;
+                        v2[i]=float(quad[2][i])/65536.0f;
+                    }
+                    const std::array<float,3> d1{v0[0]-v1[0],v0[1]-v1[1],v0[2]-v1[2]};
+                    const std::array<float,3> d2{v2[0]-v1[0],v2[1]-v1[1],v2[2]-v1[2]};
+                    std::array<float,3> n{d2[1]*d1[2]-d2[2]*d1[1],d2[2]*d1[0]-d2[0]*d1[2],
+                                          d2[0]*d1[1]-d2[1]*d1[0]};
+                    const float length=std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
+                    if(length>0)for(auto& c:n)c/=length;
+                    DetachedPiece debris;
+                    debris.motion=ta::RetailDebrisMotion::fragment(motion.flags,gravity,n,random);
+                    debris.motion.position=origin;
+                    // 0x421c00..0x421c76: the eight slab corners (the quad and the
+                    // quad 1 px behind it) recentred on their mean.
+                    std::array<int64_t,3> sum{};
+                    for(const auto& vertex:quad)for(unsigned i=0;i<3;++i)sum[i]+=vertex[i];
+                    std::array<int32_t,3> centre{};
+                    for(unsigned i=0;i<3;++i)
+                        centre[i]=int32_t((2*sum[i]-4*int64_t(int32_t(n[i]*65535.0f)))/8);
+                    ta::tdo::Object& model=debris.model;
+                    model.name="__shatter";
+                    for(const auto& vertex:quad) {
+                        std::array<int32_t,3> raw{};
+                        for(unsigned i=0;i<3;++i)raw[i]=vertex[i]-centre[i];
+                        model.verticesRaw.push_back(raw);
+                        for(unsigned i=0;i<3;++i)model.vertices.push_back(float(raw[i])/65536.0f);
+                    }
+                    model.primitives.push_back({primitive.colorIndex,primitive.texture,{0,1,2,3}});
+                    debris.tick=front().gameTick;debris.player=u.player;
+                    detachedPieces_.push_back(std::move(debris));
+                    ++fragments;accepted=true;
                 }
+            } else if(source && detachedPieces_.size()<100) {
+                DetachedPiece debris;
+                debris.model=ta::retailDebrisModel(*source,(flags&64)!=0);
+                debris.names=*a.pieceNames;
+                debris.poses.assign(a.capturedPose.begin(),a.capturedPose.end());
+                debris.motion=motion;debris.motion.position=origin;
+                if(size_t(piece)<debris.poses.size())for(unsigned axis=0;axis<3;++axis)
+                    debris.motion.rotation[axis]=uint16_t(int32_t(std::lround(
+                        debris.poses[size_t(piece)].rot[axis]*65536.f/6.28318530717959f)));
+                debris.tick=front().gameTick;debris.player=u.player;
+                if(a.effectQueryVm && u.type) {
+                    a.effectQueryVm->call("QueryBlood",{-1});
+                    const auto& output=a.effectQueryVm->lastLocals();
+                    if(!output.empty() && output[0]!=-1)
+                        for(unsigned i=0;i<100;++i)
+                            debris.blood.push_back(ta::RetailBloodParticle::emit(
+                                u.worldPosition,u.type->bloodColors,
+                                [&]{return ta::sim::retailCrtRandom(smokeRandom_);}));
+                }
+                detachedPieces_.push_back(std::move(debris));
+                accepted=true;
             }
         }
-        // Retail retains the legacy SMOKE/FIRE bits in the debris descriptor,
-        // but they create neither immediate bursts nor attached emitters here.
-        // The native attached blood emitter is gated separately by its script.
-        loadExplosionClasses();
-        // Native 50dd20 requests each set class bit independently. The first
-        // nine entries in explosions.tdf are the script's numeric class table.
-        for(size_t cls=0;cls<9 && cls<explosionClassOrder_.size();++cls)
-            if(uint32_t(flags)&(0x100u<<cls)) {
-                spawnEffect(explosionClassOrder_[cls],x,z,dAlt);
-                if(cls<4)explosionGlows_.push_back({x,z,dAlt,front().gameTick,unsigned(std::min(cls,size_t(2)))});
-            }
+        // The descriptor keeps SMOKE/FIRE, which the debris draw turns into
+        // smoke (0x472810) and fire (0x472ab0) particles at the piece each frame
+        // (0x421550); those particle systems are not drawn here.
+        // 0x481241..0x481333: each of BITMAP1..BITMAP5 and BITMAPNUKE (flags
+        // 0x100..0x2000) plays its fx.gaf sequence at the piece, with glow 2.
+        for(unsigned bit=0;bit<6;++bit)
+            if(uint32_t(flags)&(0x100u<<bit))
+                spawnRetailEffect(std::string("fx:")+ta::retailFxSequence(ta::RetailFx(bit)),origin,2,front().gameTick);
         return accepted;
+    }
+
+    bool GameView::spawnRetailEffect(const std::string& anim, const std::array<int32_t,3>& position,
+                                     int light, uint32_t started) {
+        if(light>=0)
+            explosionGlows_.push_back({float(position[0]>>16),float(position[2]>>16),0,started,
+                                       unsigned(std::min(light,2)),position});
+        const EffectAnim* ea=effectFor(anim,"palettes/palette.pal");
+        if(!ea)return false;
+        effects_.push_back({ea,float(position[0]>>16),float(position[2]>>16),0.0f,0.0f,0.0f,1,0.0f,
+                            true,started,position});
+        static const bool kLog = ta::devEnv("TA_FXLOG") != nullptr;
+        if(kLog)std::fprintf(stderr,"t=%.2f effect '%s' (%zu frames)\n",animClock_,anim.c_str(),ea->frames.size());
+        return true;
     }
 
     // Corpse mesh: once the death anim finishes, the body draws as the FBI
@@ -4587,13 +4682,28 @@
     void GameView::spawnWeaponImpact(const ta::sim::Weapon& weapon,
                                      float x, float z, float alt,
                                      std::optional<std::array<int32_t,3>> position, bool struckUnit) {
-        // Native 529c10: only an environmental water hit selects the water
-        // class. A direct hit uses the ordinary class even above water; a -1
-        // (missing) selected class requests no visual, not a generic substitute.
-        const std::string& cls = (worldTables().isWater(x, z) && !struckUnit)
-                                     ? weapon.waterExplosionClass
-                                     : weapon.explosionClass;
-        if (spawnEffect(cls, x, z, alt) && position) effects_.back().worldPosition = position;
+        // TotalA.exe's shot explosion 0x499eb0: a shot that struck no unit over
+        // a cell lower than the sea (0x4815a0 +5 vs +0x1427f) plays the weapon's
+        // water art (weapon +0x7c: [lava]explosiongaf/art on a lavaworld map,
+        // [water]... otherwise, parser 0x42ee09..0x42eec9; 0x499fcb..0x499fe3);
+        // any other plays its explosiongaf/explosionart (+0x78, 0x42edb3..0x42ee03;
+        // 0x49a00e) -- unless it is an endsmoke weapon (+0x111 bit 10), which
+        // puffs smoke instead (0x472810, not drawn here). Either way with glow 0.
+        // A missing GAF or sequence plays nothing.
+        const bool water = worldTables().isWater(x, z) && !struckUnit;
+        if (!water && weapon.hasTaFlag(ta::sim::kWEndSmoke)) return;
+        const std::string& gaf = water ? (debrisLavaWorld_ ? weapon.lavaExplosionGaf : weapon.waterExplosionGaf)
+                                       : weapon.explosionGaf;
+        const std::string& art = water ? (debrisLavaWorld_ ? weapon.lavaExplosionArt : weapon.waterExplosionArt)
+                                       : weapon.explosionArt;
+        const std::array<int32_t,3> at = position ? *position
+            : std::array<int32_t,3>{int32_t(x * 65536.0f),
+                                    int32_t((alt / kProjY + rawHeight(x, z)) * 65536.0f), int32_t(z * 65536.0f)};
+        if (gaf.empty() || art.empty()) {
+            explosionGlows_.push_back({x, z, 0, front().gameTick, 0, at});
+            return;
+        }
+        spawnRetailEffect(gaf + ":" + art, at, 0, front().gameTick);
     }
 
     void GameView::triggerShake(float mag, float dur) {
@@ -4712,59 +4822,107 @@
         return true;
     }
 
-    // TotalA.exe's nanolathe spray. Each game tick a builder's work step succeeds
-    // (build 0x41ba60 -> 0x402a1c, repair 0x41bd10 -> 0x40252e, ...), retail asks
-    // QueryNanoPiece for the emitting piece (0x43e400: unit position + that
-    // piece's world offset) and calls 0x4720d0(point, targetBox, list 6). The
-    // target box is the target's model bounds; the particle object (vtable
-    // 0x4fd5b8, init 0x473b50) keeps only its middle: min + 4/11..7/11 of each
-    // axis. Its emit (0x473d50) makes 5 particles (i = 0..4): from a random point
-    // of the source box to a random point of the target box, travelling
-    // distance/4 ticks (4 px per tick: 0x473ebd..0x473ed5 takes the high word of
-    // (d<<16)/0x40000) in a straight line, coloured palette index 0xa1 + i%7
-    // (161..165, the nano greens). Feature reclaim (0x404cc4 -> 0x472200) runs
-    // the other way, box -> nano piece, two emits per tick.
+    // TotalA.exe's nanolathe spray (client/retailnano.h has the object itself).
+    // Which wakes spray, and how:
+    //  - build (MobileBuild 0x403ecc / 0x4041c2, a helper on a factory's output),
+    //    repair (0x4056d1 / 0x4058f6): one 0x4720d0 per tick the work step
+    //    succeeds, nano piece -> the target's box;
+    //  - ReclaimUnit (0x404a4e): one 0x472200 per two-tick wake, box -> piece;
+    //  - its feature branch (0x404cb5: while the countdown is above 15): two
+    //    0x472200 per two-tick wake (0x404d3b, 0x404d4c), the feature's box ->
+    //    piece;
+    //  - RESURRECT (0x40509d): one 0x4720d0 each tick of the channel, piece ->
+    //    the feature's box;
+    //  - a factory's own BUILD (0x402abd), each tick its output advances;
+    //  - a repair pad (SelfRepair 0x4025ae), each tick the rider mends.
+    // The sim counts the build / repair / reclaim wakes that spray
+    // (Unit::constructionEmissions[0], emitConstruction at exactly those
+    // wakes), so those follow its cadence tick for tick; the other three are
+    // read off the state the frame carries.
     void GameView::nanoStep() {
+        namespace nano = ta::client::nano;
         const uint32_t now = front().gameTick;
+        if (now < nanoTick_) { nanoSprayer_.clear(); nanoDots_.clear(); }   // a rewind
         if (now < nanoTick_ || nanoTick_ == 0) nanoTick_ = now;
         const uint32_t ticks = std::min<uint32_t>(now - nanoTick_, 4);
         nanoTick_ = now;
         if (!ticks) return;
-        using Box = NanoBox;
-        const auto spray = [&](const UnitR& source, Anim& a, const Box& box, bool reclaim) {
-            nanoSpray(source, a, box, reclaim, ticks);
-        };
+        auto rand = [this] { return nanoRand(); };
+        auto sink = [this](const nano::Dot& d) { nanoDots_.push_back(d); };
+        // 0x472eb0: last tick's objects emit their second batch, then the
+        // particles past their last tick go.
+        nanoSprayer_.tick(now, rand, sink);
+        std::erase_if(nanoDots_, [now](const nano::Dot& d) { return d.dead(now); });
         for (auto& [id, a] : anims_) {
             const UnitR* u = frameUnitP(id);
             if (!u || !u->type || !a.vm || !a.pieceNames || u->underConstruction || u->deadFor >= 0) continue;
-            int targetId = u->productionSiteId ? u->productionSiteId
-                         : u->buildSiteId ? u->buildSiteId : u->repairId;
-            const bool reclaim = !targetId && u->reclaimId;
-            if (!targetId && !reclaim) { a.nanoTarget = 0; a.nanoLevel = -1; continue; }
-            Box box{};
-            if (!reclaim) {
-                const UnitR* t = frameUnitP(targetId);
+            // The sim's spraying wakes since the last look.
+            const uint32_t emits = u->constructionEmissions[0];
+            const int wakes = a.nanoEmitsSeen ? int(std::min<uint32_t>(emits - a.nanoEmits, 8)) : 0;
+            a.nanoEmits = emits; a.nanoEmitsSeen = true;
+            nano::Work work = nano::Work::Build;
+            nano::Box box{};
+            int n = 0;
+            const auto featureAt = [&](int simId) -> const FeatureInst* {
+                for (const auto& fi : features_) if (fi.simId == simId && fi.aliveVis) return &fi;
+                return nullptr;
+            };
+            if (u->productionSiteId) {
+                // A factory's (or a conjurer's) own output: no wake count, so
+                // spray on each tick its progress moved.
+                const UnitR* t = frameUnitP(u->productionSiteId);
                 if (!t || !t->type) continue;
-                // Spray only on a tick the work advanced (retail emits after a
-                // successful build/repair step, not while stalled).
-                // A TA site gains hp as it is built (buildProgress is the
-                // Kingdoms clock and may stay 0), a repair only hp.
-                const float level = t->buildProgress * 1e6f + t->hp;
-                const bool advanced = a.nanoTarget == targetId && level > a.nanoLevel;
-                a.nanoTarget = targetId; a.nanoLevel = level;
+                const float level = u->buildProgress * 1e6f + t->hp;
+                const bool advanced = a.nanoTarget == u->productionSiteId && level > a.nanoLevel;
+                a.nanoTarget = u->productionSiteId; a.nanoLevel = level;
                 if (!advanced) continue;
-                box = {t->x, t->z, unitAltById(t->id) * kProjY + terrainLift(t->x, t->z),
-                       float(t->type->footX) * 16.0f, float(t->type->footZ) * 16.0f,
-                       std::max(8.0f, float(t->type->modelTop) / 65536.0f)};
+                box = nanoUnitBox(*t);
+                n = int(ticks);
+            } else if (u->reviveTarget) {
+                // RESURRECT stage 4 sleeps 1 between sprays (0x4050bd).
+                work = nano::Work::Resurrect;
+                if (u->reviveTarget < 0) {
+                    const FeatureInst* f = featureAt(-u->reviveTarget);
+                    if (!f) continue;
+                    box = nanoFeatureBox(*f);
+                } else {
+                    const UnitR* body = frameUnitP(u->reviveTarget);
+                    if (!body || !body->type) continue;
+                    box = nanoUnitBox(*body);
+                }
+                n = int(ticks);
+            } else if (!wakes) {
+                continue;
+            } else if (u->reclaimUnitId) {
+                work = nano::Work::ReclaimUnit;
+                const UnitR* t = frameUnitP(u->reclaimUnitId);
+                if (!t || !t->type) continue;
+                box = nanoUnitBox(*t);
+                n = wakes;
+            } else if (u->reclaimId) {
+                work = nano::Work::ReclaimFeature;
+                if (u->reclaimId > 0) {
+                    const FeatureInst* f = featureAt(u->reclaimId);
+                    if (!f) continue;
+                    box = nanoFeatureBox(*f);
+                } else {
+                    // A body the engine keeps as a unit: its own box (retail's
+                    // is the corpse feature's footprint and height).
+                    const UnitR* body = frameUnitP(-u->reclaimId);
+                    if (!body || !body->type) continue;
+                    box = nanoUnitBox(*body);
+                }
+                n = wakes;
+            } else if (const int t = u->buildSiteId ? u->buildSiteId : u->repairId) {
+                work = u->buildSiteId ? nano::Work::Build : nano::Work::Repair;
+                const UnitR* tu = frameUnitP(t);
+                if (!tu || !tu->type) continue;
+                box = nanoUnitBox(*tu);
+                n = wakes;
             } else {
-                if (!a.building) continue;
-                const FeatureInst* f = nullptr;
-                for (const auto& fi : features_) if (fi.simId == u->reclaimId) { f = &fi; break; }
-                if (!f) continue;
-                box = {f->x, f->z, terrainLift(f->x, f->z), 16.0f, 16.0f, 16.0f};
+                continue;
             }
-            if (!unitShownR(*u) || (!noFog_ && !cellVisibleR(u->x, u->z) && !cellVisibleR(box.x, box.z))) continue;
-            spray(*u, a, box, reclaim);
+            nanoSpray(*u, a, box, nano::reverse(work), n * nano::callsPerWake(work));
         }
         // A repair pad's spray: SelfRepair (0x402430) runs on the flyer, and each
         // tick its repair step from the pad succeeds (0x41bd10(pad, flyer) at
@@ -4784,65 +4942,64 @@
             if (!pad || !pad->type || pad->deadFor >= 0) continue;
             const auto at = anims_.find(pad->id);
             if (at == anims_.end() || !at->second.vm || !at->second.pieceNames) continue;
-            const Box box{f.x, f.z, unitAltById(f.id) * kProjY + terrainLift(f.x, f.z),
-                          float(f.type->footX) * 16.0f, float(f.type->footZ) * 16.0f,
-                          std::max(8.0f, float(f.type->modelTop) / 65536.0f)};
-            if (!unitShownR(*pad) || (!noFog_ && !cellVisibleR(pad->x, pad->z))) continue;
-            spray(*pad, at->second, box, false);
+            nanoSpray(*pad, at->second, nanoUnitBox(f), false, int(ticks));
         }
         for (auto it = padRepairHp_.begin(); it != padRepairHp_.end();)
             it = frameUnitP(it->first) ? std::next(it) : padRepairHp_.erase(it);
     }
 
-    void GameView::nanoSpray(const UnitR& source, Anim& a, const NanoBox& box, bool reclaim, uint32_t ticks) {
-        [[maybe_unused]] const uint32_t now = front().gameTick;
-        const auto* pal = featurePalette("");
-        auto colour = [&](int i) {
-            SDL_Color c{75, 171, 43, 255};
-            if (pal) { const auto* e = pal->rgba[161 + i % 7]; c = {e[0], e[1], e[2], 255}; }
-            return c;
-        };
-        auto rnd = [&] { salt_ = salt_ * 1103515245u + 12345u; return float((salt_ >> 16) & 0x7fff) / 32768.0f; };
-        const UnitR* u = &source;
-        [[maybe_unused]] const int id = source.id;
-        {
-            const int32_t piece = (a.vm->call("QueryNanoPiece", {0}), a.vm->lastLocals().empty()
-                                   ? -1 : a.vm->lastLocals()[0]);
-            float nx, nz, nalt;
-            scriptEffectOrigin(*u, a, piece, nx, nz, nalt);
-            nalt += terrainLift(u->x, u->z);   // absolute projected lift
-            const int emits = reclaim ? 2 : 1;
+    // A unit's box as the callers build it: its position plus the type's
+    // bounds, +-footprint*8 across and 0..model height up (type +0x15e..+0x172,
+    // docs/retail-data.md "(derived) footprint box").
+    ta::client::nano::Box GameView::nanoUnitBox(const UnitR& t) const {
+        const float x = float(t.worldPosition[0]) / 65536.0f;
+        const float y = float(t.worldPosition[1]) / 65536.0f;
+        const float z = float(t.worldPosition[2]) / 65536.0f;
+        const float hx = float(t.type->footX) * 8.0f, hz = float(t.type->footZ) * 8.0f;
+        return {x - hx, y, z - hz, x + hx, y + float(t.type->modelTop) / 65536.0f, z + hz};
+    }
+
+    // A feature's box (0x404ceb..0x404d37, 0x40504d..0x405099): from its
+    // footprint's corner cell, footprint*16 across, from the ground height at
+    // that corner (0x485070) up by its TDF height (+0xfa).
+    ta::client::nano::Box GameView::nanoFeatureBox(const FeatureInst& f) {
+        const float x0 = f.x - float(f.fx) * 8.0f, z0 = f.z - float(f.fz) * 8.0f;
+        const float y0 = rawHeight(x0, z0);
+        return {x0, y0, z0, x0 + float(f.fx) * 16.0f, y0 + float(f.tdfHeight), z0 + float(f.fz) * 16.0f};
+    }
+
+    void GameView::nanoSpray(const UnitR& source, Anim& a, const ta::client::nano::Box& box, bool reverse, int calls) {
+        namespace nano = ta::client::nano;
+        if (calls <= 0) return;
+        // 0x43e400: the unit's position plus its QueryNanoPiece piece's origin
+        // (0x43def0; a piece out of range is the unit origin).
+        const int32_t piece = (a.vm->call("QueryNanoPiece", {0}), a.vm->lastLocals().empty()
+                               ? 0 : a.vm->lastLocals()[0]);
+        std::array<int32_t, 3> offset{};
+        if (const auto cache = cobCache_.find(source.type->id); cache != cobCache_.end() && piece >= 0)
+            offset = ta::sim::retailPieceOrigin(cache->second.modelPieces, a.vm->retailPieces(), piece,
+                                                uint16_t(source.headingWord + 32768), source.bodyPitch, source.bodyRoll);
+        const nano::Box nozzle = nano::point(
+            float(int64_t(source.worldPosition[0]) + offset[0]) / 65536.0f,
+            float(int64_t(source.worldPosition[1]) + offset[1]) / 65536.0f,
+            float(int64_t(source.worldPosition[2]) + offset[2]) / 65536.0f);
 #ifndef NDEBUG
-            if (ta::devEnv("TA_NANOLOG"))
-                std::fprintf(stderr, "NANO tick=%u unit=%d piece=%d src=%.1f,%.1f,%.1f box=%.1f,%.1f,%.1f ticks=%u live=%zu\n",
-                             now, id, piece, nx, nz, nalt, box.x, box.z, box.alt, ticks, particles_.size());
+        if (ta::devEnv("TA_NANOLOG"))
+            std::fprintf(stderr, "NANO tick=%u unit=%d piece=%d src=%.1f,%.1f,%.1f box=%.1f..%.1f,%.1f..%.1f,%.1f..%.1f"
+                         " calls=%d reverse=%d objects=%zu dots=%zu\n",
+                         front().gameTick, source.id, piece, nozzle.x0, nozzle.y0, nozzle.z0,
+                         box.x0, box.x1, box.y0, box.y1, box.z0, box.z1, calls, int(reverse),
+                         nanoSprayer_.objects(), nanoDots_.size());
 #endif
-            for (uint32_t tick = 0; tick < ticks; ++tick)
-            for (int e = 0; e < emits; ++e)
-            for (int i = 0; i < 5; ++i) {
-                // A point in the middle 3/11 of the box on every axis.
-                const float bx = box.x + box.w * (4.0f / 11.0f - 0.5f + 3.0f / 11.0f * rnd());
-                const float bz = box.z + box.d * (4.0f / 11.0f - 0.5f + 3.0f / 11.0f * rnd());
-                const float balt = box.alt + box.h * (4.0f + 3.0f * rnd()) / 11.0f * kProjY;
-                float x0 = nx, z0 = nz, l0 = nalt, x1 = bx, z1 = bz, l1 = balt;
-                if (reclaim) { std::swap(x0, x1); std::swap(z0, z1); std::swap(l0, l1); }
-                const float dx = x1 - x0, dz = z1 - z0, dy = (l1 - l0) / kProjY;
-                const int steps = int(std::sqrt(dx * dx + dz * dz + dy * dy) / 4.0f);
-                if (steps <= 0) continue;
-                Particle p;
-                p.x = x0; p.z = z0;
-                p.alt = l0 - terrainLift(x0, z0);   // the draw adds the lift under the dot
-                const float perSec = 30.0f / float(steps);
-                p.vx = dx * perSec; p.vz = dz * perSec;
-                // Keep the drawn height on the straight line despite the terrain
-                // lift changing under the moving dot.
-                p.valt = ((l1 - terrainLift(x1, z1)) - p.alt) * perSec;
-                p.maxLife = p.life = float(steps) / 30.0f;
-                p.size = 1.0f;
-                const SDL_Color c = colour(i);
-                p.r = c.r; p.g = c.g; p.b = c.b; p.kind = 2;
-                particles_.push_back(p);
-            }
+        const uint32_t now = front().gameTick;
+        auto rand = [this] { return nanoRand(); };
+        auto sink = [this](const nano::Dot& d) { nanoDots_.push_back(d); };
+        auto drop = [this](uint32_t object) {
+            std::erase_if(nanoDots_, [object](const nano::Dot& d) { return d.object == object; });
+        };
+        for (int c = 0; c < calls; ++c) {
+            if (reverse) nanoSprayer_.call(now, box, nozzle, rand, sink, drop);
+            else nanoSprayer_.call(now, nozzle, box, rand, sink, drop);
         }
     }
 

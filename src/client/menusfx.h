@@ -3,7 +3,9 @@
 // Plays the front-end's button clicks (client/menuclick.h): one queue-driven device,
 // separate from the shared MenuMusic device so a click mixes over the music. The
 // title menu, the campaign picker it hosts, TA's front end (tafrontend.cpp) and the
-// result screen each own one. A request is a WAV name or a gamedata/allsound.tdf
+// result screen each own a MenuSfx, but they all queue on one process-wide device that
+// stays open, so a click that leaves a screen plays to its end on the next (BIGBUTTON's
+// butmain1.wav runs 1.14 s, far past any wait a screen change could afford). A request is a WAV name or a gamedata/allsound.tdf
 // entry (client/guisound.h), as TotalA.exe's 0x47f1a0 takes.
 
 #include <SDL.h>
@@ -23,7 +25,7 @@ namespace ta {
 class MenuSfx {
 public:
     explicit MenuSfx(const hpi::Vfs& vfs) : vfs_(vfs) {}
-    ~MenuSfx() { if (dev_) SDL_CloseAudioDevice(dev_); }
+    ~MenuSfx() = default;   // the shared device outlives every screen (sharedDevice)
     MenuSfx(const MenuSfx&) = delete;
     MenuSfx& operator=(const MenuSfx&) = delete;
 
@@ -56,7 +58,16 @@ public:
             if (SDL_ConvertAudio(&cvt) == 0) pcm.assign(work.begin(), work.begin() + cvt.len_cvt);
         }
         SDL_FreeWAV(buf);
-        if (!dev_ && !pcm.empty()) {
+        if (!dev_ && !pcm.empty()) dev_ = sharedDevice();
+    }
+
+    // The one click device, opened on first use and kept open for the process. It is
+    // reopened when Options switches the output device.
+    static SDL_AudioDeviceID sharedDevice() {
+        static SDL_AudioDeviceID dev = 0;
+        static std::string on;
+        if (dev && on != ta::currentAudioDevice()) { SDL_CloseAudioDevice(dev); dev = 0; }
+        if (!dev) {
             SDL_InitSubSystem(SDL_INIT_AUDIO);
             SDL_AudioSpec want{}, have{};
             want.freq = menuclick::kRate;
@@ -66,9 +77,11 @@ public:
             // click is queued at once (never a partial fill), so a short device
             // period can't underrun it. ~128/11025 ~= 12ms vs ~46ms at 512.
             want.samples = 128;
-            dev_ = ta::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
-            if (dev_) SDL_PauseAudioDevice(dev_, 0);
+            dev = ta::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
+            if (dev) SDL_PauseAudioDevice(dev, 0);
+            on = ta::currentAudioDevice();
         }
+        return dev;
     }
 
     // The WAV a request plays: a WAV name as is when sounds/ has it; an allsound.tdf
@@ -100,6 +113,7 @@ public:
             load(wav);
             auto it = pcm_.find(wav);
             lastDecoded = it != pcm_.end() && !it->second.empty();
+            if (dev_) dev_ = sharedDevice();   // follow an Options device switch
             if (dev_ && lastDecoded) {
                 const auto out = menuclick::level(it->second, settings ? settings->masterVol : 256,
                                                   settings ? settings->sfxVol : 256);
@@ -114,11 +128,7 @@ public:
     std::string last;
     bool lastDecoded = false;   // ... and it decoded
 
-    // Wait (bounded, ~300 ms) for a click to finish before the device is closed.
-    void drain() const { for (int i = 0; i < 30 && busy(); ++i) SDL_Delay(10); }
-
-    // Still sounding. Closing the device (destroying this) cuts the click off, so a
-    // screen that a click leaves keeps drawing until this clears (bounded, ~140ms).
+    // Still sounding (for logs and checks; a screen change no longer has to wait).
     bool busy() const { return dev_ && SDL_GetQueuedAudioSize(dev_) > 0; }
 
 private:

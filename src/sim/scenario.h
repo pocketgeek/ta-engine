@@ -35,7 +35,7 @@ public:
     // mapWCells/mapHCells: map size in 16px cells (for "Anywhere"/whole-map).
     ScenarioScript(const ta::crt::Scenario& scen, const TypeRegistry& reg,
                    int viewPlayer, int maxPlayer, int mapWCells, int mapHCells,
-                   uint32_t participants = 0xff);
+                   uint32_t participants = (1u << ta::crt::kMaxOwners) - 1);
 
     bool active() const { return !players_.empty(); }
     // An exact copy of the rules' state, for a copy of its world (World::clone). The
@@ -67,7 +67,7 @@ public:
 
     bool showClock() const { return showClock_; }   // "Display gameclock" latched
     bool participates(int player) const {
-        return player >= 0 && player < maxPlayer_ && player < 8 && (participants_ & (1u << player));
+        return player >= 0 && player < maxPlayer_ && player < ta::crt::kMaxOwners && (participants_ & (1u << player));
     }
     int outcome(int player) const {
         return participates(player) ? outcomes_[size_t(player)] : 0;

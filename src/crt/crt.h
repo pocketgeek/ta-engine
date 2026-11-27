@@ -13,10 +13,11 @@ namespace ta::crt {
 // Layout (static analysis of Cartographer.exe's writer/loader, cross-validated
 // byte-exact against every shipped .crt):
 //
-//   f32 version = 1.0 (the Kingdoms-era rank format) or 2.0 (kills; see below)
+//   f32 version = 1.0 (the Kingdoms-era rank format), 2.0 (kills; see below) or
+//                 3.0 (kills, ten players; see Owners)
 //   i32 numCustomTypes;  CustomType[272] x numCustomTypes
 //   i32 numUnits;        UnitRecord[568]  x numUnits
-//   i32 numPlayers (=9);
+//   i32 numPlayers (=9 before 3.0, 11 from 3.0: All Players + one bank per player);
 //       per player: i32 numGroups
 //           per group: i32 numConditions; Rule[324] x n
 //                      i32 numActions;    Rule[324] x n
@@ -31,6 +32,16 @@ namespace ta::crt {
 // `version`'s form back, so a 1.0 file round-trips byte for byte. New
 // scenarios are 2.0.
 //
+// Owners. Versions 1.0 and 2.0 seat eight players: unit owners 0..7, 8 = the neutral
+// (scenery) owner; rule banks 0 = All Players, 1..8 = owners 0..7, a ninth bank (9)
+// would be the neutral owner's. Version 3.0 seats retail's ten (TotalA.exe's ten
+// player records, sim::kMaxPlayers): owners 0..9, kNeutralOwner = 10; banks 1..10 =
+// owners 0..9, 11 = neutral. parse() always returns the 3.0 numbering (an old file's
+// owner 8 becomes 10, its banks from 9 on move up two); write() renumbers back for a
+// 1.0 / 2.0 `version`, so old files still round-trip byte for byte -- unless the model
+// holds something the old numbering cannot say (an owner 8 or 9, rules in bank 9 or
+// 10), which write() saves as 3.0 instead.
+//
 // There is no inter-record padding. Bytes outside the fields below are in-memory
 // residue in retail files (the record is a raw dump of the editor's live object);
 // a clean writer zero-fills them and the game loads the result identically.
@@ -42,7 +53,7 @@ struct Unit {
     std::string uniqueName;      // custom display name (@0x100; runtime uses first 31 bytes)
     int32_t x = 0, z = 0;        // 16px footprint-origin cells (@0x200 / @0x208)
     int32_t y = 200;             // retained vertical field; native loader ignores it (@0x204)
-    int32_t player = 0;          // 0..8 (@0x20c)
+    int32_t player = 0;          // 0..9, kNeutralOwner = 10 (@0x20c; see Owners)
     int32_t health = 100;        // %   0..100  (@0x210)
     int32_t armor = 100;         // %   0..1000 (@0x214)
     int32_t weapon = 100;        // %   0..1000 (@0x218)
@@ -84,6 +95,14 @@ struct Region {
 
 inline constexpr float kVersionRank = 1.0f;    // +0x220 / stat[3] hold the old rank
 inline constexpr float kVersionKills = 2.0f;   // +0x220 / stat[3] hold the kill count
+inline constexpr float kVersionTenPlayers = 3.0f;   // kills, and owners 0..9 + neutral 10
+inline constexpr float kVersionCurrent = kVersionTenPlayers;
+
+inline constexpr int32_t kMaxOwners = 10;          // seated owners 0..9 (sim::kMaxPlayers)
+inline constexpr int32_t kNeutralOwner = kMaxOwners;   // 3.0 numbering (sim::kNeutralPlayer)
+inline constexpr int32_t kOldNeutralOwner = 8;     // 1.0 / 2.0 numbering
+inline constexpr size_t kBanks = size_t(kMaxOwners) + 1;   // All Players + one per owner
+inline constexpr size_t kOldBanks = 9;
 
 // An old rank's kill count: TA steps its veterancy every five kills (0x489bf3
 // k = min(kills / 5, 5)), so rank N is N x 5 kills. Saturates instead of
@@ -94,9 +113,9 @@ inline int32_t killsForRank(int32_t rank) {
 inline int32_t rankForKills(int32_t kills) { return kills / 5; }
 
 // A parsed .crt in full. `players` holds All Players at index 0, followed by
-// Player 1 through 8; each entry contains that rule bank's groups.
+// Player 1 through 10 (see Owners); each entry contains that rule bank's groups.
 struct Scenario {
-    float version = kVersionKills;
+    float version = kVersionCurrent;
     std::vector<CustomType> customTypes;
     std::vector<Unit> units;
     std::vector<std::vector<RuleGroup>> players;
@@ -104,7 +123,7 @@ struct Scenario {
 };
 
 // Parse a whole .crt. Returns an empty Scenario (version 0) if `d` is not a
-// version 1.0 or 2.0 .crt or is structurally malformed.
+// version 1.0, 2.0 or 3.0 .crt or is structurally malformed.
 Scenario parse(const std::vector<uint8_t>& d);
 
 // Serialize a Scenario to bytes. Structurally byte-exact to retail (same order,

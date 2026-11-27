@@ -18,7 +18,7 @@ namespace cart {
 
 struct PlacedUnit {
     std::string type;      // unit FBI name (objectName), UPPERCASE as in the .crt
-    int player = 0;        // player id / start slot (0..8)
+    int player = 0;        // player id / start slot (0..9), ta::crt::kNeutralOwner (10) = neutral
     float x = 0, z = 0;    // footprint center in map pixels
     int health = 100;      // %  0..100
     int armor = 100;       // %  0..1000

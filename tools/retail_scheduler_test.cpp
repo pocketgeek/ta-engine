@@ -11,7 +11,7 @@
 using Scheduler = ta::sim::RetailSearchScheduler;
 struct Fixture {
     Scheduler scheduler;
-    std::array<Scheduler::Player, 10> players{};
+    std::array<Scheduler::Player, Scheduler::playerCount> players{};
     std::map<std::pair<int, int>, int> requests;
     struct Event { int tick, kind, player, slot; };
     std::vector<Event> events;

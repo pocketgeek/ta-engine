@@ -55,7 +55,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
     monarch.uniqueName="Network commander with a deliberately long display name";
     monarch.y=999;
     scenario.units.push_back(monarch);
-    auto neutral=monarch;neutral.player=8;neutral.x+=10;neutral.uniqueName="Neutral commander";
+    auto neutral=monarch;neutral.player=crt::kNeutralOwner;neutral.x+=10;neutral.uniqueName="Neutral commander";
     scenario.units.push_back(neutral);
     scenario.customTypes.push_back({"armcom",{100,200,200,2}});
     scenario.regions.push_back({"Reinforcements",monarch.x-6,monarch.z-6,monarch.x+6,monarch.z+6});

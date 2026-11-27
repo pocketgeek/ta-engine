@@ -337,6 +337,12 @@ target_include_directories(door_animation_test PRIVATE src)
 add_executable(primitive_draw_test tools/primitive_draw_test.cpp)
 target_include_directories(primitive_draw_test PRIVATE src)
 add_test(NAME primitive_draw COMMAND primitive_draw_test)
+add_executable(nano_spray_test tools/nano_spray_test.cpp)
+target_include_directories(nano_spray_test PRIVATE src)
+add_test(NAME nano_spray COMMAND nano_spray_test)
+add_executable(debris_motion_test tools/debris_motion_test.cpp)
+target_include_directories(debris_motion_test PRIVATE src)
+add_test(NAME debris_motion COMMAND debris_motion_test)
 add_executable(speech_queue_test tools/speech_queue_test.cpp)
 target_include_directories(speech_queue_test PRIVATE src)
 add_test(NAME speech_queue COMMAND speech_queue_test)
@@ -1589,6 +1595,8 @@ add_executable(production_exit_test tools/production_exit_test.cpp)
 target_link_libraries(production_exit_test PRIVATE ta-formats)
 add_executable(doorway_test tools/doorway_test.cpp)
 target_link_libraries(doorway_test PRIVATE ta-formats)
+add_executable(assist_reach_test tools/assist_reach_test.cpp)
+target_link_libraries(assist_reach_test PRIVATE ta-formats)
 add_executable(shipyard_park_test tools/shipyard_park_test.cpp ${TA_AI_SOURCES})
 target_link_libraries(shipyard_park_test PRIVATE ta-formats)
 add_executable(legion_park_test tools/legion_park_test.cpp)
@@ -1671,6 +1679,8 @@ if(TA_TEST_DATA)
     add_test(NAME animation_roster COMMAND animation_roster_test "${TA_TEST_DATA}")
     add_test(NAME production_exit COMMAND production_exit_test "${TA_TEST_DATA}")
     add_test(NAME doorway COMMAND doorway_test "${TA_TEST_DATA}")
+    # A ground helper works only once in reach (HelpBuild 0x405cf0, Follow_Ground 0x407f90).
+    add_test(NAME assist_reach COMMAND assist_reach_test "${TA_TEST_DATA}")
     add_test(NAME shipyard_park COMMAND shipyard_park_test "${TA_TEST_DATA}")
     add_test(NAME legion_park COMMAND legion_park_test "${TA_TEST_DATA}")
     add_test(NAME navyyard_exit COMMAND navyyard_exit_test "${TA_TEST_DATA}")
@@ -1775,6 +1785,15 @@ if(TA_TEST_DATA)
         set_tests_properties(factory_build_menu PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_FACTORY_MENU_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: factory build menu"
+            TIMEOUT 120)
+        # Metal extractors snap onto deposits and a box queues one on each
+        # (client/metalspots.h), through the real input path.
+        add_test(NAME metal_snap_build COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/metal-snap-test.png")
+        set_tests_properties(metal_snap_build PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_METAL_SNAP_TEST=1"
+            PASS_REGULAR_EXPRESSION "PASS: metal snap build"
             TIMEOUT 120)
         # The sidebar's ORDERS page on the real page (client/orderpage.h; TotalA.exe
         # 0x41b2e0 / 0x41a120 / 0x41a490): greyed and hidden order buttons per unit,
@@ -2261,6 +2280,10 @@ if(TA_BUILD_CLIENT)
     add_executable(buildrow_test tools/buildrow_test.cpp)
     target_include_directories(buildrow_test PRIVATE src)
     add_test(NAME buildrow COMMAND buildrow_test)
+    # Metal deposits as extractor build spots (client/metalspots.h): snapping and box builds.
+    add_executable(metalspots_test tools/metalspots_test.cpp)
+    target_include_directories(metalspots_test PRIVATE src)
+    add_test(NAME metalspots COMMAND metalspots_test)
     # The CHANGE MAP panel's map list FILTER (client/mapfilter.h): case-insensitive.
     add_executable(mapfilter_test tools/mapfilter_test.cpp)
     target_include_directories(mapfilter_test PRIVATE src)

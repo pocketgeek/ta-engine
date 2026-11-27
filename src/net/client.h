@@ -208,8 +208,8 @@ public:
     void moveSeat(int slot);
     // recipients: the seated players (slot bits); spectators: whether spectators read it
     // too. Before the game starts the server sends every line to the whole room.
-    void chat(const std::string& text, uint8_t recipients, bool spectators = false);
-    void chat(const std::string& text) { chat(text, 0xff, true); }   // everyone
+    void chat(const std::string& text, SlotMask recipients, bool spectators = false);
+    void chat(const std::string& text) { chat(text, kEverySlot, true); }   // everyone
     void startGame();
     // START was clicked and the server has neither started the game nor refused.
     bool startPending() const { return startRequested_ || startSent_; }
@@ -292,7 +292,7 @@ public:
     // One captured frame, as a LOW-PRIORITY message (Conn::sendLow): it waits behind game
     // traffic queued in this program and in the kernel, and is dropped when the link is
     // backed up. Ignored outside a room.
-    // recipients: the diplomacy VOICE mask (0xff = everyone, as for chat).
+    // recipients: the diplomacy VOICE mask (kEverySlot = everyone, as for chat).
     // The uplink is guarded too, since what the kernel already holds still goes ahead of
     // the Progress and commands queued after it: while this client transmits it pings the
     // server four times a second (and every two seconds while voice is on, for a quiet
@@ -301,7 +301,7 @@ public:
     // dropped, an END closes the transmission at once, and the queued voice is thrown
     // away -- for a back-off of 5 s that doubles with each repeat (to 60 s, forgotten after
     // 2 quiet minutes), and resumes (with a START) once the probe is quiet again.
-    void sendVoice(uint16_t seq, uint8_t recipients, uint8_t flags, const std::vector<uint8_t>& opus);
+    void sendVoice(uint16_t seq, SlotMask recipients, uint8_t flags, const std::vector<uint8_t>& opus);
     bool voiceHeld() const { return voiceHeld_; }
     uint64_t voiceHeldFrames() const { return voiceHeldFrames_; }   // captured frames the hold dropped
     struct VoiceFrame {
@@ -539,7 +539,7 @@ private:
     // voiceSlowRtt_: the last probe came back past the limit.
     bool voiceHeld_ = false, voiceOpen_ = false, voiceRestart_ = false, voiceSlowRtt_ = false;
     uint16_t voiceSeq_ = 0;
-    uint8_t voiceMask_ = 0xff;
+    SlotMask voiceMask_ = kEverySlot;
     uint8_t voiceSpectators_ = 0;   // kVoiceSpectators when the open transmission reaches spectators
     uint64_t voiceSlackMs() const;
     void voiceProbe(uint64_t now, int64_t rtt = -1);

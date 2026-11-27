@@ -1,4 +1,4 @@
-# Multiplayer Design: Client–Server, 8 Players, Teams
+# Multiplayer Design: Client–Server, 10 Players, Teams
 
 How TA Engine's multiplayer works: one server (`taserver`) relays every game, every
 peer runs the same deterministic simulation, and only commands cross the wire
@@ -19,8 +19,8 @@ described in [unit-gifting.md](unit-gifting.md). The headless test client is
   central server (`taserver`) reachable on the LAN or internet. Everything —
   lobby, game traffic — is proxied through it. No NAT traversal or port
   forwarding on any player's side.
-- **Up to 8 players per game**, any mix of humans and AIs.
-- **Up to 8 teams.** Default: every player/AI on its own team (free-for-all).
+- **Up to 10 players per game** (retail's ten), any mix of humans and AIs.
+- **Up to 10 teams.** Default: every player/AI on its own team (free-for-all).
   Players on the same team share vision (fog of war); radar marks the minimap
   from a player's own units only, as in retail (`height-and-fog.md`).
 - **Own color per player** (the retail art ships exactly 10 color variants).
@@ -191,7 +191,7 @@ agreed:
 
 ## 3. Determinism contract
 
-Lockstep at 8 players lives or dies on bit-identical simulation, so the
+Lockstep at 10 players lives or dies on bit-identical simulation, so the
 contract is stated, enforced, and narrow:
 
 - **Same protocol version, not the same binary.** The `Hello` carries a build
@@ -265,7 +265,7 @@ links the sim, data loaders, `net` and the `ai` module only.
   running games and with them the simulation workers (a START past it is
   refused: "server running-game capacity reached; retry later"). Both are
   refusals that keep the connection (§5).
-- **GameRoom.** One per game: player slots (up to 8), the sequencer, the
+- **GameRoom.** One per game: player slots (up to 10), the sequencer, the
   headless referee sim, one `ai::Controller` per AI slot, the bundle log, and
   the room's settings (map, `GameOptions`, game-mod package).
 - **Tick loop.** Fixed 30 Hz per room. Each tick: collect queued client
@@ -478,12 +478,12 @@ mismatch with a human-readable reason.
 | `CreateGame` | name, password, map id, mission, options, capacity, spectate, private | creator becomes host; an empty name is the server's `"<name>'s Game"`; a name past 32 printable-ASCII bytes or a password past 128 is answered with `JoinResult(0, why)`, and so is a server at its game limit (`--max-games`: "server game capacity reached"); a random map's capacity is its player count, read by the server |
 | `JoinGame` / `JoinResult` | game id, password? / ok, slot (0xFF = watching), why, room revision | error: full, bad password, running; every JoinResult carries the room's revision, so a READY sent before the first `LobbyState` counts. A refusal keeps the connection: the client stays in the game list with the reason. `JoinResult(ok)` is what puts a client in a room, always before that room's first `LobbyState` (see [Room scope](#room-scope-what-a-client-takes-and-when)) |
 | `SlotUpdate` | slot #, {human/AI/closed}, faction, color, team, ready, AI level, room revision | players set their own; host sets any (host resolves conflicts, assigns AIs); only the server seats a human, so the host can neither change a seated slot's type nor make an empty one human -- such an edit (e.g. one sent before a seat move landed) is dropped. Only a seat's own player changes its READY, and a guest's READY on an older revision than the room's is stored as not ready |
-| `LobbyState` | `RoomState`: id, name, map, mission, options, host, maps ready, capacity, passworded, revision, change bits, map serial, the 8 slots | broadcast on every change |
+| `LobbyState` | `RoomState`: id, name, map, mission, options, host, maps ready, capacity, passworded, revision, change bits, map serial, the 10 slots (`kMaxSlots`) | broadcast on every change |
 | `SetGameOptions` | full `GameOptions` | host only; in the lobby the server adopts them (see [Room editing](#room-editing)) and rebroadcasts `LobbyState`; in-game only `speed` takes effect (if `speedUnlock`), pushed via `SpeedUpdate` |
 | `SetRoomMap` | serial, map id, capacity, MAP SCENARIO, start mode | host only, lobby only, never a mission or Benchmark room; answered by the `LobbyState` carrying the serial, after a `RoomError` when refused |
 | `SetRoomInfo` | flags (1 name, 2 password), name, password | host only, lobby only; only the flagged fields apply; no player is unreadied. The game client does not send it (see [Room editing](#room-editing)) |
 | `RoomError` | request (1 map, 2 info), serial, reason | server → host: a refusal it can act on, never fatal, always followed by a `LobbyState` |
-| `Chat` | text | lobby and in-game |
+| `Chat` | text, u16 recipients (slot bits), u8 spectators (client → server); name, text (server → client) | lobby and in-game |
 | `Kick` | slot # | host only |
 | `MoveSeat` | slot # (0xFF = watch) | a seated player (the host too) takes an OPEN seat inside the map capacity, lobby only; not in a campaign mission room; side, colour, team and ready move with the player, the old seat opens with the target's colour and team; the server answers the mover with `JoinResult` (its new slot), then broadcasts `LobbyState`; the host may leave its seat to watch (0xFF) and sit down again; anything else is ignored. The room's MOVE HERE is live only under BY SLOT start locations, or in a scenario whose seats have armies or rules of their own (greyed otherwise) |
 | `StartGame` | — | host only; server validates: every human ready, colors unique, players ≤ map start positions. A START the server will not run is answered to the host with `MapError` (room, reason), which the room shows as CANNOT START: the map has no scenario, a seat the scenario needs is empty, the match cannot be set up, the game mods cannot be loaded, or the server is at its running-game limit (`--max-running-games`: "server running-game capacity reached; retry later"). The room stays as it is and the host may press START again |
@@ -742,11 +742,11 @@ beside the game on three messages (`net/protocol.h` beside `kVoiceMaxOpus`):
 | Msg | Payload | Notes |
 |---|---|---|
 | `VoiceListen` | u8 on | client → server: this connection wants voice (voice chat switched on). Off by default, so the headless harness, a benchmark and anyone with voice off are sent none |
-| `VoiceUp` | u16 seq, u8 recipients, u8 flags, u16 len, Opus | client → server: one 20 ms frame (48 kHz mono, ~24 kbit/s, in-band FEC), `recipients` = the talker's diplomacy VOICE mask. Flags: START (resets the receiver), END (key released, no audio) |
+| `VoiceUp` | u16 seq, u16 recipients, u8 flags, u16 len, Opus | client → server: one 20 ms frame (48 kHz mono, ~24 kbit/s, in-band FEC), `recipients` = the talker's diplomacy VOICE mask. Flags: START (resets the receiver), END (key released, no audio) |
 | `VoiceDown` | u32 talker id, u8 slot (0xFF spectator), u16 seq, u8 flags, u16 len, Opus, [str name] | server → client; the name rides on START frames and every 25th (`kVoiceHasName`) |
 
 Recipients follow the **chat rules exactly**: before the game runs, or for mask
-0xff, the whole room including spectators; otherwise the seated players whose bit
+0xffff (`kEverySlot`), the whole room including spectators; otherwise the seated players whose bit
 is set. Never back to the talker, never to a connection catching up (`replaying`)
 or one that has not sent `VoiceListen 1`. In a running game spectators hear and
 read a seated player only when the sender ticks them (`Chat`'s trailing u8,
@@ -862,11 +862,18 @@ game), `conn_test` (the low-priority queue).
 
 ## 6. Simulation: players and teams
 
-1. **8 players.** `World` holds `kMaxPlayers` = 8 players, sized from game
-   setup, with bounds guards on spawn. Each player's colour slot spans the 10
-   retail palette variants — every player picks any of the 10 colors, and with
-   8 players lobby-enforced uniqueness is always satisfiable.
-2. **Team layer.** `Player::team` (0–7, set at game setup; default = player
+1. **10 players.** `World` holds `kMaxPlayers` = 10 players, sized from game
+   setup, with bounds guards on spawn: retail's ten (TotalA.exe keeps ten 0x14b-byte
+   player records at game+0x1b63, index math 0x4473b1..0x4473c3; the loop at
+   0x445799..0x4457ae steps them to +0x2851 = 10 x 0x14b past the first). Each
+   player's colour slot spans the 10 retail palette variants (textures/logos.gaf has
+   ten colour frames) — every player picks any of the 10 colors, and with
+   10 players lobby-enforced uniqueness is always satisfiable. A map scenario's
+   neutral owner is `sim::kNeutralPlayer` (10, the first id past the players) and
+   renders in colour slot 9, which a tenth player may share.
+   Protocol 343 widened the room and replay slot tables to 10 and the Chat /
+   VoiceUp recipient masks to u16 (`net::SlotMask`, `kEverySlot` = 0xffff).
+2. **Team layer.** `Player::team` (0–9, set at game setup; default = player
    index) + `World::allied(a, b)`. Friend/foe tests use `allied()`: splash
    damage, target auto-acquire, auras, resurrect, cloak proximity, capture, and
    the viewer's attack-click/AI target scans. `owns()` stays per-player — allies
@@ -963,11 +970,12 @@ multiplayer game.
   human+AI seats at that count (a MAP SCENARIO can widen it, §13).
 - Retail ships 55 skirmish maps: 6 support 2 starts, 9×3, 22×4, 4×5, 5×6, and
   **9 maps support the full 8** (e.g. Angvir's Maze, Black Heart Jungle,
-  Sewers of Elam). The 8-player cap matches this retail ceiling — no shipped
-  map has more than 8 starts, so no synthetic spawn-point fallback is needed
-  and every player count has real maps.
+  Sewers of Elam). That count was the old 8-player cap's reason; the engine now
+  seats retail's ten (TotalA.exe's ten player records, §6), and 98 maps of the
+  installed data (downloadable and expansion maps among them) define
+  StartPos1..StartPos10.
 - 10 colors confirmed in the retail art (10-frame GAF color sequences
-  throughout; the engine samples `playerColors_[10]`) — 8 players picking among
+  throughout; the engine samples `playerColors_[10]`) — 10 players picking among
   10 colors means uniqueness never runs out of options.
 
 ## 10. Per-game simulation and threads
@@ -1115,7 +1123,7 @@ game `SetGameOptions` adopts only speed.
   setupMatch would otherwise read each machine's own copy, which no digest
   covers. A start refusal reaches the host as `MapError` and the client shows it
   in the room (`MpClient::startError`). The seats a scenario needs are its
-  placement owners 0-7 and every Player N rule bank with a group that has a
+  placement owners 0-9 and every Player N rule bank with a group that has a
   condition or an action. The option is sim-affecting and recorded in the replay
   header.
 - **START LOCATIONS** (`randomStarts`): 0 FIXED, 1 RANDOM, 2 BY SLOT

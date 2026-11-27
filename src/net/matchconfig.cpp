@@ -6,6 +6,8 @@
 
 namespace ta::net {
 
+static_assert(kMaxSlots == sim::kMaxPlayers, "a room seat is a sim player");
+
 sim::MatchConfig matchConfigFor(const GameOptions& o, const SlotInfo* slots, uint32_t seed, bool mission) {
     sim::MatchConfig cfg;
     cfg.unitCap = o.unitCap;

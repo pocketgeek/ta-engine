@@ -29,7 +29,12 @@ constexpr bool retailAdmitNavigator(bool pending,uint32_t tick,uint32_t& stamp) 
 // weight later searches take: < 1 sweep 9.0, < 2 sweeps 4.5, else 1.5.
 class RetailSearchScheduler {
 public:
-    static constexpr int playerCount = 10;
+    // TotalA.exe's ten player records (0x40eb70 walks them), plus one for the
+    // engine's map-scenario neutral owner (sim::kNeutralPlayer = 10), which retail
+    // does not have. That record is empty (no slots, no credit) in every other game,
+    // and an empty record is skipped, so the walk over the ten is retail's.
+    static constexpr int kRetailPlayers = 10;
+    static constexpr int playerCount = kRetailPlayers + 1;
     static constexpr int kWeightPeriod = 150;
     static constexpr int kWeightFast = 98304, kWeightMid = 294912, kWeightSlow = 589824;   // 1.5 / 4.5 / 9.0
     struct Player {
@@ -51,8 +56,7 @@ public:
     std::array<int, playerCount> lastWrapTick{};
     std::array<int, playerCount> credit{};
     std::array<int, playerCount> visits{};
-    std::array<int, playerCount> weight{kWeightFast, kWeightFast, kWeightFast, kWeightFast, kWeightFast,
-                                        kWeightFast, kWeightFast, kWeightFast, kWeightFast, kWeightFast};
+    std::array<int, playerCount> weight = [] { std::array<int, playerCount> w{}; w.fill(kWeightFast); return w; }();
     int weightClock = 0;
     int maxUnits = 250;
     int remaining = 0;

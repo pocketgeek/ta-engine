@@ -32,6 +32,7 @@ struct BinkVideo::Impl {
     AVPacket* pkt = nullptr;
     int stream = -1;
     int w = 0, h = 0;
+    double sar = 1.0;   // sample aspect ratio (pixel width / height)
     double fps = 30.0;
     int frames = 0;        // total frames (0 = the container did not say)
     bool eofSent = false;
@@ -173,6 +174,10 @@ bool BinkVideo::open(std::vector<uint8_t> data) {
 
     d_->w = d_->ctx->width;
     d_->h = d_->ctx->height;
+    {   // The stream's sample aspect, else the codec's; unknown (0) is square.
+        AVRational a = st->sample_aspect_ratio.num ? st->sample_aspect_ratio : d_->ctx->sample_aspect_ratio;
+        d_->sar = (a.num > 0 && a.den > 0) ? double(a.num) / double(a.den) : 1.0;
+    }
     AVRational r = st->avg_frame_rate.num ? st->avg_frame_rate : st->r_frame_rate;
     d_->fps = (r.num && r.den) ? double(r.num) / double(r.den) : 30.0;
     // Total frames: the stream's own count when it has one, else derive it from
@@ -228,6 +233,7 @@ void BinkVideo::close() { d_->teardown(); d_->data.clear(); }
 int BinkVideo::width() const { return d_->w; }
 int BinkVideo::height() const { return d_->h; }
 double BinkVideo::fps() const { return d_->fps; }
+double BinkVideo::pixelAspect() const { return d_->sar; }
 int BinkVideo::frameCount() const { return d_->frames; }
 int BinkVideo::audioRate() const { return d_->aRate; }
 int BinkVideo::audioChannels() const { return d_->aCh; }
@@ -347,6 +353,7 @@ void BinkVideo::close() {}
 int BinkVideo::width() const { return 0; }
 int BinkVideo::height() const { return 0; }
 double BinkVideo::fps() const { return 0.0; }
+double BinkVideo::pixelAspect() const { return 1.0; }
 int BinkVideo::audioRate() const { return 0; }
 int BinkVideo::audioChannels() const { return 0; }
 void BinkVideo::drainAudio(std::vector<uint8_t>&) {}

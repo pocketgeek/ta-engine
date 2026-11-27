@@ -17,6 +17,7 @@ namespace ta {
 SDL_AudioDeviceID openAudioDevice(int iscapture,const SDL_AudioSpec* want,SDL_AudioSpec* got,int allowed) {
     return SDL_OpenAudioDevice(nullptr,iscapture,want,got,allowed);
 }
+const std::string& currentAudioDevice() { static const std::string none; return none; }
 }
 static void check(bool ok,const char* message) { if(!ok)throw std::runtime_error(message); }
 int main(int argc,char** argv) try {

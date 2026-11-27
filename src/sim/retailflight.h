@@ -274,7 +274,8 @@ struct RetailFlightNavigation {
     bool wraps = false;
 };
 
-// 524af0: destination motion is measured before the cruise-height override.
+// 524af0; TotalA.exe's flyer navigator update 0x490690 (its answer 0x490650).
+// Destination motion is measured before the cruise-height override.
 // A close controller can supply a heading; otherwise the previous heading is
 // retained inside 16 pixels and the destination direction is used farther out.
 // `wraps`: this destination is a direction (RetailFlightNavigation::wraps);
@@ -302,7 +303,8 @@ inline RetailFlightNavigation retailFlightNavigation(RetailFlightVector position
     return result;
 }
 
-// 4da803..4dad1a. Inputs are raw 16.16 values after terrain multipliers.
+// 4da803..4dad1a; TotalA.exe's VTOL mover 0x43d290 (checked against it under
+// unicorn: tools/re/airhover_emu.py). Inputs are raw 16.16 values after terrain multipliers.
 // The navigator supplies a destination and a velocity for that destination.
 // Heading, visual banking, collision and position commit belong to the host.
 inline RetailFlightVector retailFlightVelocity(RetailFlightVector velocity,
@@ -314,7 +316,8 @@ inline RetailFlightVector retailFlightVelocity(RetailFlightVector velocity,
     constexpr double unit = 1.0 / 65536;
     const int32_t accelerationLimit = std::min(acceleration, maximumSpeed);
     const float limit = float(double(accelerationLimit) * unit);
-    const int32_t retention = 65536 - int32_t(double(accelerationLimit) / maximumSpeed * 65536);
+    // TotalA.exe 0x43d326..0x43d334: (acceleration << 16) / maxvelocity in 64-bit integers.
+    const int32_t retention = 65536 - int32_t((int64_t(accelerationLimit) << 16) / maximumSpeed);
     auto scale = [](int32_t value, int32_t factor) {
         return int32_t((int64_t(value) * factor) >> 16);
     };
@@ -342,18 +345,27 @@ inline RetailFlightVector retailFlightVelocity(RetailFlightVector velocity,
             verticalLimit *= 2;
         velocity.y = int32_t(std::clamp(-int64_t(dy), -int64_t(verticalLimit), int64_t(verticalLimit)));
     }
-    const float distance = float(std::sqrt(double(dx) * dx + double(dz) * dz) * unit);
-    const float approach = float(-std::sqrt(double(limit) * 2 / std::max(distance, 8.0f)));
-    double correctionX = double(dx) * approach * unit - double(relativeX) * unit;
+    // TotalA.exe 0x43d51b..0x43d5bc: the distance and the approach factor
+    // stay on the FPU stack (53-bit), never stored as floats.
+    const double distance = std::sqrt(double(dx) * dx + double(dz) * dz) * unit;
+    const double approach = -std::sqrt(double(limit) * 2 / std::max(distance, 8.0));
+    const double correctionX = double(dx) * approach * unit - double(relativeX) * unit;
     const double correctionZ = double(dz) * approach * unit - double(relativeZ) * unit;
+    // TotalA.exe 0x43d5f2 / 0x43d5fe: both components are kept as floats
+    // ([esp+0x6c], [esp+0x24]) and reloaded from them after the _hypot, which
+    // takes them unrounded; the scaled Z goes back through its float
+    // (0x43d62e), the scaled X goes straight on to _ftol (0x43d63a). The X
+    // one was carried unrounded here, which left a flyer 1/65536 px off
+    // retail's now and then (tools/re/airhover_emu.py).
+    double storedX = double(float(correctionX));
     float storedZ = float(correctionZ);
     const double length = std::sqrt(correctionX * correctionX + correctionZ * correctionZ);
     if (length > limit) {
         const double ratio = double(limit) / length;
-        correctionX *= ratio;
+        storedX *= ratio;
         storedZ = float(double(storedZ) * ratio);
     }
-    velocity.x += int32_t(correctionX * 65536);
+    velocity.x += int32_t(storedX * 65536);
     velocity.z += int32_t(double(storedZ) * 65536);
     return velocity;
 }

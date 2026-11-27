@@ -15,7 +15,7 @@
 #include "util/u8path.h"
 
 namespace {
-std::string objectOwner(int player) {return player==8?std::string("Neutral"):"Player "+std::to_string(player+1);}
+std::string objectOwner(int player) {return player==ta::crt::kNeutralOwner?std::string("Neutral"):"Player "+std::to_string(player+1);}
 }
 
 void cart::Editor::filterOpenMaps() {
@@ -51,7 +51,7 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
     } else if(m==M_GENERATOR) {
         mTitle="RANDOM MAP SETTINGS";mN=6;
         const auto fields=cart::generatorFields(generatorParams);
-        const char* labels[]={"SEED (REPRODUCIBLE)","PLAYERS (2-8)","HILLS (0-255)"};
+        const char* labels[]={"SEED (REPRODUCIBLE)","PLAYERS (2-10)","HILLS (0-255)"};
         for(int i=0;i<3;++i) {mf[i]=fields[size_t(i)];mLabel[i]=labels[i];mfNumeric[i]=true;}
         mLabel[3]="WIDTH (1-64 UNITS)";mf[3]=generatorDraft[1];mfNumeric[3]=true;
         mLabel[4]="HEIGHT (1-64 UNITS)";mf[4]=generatorDraft[2];mfNumeric[4]=true;
@@ -131,7 +131,7 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
     } else if (m == M_UNIT && unitIdx >= 0 && unitIdx < int(units.size())) {
         const auto& u = units[size_t(unitIdx)];
         mTitle = selectedUnits.indices.size()>1?"SELECTED UNIT PROPERTIES":"UNIT PROPERTIES"; mN = 9;
-        mLabel[0] = "PLAYER (0-7, 8=NEUTRAL)";  mf[0] = std::to_string(u.player);      mfNumeric[0] = true;
+        mLabel[0] = "PLAYER (0-9, 10=NEUTRAL)";  mf[0] = std::to_string(u.player);      mfNumeric[0] = true;
         mLabel[1] = "HEALTH %";      mf[1] = std::to_string(u.health);      mfNumeric[1] = true;
         mLabel[2] = "ARMOR %";       mf[2] = std::to_string(u.armor);       mfNumeric[2] = true;
         mLabel[3] = "WEAPON %";      mf[3] = std::to_string(u.weapon);      mfNumeric[3] = true;
@@ -342,7 +342,7 @@ void cart::Editor::applyModal() {
         if(!targets.count(editUnit))targets={editUnit};
         std::array<int,9> values{};
         const std::array<int,9> minimum={0,0,0,0,0,std::numeric_limits<int>::min(),0,0,0};
-        const std::array<int,9> maximum={8,100,1000,1000,65535,std::numeric_limits<int>::max(),0,mapView.map().width-1,mapView.map().height-1};
+        const std::array<int,9> maximum={ta::crt::kNeutralOwner,100,1000,1000,65535,std::numeric_limits<int>::max(),0,mapView.map().width-1,mapView.map().height-1};
         for(int i=0;i<9;++i)if(i!=6 && mf[i]!=mfOriginal[i]) {
             const auto parsed=std::from_chars(mf[i].data(),mf[i].data()+mf[i].size(),values[i]);
             if(parsed.ec!=std::errc{} || parsed.ptr!=mf[i].data()+mf[i].size() || values[i]<minimum[i] || values[i]>maximum[i]) {
@@ -422,7 +422,7 @@ void cart::Editor::openRuleEditor(ta::crt::Rule* r, bool isAction) {
         if(kind==cart::PKind::Flag && scrPlayer<int(scen.players.size()))choices=cart::ruleFlags(scen.players[scrPlayer]);
         if(kind==cart::PKind::Location) {choices.push_back("Anywhere");for(const auto& region:scen.regions)choices.push_back(region.name);}
         if(kind==cart::PKind::UnitType) {choices.push_back("Any Unit");choices.insert(choices.end(),unitTypes.begin(),unitTypes.end());}
-        if(kind==cart::PKind::Player) {choices.push_back("All Players");for(int p=1;p<=8;++p)choices.push_back("Player "+std::to_string(p));}
+        if(kind==cart::PKind::Player) {choices.push_back("All Players");for(int p=1;p<=ta::crt::kMaxOwners;++p)choices.push_back("Player "+std::to_string(p));}
         if(!choices.empty()) {
             if(std::find(choices.begin(),choices.end(),mf[i])==choices.end())choices.insert(choices.begin(),mf[i]);
             mfChoices[i]=&choices;

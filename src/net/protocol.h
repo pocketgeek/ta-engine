@@ -24,10 +24,16 @@ namespace ta::net {
 // Bump it whenever the wire layout changes or the simulation can compute a different
 // result from the same inputs -- a peer or replay of another number would desync.
 // The CHANGELOG records what each release changed.
-constexpr uint32_t kNetVersion = 342;      // 342: Cmd::StandingOrder (TA's separate move / fire standing orders); 341: Cmd::Land (a flyer's landing on an air base); 340: Cmd::ReclaimUnit (TA's RECLAIMUNIT; the server admits DGun and ReclaimUnit); 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
+constexpr uint32_t kNetVersion = 343;      // 343: ten players (kMaxSlots 10: RoomState/replay slot tables, u16 Chat/VoiceUp recipient masks; sim::kNeutralPlayer 10); 342: Cmd::StandingOrder (TA's separate move / fire standing orders); 341: Cmd::Land (a flyer's landing on an air base); 340: Cmd::ReclaimUnit (TA's RECLAIMUNIT; the server admits DGun and ReclaimUnit); 339: Cmd::DGun (TA's D-gun order; plain Attack no longer fires commandfire); 338: random maps only from TA sections (Kingdoms generator and its sanitize sizing gone); 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
 constexpr uint32_t kMaxFrame = 1u << 18;   // 256 KB frame cap (hardening) -- headroom for a
                                            // big tick bundle when many units are ordered at once
-constexpr int kMaxSlots = 8;               // players per game (= max map start positions)
+// Players per game: retail's ten (TotalA.exe's ten 0x14b-byte player records at
+// game+0x1b63; StartPos1..10). Equals sim::kMaxPlayers (static_assert in matchconfig.cpp).
+constexpr int kMaxSlots = 10;
+// A set of seats on the wire (Chat and VoiceUp recipients): bit N = slot N.
+// kEverySlot is "the whole room" (spectators included, as the Chat rules say).
+using SlotMask = uint16_t;
+constexpr SlotMask kEverySlot = 0xffff;
 constexpr int kServerHz = 30;              // sim/tick rate
 constexpr int kHashPeriod = 30;            // ticks between StateHash reports; the
                                            // referee hashes only these ticks too
@@ -192,7 +198,7 @@ enum class Msg : uint8_t {
                         // the host changes: hostId is the connection holding the host's powers (the
                         // host's seat's, or a successor's); none of the room's (0, or one gone) while
                         // nobody connected holds them.
-    Chat,               // both: text
+    Chat,               // C->S: str text, u16 recipients (SlotMask), u8 spectators; S->C: str name, str text
     Kick,               // C->S (host): slot
     StartGame,          // C->S (host)
     GameStarting,       // S->C: final setup + seeds + resume token
@@ -259,9 +265,9 @@ enum class Msg : uint8_t {
     VoiceListen,        // C->S: u8 on. Whether this connection wants voice at all (voice chat
                         // switched on). Off by default, so a client that never asks -- the
                         // headless harness -- is sent no voice.
-    VoiceUp,            // C->S: u16 seq | u8 recipients | u8 flags | u16 len | len bytes Opus.
-                        // recipients is the talker's diplomacy VOICE mask, with the same rules
-                        // as Chat's: 0xff (or a room not yet running) is the whole room,
+    VoiceUp,            // C->S: u16 seq | u16 recipients | u8 flags | u16 len | len bytes Opus.
+                        // recipients (u16 SlotMask since 343) is the talker's diplomacy VOICE mask,
+                        // with the same rules as Chat's: kEverySlot (or a room not yet running) is the whole room,
                         // spectators included; otherwise the seated players whose bit is set.
                         // Never echoed to the talker. len <= kVoiceMaxOpus; 0 exactly with END
                         // (which is never combined with START).
@@ -423,7 +429,7 @@ struct GameOptions {
     // Start Locations (the name is from when it was a RANDOM toggle; the byte keeps its
     // place): kStartsFixed (0) = the SEATED slots take the map's starts in slot order
     // and an empty seat takes none, as retail does -- a human in slot 1 and an AI in
-    // slot 8 start at StartPos1 and StartPos2; kStartsRandom (1) = the starts are
+    // slot 10 start at StartPos1 and StartPos2; kStartsRandom (1) = the starts are
     // shuffled for the match; kStartsBySlot (2, not retail) = slot N takes StartPos N
     // whichever seats are empty, and a slot past the map's last start takes the lowest
     // start no seated slot claims (sim::startSpotsFor). Other values read as RANDOM

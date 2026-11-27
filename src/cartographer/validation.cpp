@@ -107,8 +107,8 @@ std::vector<MapIssue> validateRuleOperands(bool action,const ta::crt::Rule& rule
         }
         if(params[s]==PKind::Player) {
             bool valid=value=="all players";
-            for(int p=1;p<=8;++p)valid|=value=="player "+std::to_string(p) || value==std::to_string(p);
-            if(!valid)issue(field+"choose All Players or Player 1 through Player 8");
+            for(int p=1;p<=ta::crt::kMaxOwners;++p)valid|=value=="player "+std::to_string(p) || value==std::to_string(p);
+            if(!valid)issue(field+"choose All Players or Player 1 through Player 10");
         }
         if(params[s]==PKind::Value) {
             const auto first=raw.find_first_not_of(" \t\r\n"),last=raw.find_last_not_of(" \t\r\n");
@@ -160,7 +160,7 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
         if(unit.name.size()>31)issue(label+": in-game display name is limited to 31 bytes",unit.x,unit.z);
         if(unit.vertical!=200)issue(label+": vertical placement is preserved but ignored by retail",unit.x,unit.z);
         if(!inside(unit.x,unit.z)) {issue(label+": outside map",-1,-1,true);continue;}
-        if(unit.player<0 || unit.player>8)issue(label+": invalid owner",unit.x,unit.z,true);
+        if(unit.player<0 || unit.player>ta::crt::kNeutralOwner)issue(label+": invalid owner",unit.x,unit.z,true);
         if(!restrictions.empty() && !restrictions.count(folded(unit.type)))issue(label+": Use Only prevents constructing more of this type (this placement remains)",unit.x,unit.z);
         const auto* type=registry.find(folded(unit.type));
         if(!type) {issue(label+": unknown unit type",unit.x,unit.z,true);continue;}
@@ -173,7 +173,7 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
     }
     if(metadata.starts.empty())issue("No player start positions");
     else if(metadata.starts.size()<2)issue("Fewer than two player starts; ordinary skirmishes need at least two");
-    if(metadata.starts.size()>8)issue("More than eight player starts; only eight players can join a match");
+    if(metadata.starts.size()>size_t(ta::crt::kMaxOwners))issue("More than ten player starts; only ten players can join a match");
     struct StartCandidate {const ta::sim::UnitType* type;float x,z;int number;};
     std::vector<StartCandidate> startCandidates;
     std::set<std::pair<int,int>> startCells;
@@ -181,7 +181,7 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
     for(size_t i=0;i<metadata.starts.size();++i) {
         const auto& start=metadata.starts[i];float x=start.xpos*16.f,z=start.zpos*16.f;
         const auto label="Start "+std::to_string(start.number);
-        if(start.number<1 || start.number>8)issue(label+": start number must be 1 through 8",x,z,true);
+        if(start.number<1 || start.number>ta::crt::kMaxOwners)issue(label+": start number must be 1 through 10",x,z,true);
         if(!startNumbers.insert(start.number).second)issue(label+": duplicate start number (the engine keeps only one)",x,z,true);
         if(!inside(x,z)) {issue(label+": outside map",-1,-1,true);continue;}
         if(!startCells.insert({start.xpos,start.zpos}).second)issue(label+": overlaps another start",x,z);
@@ -195,13 +195,13 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
         }
         if(!blocked.empty())issue(label+": unsuitable for "+blocked,x,z);
     }
-    for(int n=1;n<=int(metadata.starts.size()) && n<=8;++n)if(!startNumbers.count(n)) {
+    for(int n=1;n<=int(metadata.starts.size()) && n<=ta::crt::kMaxOwners;++n)if(!startNumbers.count(n)) {
         issue("Start numbering has a gap at "+std::to_string(n)+"; use consecutive numbers for predictable slot order");break;
     }
     // Use the same observational connectivity query as the AI. It resolves a
     // blocked endpoint to nearby occupiable ground, so these are approach-route
     // warnings, not guarantees about the exact destination cell or build site.
-    if(metadata.starts.size()<=8)for(const auto& side:ta::sides::all()) {
+    if(metadata.starts.size()<=size_t(ta::crt::kMaxOwners))for(const auto& side:ta::sides::all()) {
         const auto* monarch=registry.find(side.commander);if(!monarch || monarch->canFly)continue;
         for(size_t i=0;i<metadata.starts.size();++i) {
             const auto& start=metadata.starts[i];const float x=start.xpos*16.f,z=start.zpos*16.f;
@@ -238,7 +238,7 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
     }
     // Add occupants only after the terrain/connectivity checks, so diagnostics
     // distinguish authored terrain from units that may move during play.
-    world->setPlayerCount(8);
+    world->setPlayerCount(ta::sim::kMaxPlayers);
     std::vector<int> factories;
     for(size_t i=0;i<units.size();++i) {
         const auto& unit=units[i];const auto* type=registry.find(folded(unit.type));
@@ -247,7 +247,7 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
             issue((unit.name.empty()?unit.type:unit.name)+": engine placement blocked by earlier preplaced units",unit.x,unit.z);
         // Ownership does not affect this observational occupancy check. Keep
         // the CRT neutral slot valid without inventing an extra match player.
-        const int id=world->spawn(type,unit.x,unit.z,unit.angle*3.14159265f/180.f,std::clamp(unit.player,0,7));
+        const int id=world->spawn(type,unit.x,unit.z,unit.angle*3.14159265f/180.f,std::clamp(unit.player,0,ta::sim::kMaxPlayers-1));
         if(type->isStructure() && id)factories.push_back(id);
     }
     for(const int id:factories) {

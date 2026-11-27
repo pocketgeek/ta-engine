@@ -37,6 +37,10 @@ public:
 
     int width() const;
     int height() const;
+    // A pixel's width over its height (the stream's sample aspect ratio; 1 when it
+    // has none). TA's Smacker movies 1..4.zrb are 640x240 with the Y-interlaced flag
+    // (header flags 0x2): FFmpeg gives them 1:2, shown at 640x480 (4:3).
+    double pixelAspect() const;
     double fps() const;   // frames per second (from the stream; ~30 for the doors)
     // Total frames, or 0 if the container does not say. Lets a caller drive
     // playback position from something other than wall-clock -- the loading

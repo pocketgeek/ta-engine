@@ -22,6 +22,10 @@ namespace ta::sim {
 
 class TypeRegistry;
 
+// A set of seats: bit p = owner p, 0..kMaxPlayers-1 (sim.h; ten, as retail).
+using SeatMask = uint16_t;
+inline constexpr SeatMask kAllSeats = SeatMask((1u << 10) - 1);
+
 enum class ScenarioStatus : uint8_t {
     Ok,             // offerable
     NoScenario,     // no/unparseable .ota, or hasscenario=0 without CRT content
@@ -29,7 +33,7 @@ enum class ScenarioStatus : uint8_t {
     CrtMissing,     // hasscenario=1, no .crt
     CrtDamaged,     // .crt is not version 1
     Empty,          // no placed unit and no rule group with a condition or action
-    BadOwner,       // a placement owner outside 0..8 (or rules past the neutral bank)
+    BadOwner,       // a placement owner outside 0..9 and neutral (or rules past the neutral bank)
     UseOnlyBroken,  // useonlyunits is not "<map>.tdf" beside the map, or the file is missing/unreadable
     MissingType,    // (registry check) a placed or Use Only type this install lacks
 };
@@ -40,8 +44,8 @@ struct ScenarioInfo {
     bool marker = false;        // [TAPlaytest] authoredscenario != 0 (a Test Map copy)
     bool crtValid = false;      // .crt present and version 1
     int placed = 0;             // placed units, every owner
-    uint8_t placedSeats = 0;    // bit p: owner p (0..7) has placed units
-    uint8_t ruleSeats = 0;      // bit p: rule bank p+1 (Player p+1) has a group with rules
+    SeatMask placedSeats = 0;   // bit p: owner p (0..9) has placed units
+    SeatMask ruleSeats = 0;     // bit p: rule bank p+1 (Player p+1) has a group with rules
     bool sharedRules = false;   // bank 0 (All Players) has a group with rules
     bool outcomes = false;      // some group has a Victory/Defeat action
     // -1 = unrestricted, else how many types the Use Only list allows (0 = nothing
@@ -58,11 +62,11 @@ struct ScenarioInfo {
     // fight, build or move -- or its rule bank or All Players' creates units. Placements
     // replace every Monarch, so a seat outside this mask starts with nothing to play.
     // Every seat without a registry.
-    uint8_t armySeats = 0xFF;
+    SeatMask armySeats = kAllSeats;
     std::string detail;         // MissingType: the type; UseOnlyBroken: the file name
     bool runnable() const { return hasScenario && crtValid; }
     bool content() const { return placed > 0 || ruleSeats != 0 || sharedRules; }
-    uint8_t requiredSeats() const { return placedSeats | ruleSeats; }   // == setupMatch's seat rule
+    SeatMask requiredSeats() const { return placedSeats | ruleSeats; }   // == setupMatch's seat rule
     // Player 1 -- the room's creator, and in single player the human -- has an army
     // once the scenario's placements replace the Monarchs (rules-only maps keep them).
     bool seatOneArmy() const { return placed == 0 || (armySeats & 1) != 0; }
@@ -87,7 +91,7 @@ struct ScenarioInfo {
 ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, const TypeRegistry* reg = nullptr);
 
 // 1-based seat list: "1-4", "1 3", "2 5-8" (runs of three or more collapse). "" for none.
-std::string seatList(uint8_t seats);
+std::string seatList(SeatMask seats);
 
 struct ScenarioLine { std::string text; bool warning = false; };
 // Why the CHANGE MAP panel greys the button (uppercase, <= 26 characters a line): the

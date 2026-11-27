@@ -138,6 +138,8 @@ public:
     // The AI profile script (the map's aiprofile file, chosen by the server,
     // ai/classicprofile.h) the retail brain reads its per-type weights from.
     void setClassicProfile(const ClassicProfileScript& script);
+    // A campaign mission's opponent (retail scenario mode 1): no downloadable builds.
+    void setCampaign(bool on);
     const class TaRetailBrain* retailBrain() const { return retail_.get(); }
 
     // Read-only identity, for the debug roster dump (server/rosterdump.h).

@@ -37,7 +37,7 @@ struct Params {
     std::string name;               // optional ASCII map title, up to 24 characters
     uint8_t  mapType = Green;
     uint16_t widthCells = 256, heightCells = 256;   // multiples of 32, clamped
-    uint8_t  players = 2;            // 2..8
+    uint8_t  players = 2;            // 2..kMaxPlayers
     uint8_t  treeDensity = 128;      // (unused by the TA generator)
     uint8_t  rockDensity = 96;       // (unused)
     uint8_t  manaDensity = 128;      // (unused)
@@ -83,8 +83,11 @@ std::vector<std::string> assetPaths(const hpi::Vfs& vfs);
 // The map sizes the menus offer, in sections (32 cells) per side.
 constexpr int kSizeSteps[] = {8, 12, 16, 20, 24, 32, 40, 48, 56, 64};
 
-// Clamp UI inputs: a known world, section multiples (8..64 per side), 2..8 players,
-// a safe name.
+// The most start positions a random map gets: one per player (sim::kMaxPlayers, retail's ten).
+constexpr int kMaxPlayers = 10;
+
+// Clamp UI inputs: a known world, section multiples (8..64 per side), 2..kMaxPlayers
+// players, a safe name.
 Params sanitize(Params p);
 
 }  // namespace ta::mapgen

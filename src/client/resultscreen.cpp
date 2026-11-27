@@ -222,13 +222,12 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                             (!victory && !title.empty());
 
     // A choice plays its button's click on the press, as the title menu's doors do,
-    // then the plate stays up until the click has sounded: leaving closes the device.
+    // and leaves at once: the shared click device plays it to the end.
     MenuSfx sfx(vfs);
     sfx.settings = settings;
     sfx.load(g.menuSound);
     sfx.load(g.proceedSound);
     std::optional<ResultChoice> chosen;
-    int leaving = 0;   // frames drawn since the choice; bounded well above the ~140ms clicks
     // Debug: TA_RESULT_PRESS=menu|proceed presses that button on the first frame (as
     // a real left-button press event) and reports the click it played; with
     // TA_SHOT_RESULT and dummy video the screen then waits out the click before it
@@ -270,7 +269,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
 
     for (;;) {
         if (termRequested()) { freeAll(); return ResultChoice::Menu; }
-        if (chosen && (!sfx.busy() || ++leaving > 30)) { freeAll(); return *chosen; }
+        if (chosen) { freeAll(); return *chosen; }   // the click plays on (MenuSfx)
         int w = 0, h = 0;
         SDL_GetRendererOutputSize(ren, &w, &h);
         GuiLayout lay(w, h);

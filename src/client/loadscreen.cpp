@@ -147,13 +147,13 @@ LoadScreen::~LoadScreen() {
     if (movieTex_) gpuvram::destroy(movieTex_);
 }
 
-void LoadScreen::setPlayers(const std::array<std::string, 8>& names, int you) {
+void LoadScreen::setPlayers(const std::array<std::string, ta::net::kMaxSlots>& names, int you) {
     names_ = names;
     you_ = you;
 }
 
 void LoadScreen::setSlotDone(int slot) {
-    if (slot >= 0 && slot < 8) done_[size_t(slot)] = true;
+    if (slot >= 0 && slot < ta::net::kMaxSlots) done_[size_t(slot)] = true;
 }
 
 void LoadScreen::step(const std::string& status, int pct) {
@@ -279,7 +279,7 @@ void LoadScreen::draw() {
     // percentage; a peer's fills when the server says they reported in. Rows pack
     // upward -- an open slot in the middle doesn't leave a gap.
     int row = 0;
-    for (int i = 0; i < 8 && row < 7; ++i) {
+    for (int i = 0; i < ta::net::kMaxSlots && row < 7; ++i) {
         if (names_[size_t(i)].empty()) continue;   // open/closed slot: no row
         label(names_[size_t(i)], g.name[row], gold);
         float frac = (i == you_) ? pct_ / 100.0f : (done_[size_t(i)] ? 1.0f : 0.0f);

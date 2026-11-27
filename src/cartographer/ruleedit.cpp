@@ -31,7 +31,7 @@ std::vector<RuleTemplate> ruleTemplates(int player,const std::string& unitType,c
         result.push_back({std::move(name),std::move(description),std::move(group)});
     };
     const auto where=location.empty()?"Anywhere":location;
-    if(player>=0 && player<=8)
+    if(player>=0 && player<=ta::crt::kMaxOwners)
         add("Opening message",player==0?"Show a briefing to all players at the start.":"Show a briefing to this player at the start.",
             {0,{}},{13,{player==0?"All Players":"Player "+std::to_string(player),"Complete your objective."}});
     add("Timed victory","Win after five minutes. Edit the condition to change the time.",

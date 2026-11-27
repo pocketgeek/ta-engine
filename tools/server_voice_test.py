@@ -7,7 +7,7 @@ Three players and a spectator in one room. Voice frames are opaque to the server
   listen      a connection that never sent VoiceListen 1 receives no voice
   lobby       before the game runs a frame reaches the whole room, whatever the mask
   mask        in a running game the talker's VOICE mask picks the seated recipients,
-              exactly as chat's does: one player, everyone (0xff), nobody (0); the
+              exactly as chat's does: one player, everyone (0xffff), nobody (0); the
               spectators only with the SPECTATORS flag (316), and a spectator reaches no
               player at all; nobody hears themselves
   names       the talker's name rides on START frames (and every 25th), its slot always
@@ -118,7 +118,7 @@ class Listener:
 
 def up(seq, recipients, flags=0, payload=None):
     payload = bytes([seq & 0xff]) * 60 if payload is None else payload
-    return struct.pack('<HBBH', seq, recipients, flags, len(payload)) + payload
+    return struct.pack('<HHBH', seq, recipients, flags, len(payload)) + payload
 
 
 def frame(kind, payload):
@@ -197,12 +197,12 @@ def main():
             got = heard('Alice', 0x02, 10)
             assert len(got['Bob']) == 1 and not got['Carol'] and not got['Dave'] and not got['Alice'], \
                 ('mask Bob', {k: len(x) for k, x in got.items()})
-            got = heard('Alice', 0xff, 11)
+            got = heard('Alice', 0xffff, 11)
             assert len(got['Bob']) == 1 and len(got['Carol']) == 1 and not got['Dave'] and not got['Alice'], \
-                'mask 0xff must reach every player, and not the spectator without the SPECTATORS flag'
-            got = heard('Alice', 0xff, 111, SPECTATORS)
+                'mask 0xffff must reach every player, and not the spectator without the SPECTATORS flag'
+            got = heard('Alice', 0xffff, 111, SPECTATORS)
             assert len(got['Bob']) == 1 and len(got['Carol']) == 1 and len(got['Dave']) == 1, \
-                'mask 0xff with the SPECTATORS flag must reach the spectator too'
+                'mask 0xffff with the SPECTATORS flag must reach the spectator too'
             assert not (got['Dave'][0]['flags'] & SPECTATORS), 'the SPECTATORS flag must not be relayed'
             got = heard('Alice', 0x00, 112, SPECTATORS)
             assert len(got['Dave']) == 1 and not got['Bob'] and not got['Carol'], 'the SPECTATORS flag alone: spectators only'
@@ -212,7 +212,7 @@ def main():
             assert len(got['Alice']) == 1 and not got['Bob'] and not got['Carol'] and not got['Dave'], \
                 'a mask with the talker\'s own bit must not echo, and must not leak'
             assert got['Alice'][0]['slot'] == 1 and got['Alice'][0]['name'] == 'Bob'
-            got = heard('Dave', 0xff, 14, START | SPECTATORS)
+            got = heard('Dave', 0xffff, 14, START | SPECTATORS)
             assert not any(got[n] for n in ('Alice', 'Bob', 'Carol', 'Dave')), 'a spectator must reach no player in game'
             got = heard('Alice', 0x04, 15)
             assert got['Carol'][0]['opus'] == bytes([15]) * 60 and got['Carol'][0]['seq'] == 15, 'payload intact'
@@ -259,11 +259,11 @@ def main():
             # audio goes out. 250 bare ENDs in a second (under the disconnect threshold) reach
             # nobody; one audio frame followed by 50 ENDs delivers that frame and one END.
             time.sleep(1.1)
-            L['Alice'].raw(b''.join(frame('VoiceUp', up(800 + i, 0xff, END, b'')) for i in range(250)))
+            L['Alice'].raw(b''.join(frame('VoiceUp', up(800 + i, 0xffff, END, b'')) for i in range(250)))
             assert L['Bob'].voice(0.8) == [], 'bare END markers were relayed'
             time.sleep(1.1)
-            L['Alice'].raw(frame('VoiceUp', up(1100, 0xff, START)) +
-                           b''.join(frame('VoiceUp', up(1101 + i, 0xff, END, b'')) for i in range(50)))
+            L['Alice'].raw(frame('VoiceUp', up(1100, 0xffff, START)) +
+                           b''.join(frame('VoiceUp', up(1101 + i, 0xffff, END, b'')) for i in range(50)))
             v = L['Bob'].voice(0.8)
             assert [f['flags'] & (START | END) for f in v] == [START, END], [f['flags'] for f in v]
             assert not L['Alice'].closed, 'the talker lost its connection'
@@ -275,10 +275,10 @@ def main():
 
             # abuse: a flood far past the budget, a malformed frame, or a client posing as the
             # server each cost that connection only.
-            L['Carol'].raw(b''.join(frame('VoiceUp', up(i, 0xff)) for i in range(400)))
-            dave.send('VoiceUp', struct.pack('<HBBH', 1, 0xff, 0, 50) + b'x' * 10)
-            peers['Erin'].send('VoiceUp', up(1, 0xff, END, b'x' * 400))
-            peers['Frank'].send('VoiceUp', up(1, 0xff, START | END, b''))
+            L['Carol'].raw(b''.join(frame('VoiceUp', up(i, 0xffff)) for i in range(400)))
+            dave.send('VoiceUp', struct.pack('<HHBH', 1, 0xffff, 0, 50) + b'x' * 10)
+            peers['Erin'].send('VoiceUp', up(1, 0xffff, END, b'x' * 400))
+            peers['Frank'].send('VoiceUp', up(1, 0xffff, START | END, b''))
             bob.send('VoiceDown', struct.pack('<IBHBH', 1, 0, 0, 0, 0))
             deadline = time.monotonic() + 5
             while not all(L[n].closed for n in ('Carol', 'Dave', 'Erin', 'Frank', 'Bob')) and time.monotonic() < deadline:

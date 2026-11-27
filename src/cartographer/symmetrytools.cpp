@@ -285,7 +285,7 @@ void cart::Editor::pasteTerrainAt(int bx,int bz) {
             auto mirrored=cart::mirrorClip(terrainClip,xf,symmetrySections(),featureFootprint(),why);
             if(!mirrored)break;
             const auto owners=cart::mirrorPlayers(scenario.starts,xf,map.width,map.height);
-            for(auto& unit:mirrored->units)if(unit.player>=0 && unit.player<=8)unit.player=owners[size_t(unit.player)];
+            for(auto& unit:mirrored->units)if(unit.player>=0 && unit.player<=ta::crt::kNeutralOwner)unit.player=owners[size_t(unit.player)];
             mirrors.push_back({std::move(*mirrored),image});
         }
         if(!why.empty())mirrors.clear();

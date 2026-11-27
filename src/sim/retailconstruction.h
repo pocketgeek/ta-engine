@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <optional>
 #include "retailmission.h"
+#include "retailgoal.h"
+#include "footprint.h"
 #include "fixed.h"
 
 namespace ta::sim {
@@ -23,6 +25,28 @@ inline bool retailBuildWithinReach(Fixed x,Fixed z,Fixed gx,Fixed gz,
         return int(isqrt64(uint64_t(int64_t(width)*width+int64_t(height)*height)*64));
     };
     return distance-edge(fx,fz)-edge(siteFx,siteFz)<=reach;
+}
+
+// TotalA.exe HelpBuild (0x403f70) stage 0 (0x403fd9..0x404053), emulated
+// (unicorn, 2026-11-26): the approach is the ring controller 0x44d3b0 round
+// the site's position (+0x6a), installed through 0x438a00(pos, outer, inner)
+// with wait mask 0xe8. inner = ftol(sqrt(fx*fx + 2*fz) * 16.0) / 2 (signed,
+// toward zero), fx/fz the SITE type's footprint (+0x14a/+0x14c): the x87
+// sequence 0x40401d..0x404023 (fld st1; fmul st,st2; fadd st,st1; fadd
+// st,st1) adds footprintz twice where a diagonal would square it, so a 2x2
+// site gives 22, 4x4 39, 6x6 55, 5x4 45. outer = builddistance (+0x212,
+// unsigned) + inner. The ring's centre is snapped to the HELPER's footprint
+// origin (0x44d3c6: the mission's unit +0x7e), and it accepts a footprint
+// origin (in/16)^2 <= d^2 <= (out/16)^2 (0x44d7c0). The square root is taken
+// whole: floor(16 sqrt(s)) = isqrt(256 s) for an integer s.
+inline RetailRingGoal retailHelpBuildRing(Fixed siteX,Fixed siteZ,int16_t siteFx,int16_t siteFz,
+                                          int helperFx,int helperFz,uint16_t buildDistance) {
+    const int64_t s=int64_t(siteFx)*siteFx+2*int64_t(siteFz);
+    const int32_t diagonal=s>0 ? int32_t(isqrt64(uint64_t(s)*256)) : 0;
+    const int32_t inner=diagonal/2;
+    const int32_t outer=int32_t(buildDistance)+inner;
+    return {footprintOrigin(siteX,helperFx),footprintOrigin(siteZ,helperFz),inner,outer,
+            retailCircleRadiusSquared(outer)};
 }
 
 // COB BUILD_PERCENT_LEFT (TotalA.exe GET 17, 0x480a44): unfinished work maps

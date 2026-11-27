@@ -344,11 +344,12 @@ namespace {
         if (miniTex_) { gpuvram::destroy(miniTex_); miniTex_ = nullptr; }
     }
 
-    int GameView::cmdPanelW() const { return taSideW(); }
+    int GameView::cmdPanelW() const { return hudColW(); }
 
-    // Window coordinates. TotalA.exe's minimap (0x466780) is the map fitted into a
-    // 126x126 box at the side panel's top-left corner: the longer side 126 pixels,
-    // the shorter one 126 * its share, centred on that axis (0x4667c6 / 0x4667eb).
+    // Window coordinates. The minimap is the map fitted into a box at the top of the
+    // right-hand column (126 x UI SCALE x MINIMAP SCALE, as TotalA.exe's 0x466780
+    // fits it into 126x126): the longer side fills the box, the shorter one its share,
+    // centred on that axis (0x4667c6 / 0x4667eb).
     SDL_FRect GameView::minimapRect(int winW, int winH) const {
         const float bx = float(mapView_.map().blocksX), by = float(mapView_.map().blocksY);
         float aspect = by / std::max(1.0f, bx);
@@ -361,11 +362,12 @@ namespace {
             if (h > vh) { h = vh; w = vh / aspect; }
             return {float(viewX0()) + (vw - w) * 0.5f, float(viewY0()) + (vh - h) * 0.5f, w, h};
         }
-        const float box = 126.0f * uiScale_;
+        const float box = miniBoxSize();
         float w = box, h = box;
-        if (bx >= by) h = std::floor(126.0f * by / std::max(1.0f, bx)) * uiScale_;
-        else w = std::floor(126.0f * bx / std::max(1.0f, by)) * uiScale_;
-        return {std::floor((box - w) / 2), std::floor((box - h) / 2), w, h};
+        if (bx >= by) h = std::floor(box * by / std::max(1.0f, bx));
+        else w = std::floor(box * bx / std::max(1.0f, by));
+        const float colX = float(winW - hudColW());
+        return {std::floor(colX + (float(hudColW()) - w) / 2), std::floor(hudColPad() + (box - h) / 2), w, h};
     }
 
     void GameView::buildMinimap() {
@@ -407,26 +409,18 @@ namespace {
         });
     }
 
-    void GameView::drawStatsPanel(int winW, int winH) {
+    float GameView::drawStatsPanel(float x0, float x1, float top, float bot) {
         // The rows draw in the UI face (blockText -> ta::uiText), not hudFont_: that is
         // fonts/bodfontbody.gaf, a Kingdoms font TA does not ship, and gating on it hid
         // the panel (and a benchmark run's PATHFINDER row) on every TA install.
-        statsBottom_ = 0;
-        if (!statsPanel_) return;
+        if (!statsPanel_) return top;
 
-        // WHERE IT GOES. TA's frame leaves no free strip (the side panel is the
-        // minimap and the sidebar page), so the readout is a column in the world
-        // view's top-right corner, in view coordinates (drawn through the view's
-        // viewport, like the other in-view overlays).
-        (void)winW; (void)winH;
-        const float pad = std::max(4.0f, 6.0f * uiScale_);
-        const float viewW = float(mapViewW(winW_)), viewH = float(mapViewH(winH_));
-        float x1 = viewW - pad;
-        float x0 = std::max(pad, x1 - 190.0f * uiScale_);
-        float top = pad;
-        const float bot = viewH - pad;
+        // WHERE IT GOES: the right-hand column, under the minimap and the selected
+        // unit's readout (window coordinates, x0..x1 from `top` down to `bot`), at
+        // UI SCALE x STATS SCALE.
+        const float pad = std::max(4.0f, 6.0f * statsScaleEff());
         float availW = x1 - x0, availH = bot - top;
-        if (availW <= 8 || availH <= 4) return;
+        if (availW <= 8 || availH <= 4) return top;
 
         // WHAT TO SHOW, most useful first. Rows are dropped from the END of this list,
         // so the ordering is the priority ordering: frame rate before link quality before
@@ -541,7 +535,7 @@ namespace {
         // per-character budget is the block cell (6), or the UI font's average over
         // such a row when that is wider, so the columns never meet in either face.
         constexpr int kColBudget = 18;
-        const float px = 1.7f * uiScale_;
+        const float px = 1.7f * statsScaleEff();
         const float glyphW = std::max(6.0f, blockWidth("SERVER CPU 9999 MB", 1.0f) / float(kColBudget));
         const ta::hud::StatsFit fit =
             ta::hud::fitStats(int(rows.size()), availW, availH, kColBudget,
@@ -550,8 +544,8 @@ namespace {
                                // runs to hundreds of pixels while nine rows need barely a
                                // hundred, so there is room to spare -- and this only ever
                                // feeds the HEIGHT fit, never the type size.
-                               /*rowPad=*/6.0f * uiScale_);
-        if (!fit.visible) return;
+                               /*rowPad=*/6.0f * statsScaleEff());
+        if (!fit.visible) return top;
         rows.resize(size_t(fit.rows));
 
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
@@ -569,7 +563,6 @@ namespace {
             blockText(r.value, x1 - blockWidth(r.value, px), y, px, mc);
             y += fit.rowH;
         }
-        statsBottom_ = y;
 #ifndef NDEBUG
         // TA_BENCH_REPORT: the rows as drawn during a run, for benchmark_pathfinding.
         static bool reported = false;
@@ -579,6 +572,7 @@ namespace {
             std::fflush(stdout);
         }
 #endif
+        return y;
     }
 
     void GameView::drawMinimap(int winW, int winH) {
@@ -967,21 +961,21 @@ namespace {
             SDL_SetRenderDrawColor(ren_, 157, 145, 100, 155);
             SDL_RenderDrawLineF(ren_, x, y, x + width, y);
             SDL_RenderDrawLineF(ren_, x, y + rowH, x + width, y + rowH);
-            std::string name = playerName_[t & 7];
+            std::string name = playerName_[t % ta::sim::kMaxPlayers];
             if (name.empty()) name = "P" + std::to_string(t + 1) + " " + sides[t];
-            if (playerAi_[t & 7] && name.rfind("AI ", 0) != 0) name = "AI " + name;
+            if (playerAi_[t % ta::sim::kMaxPlayers] && name.rfind("AI ", 0) != 0) name = "AI " + name;
             if (player.defeated) name += " (OUT)";
             const SDL_Color color = player.defeated ? SDL_Color{160,160,160,255} : white;
             std::string side = sides[t];
             // Keep the emblem after defeat, when no living unit supplies a side.
-            if (!side.empty()) scoreboardSides_[t & 7] = side;
-            else side = scoreboardSides_[t & 7];
+            if (!side.empty()) scoreboardSides_[t % ta::sim::kMaxPlayers] = side;
+            else side = scoreboardSides_[t % ta::sim::kMaxPlayers];
             if (!player.side.empty()) side = player.side;
             const std::string seq = ta::factionLogoSequence(side);
-            const std::string key = seq + std::to_string(colorSlot_[t & 7]);
+            const std::string key = seq + std::to_string(colorSlot_[t % ta::sim::kMaxPlayers]);
             auto [it, inserted] = scoreboardLogos_.try_emplace(key, nullptr);
             if (inserted && !seq.empty())
-                it->second = loadGuiFrame(ta::kFactionLogoGaf, seq, colorSlot_[t & 7]);
+                it->second = loadGuiFrame(ta::kFactionLogoGaf, seq, colorSlot_[t % ta::sim::kMaxPlayers]);
             SDL_FRect emblem{x + 2 * scale, y + 2 * scale, 28 * scale, 28 * scale};
             if (it->second) SDL_RenderCopyF(ren_, it->second, nullptr, &emblem);
             else {
@@ -1059,219 +1053,152 @@ namespace {
         blockText("[O] HIDE", x0, y + 4, s, {190, 198, 212, 255});
     }
 
+    // The build row: the selected builder's menu as a row of pictures along the
+    // bottom of the world view, as the TAK engine draws its conjure menu -- or several
+    // rows, stacked upward, when a long menu does not fit (client/buildrow.h, the one
+    // place the row's geometry is computed). Where the rows sit along the bottom is a
+    // user preference (Options BUILD MENU: left / centered / right), their size BUILD
+    // MENU SCALE on top of UI SCALE. The menu is the builder's TA build pages in page
+    // and slot order (TypeRegistry::loadBuildTree), and a stockpiling unit's MAKENUKE /
+    // MAKEANTI button is its one entry. Each picture shows how many are queued, +++
+    // for repeated production, and the hovered one's name, description and cost.
     void GameView::drawPanel(int winW, int winH) {
-        // Bottom bar: the engine's own strip (TA's interface is the sidebar page and
-        // the top bar, gameview_tahud.cpp). The build menu below draws on top.
         selPortraitRects_.clear();
-        const bool guiBar = false;
-        SDL_FRect bar{0, float(winH - barH()), float(winW), float(barH())};
-        {
-            SDL_SetRenderDrawColor(ren_, 42, 38, 34, 255);
-            SDL_RenderFillRectF(ren_, &bar);
-            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 90);
-            SDL_RenderFillRectF(ren_, &bar);
-            SDL_SetRenderDrawColor(ren_, 120, 105, 80, 255);
-            SDL_RenderDrawLineF(ren_, 0, bar.y, float(winW), bar.y);
-        }
-        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-
-        char buf[96];
-        SDL_Color fc = factionColor();
-        // A solid faction-coloured panel with a dark frame — black text on top.
-        auto shade = [&](float x, float w) {
-            SDL_FRect z{x, bar.y + 4, w, barH() - 8.0f};
-            SDL_SetRenderDrawColor(ren_, fc.r, fc.g, fc.b, 255);
-            SDL_RenderFillRectF(ren_, &z);
-            SDL_SetRenderDrawColor(ren_, 20, 18, 16, 255);
-            SDL_RenderDrawRectF(ren_, &z);
-        };
-
-        // Bottom-LEFT: portrait + stats for the selected unit.
-        // A multi-selection's other types sit LEFT of the portrait. This block is
-        // pinned to the screen's left edge, so it widens instead: the strip takes the
-        // left of the panel, the portrait and stats move right past it (up to the
-        // right-hand reserve), and the portrait still leads its strip.
-        if (!guiBar && !selection_.empty() && statFont_.ok()) {
-            const auto* u = frameUnitP(selection_.front());
-            if (u && u->alive() && u->type) {
-                float px = 8;
-                // The strip's room runs from the panel's right edge to winW - 200, less
-                // a gap: full size until it would reach that reserve.
-                const float gap = 4, room = ta::selportraits::room(px + 288, float(winW) - 200, 8);
-                SDL_FRect pr{px + 4, bar.y + 8, 56, barH() - 20.0f};
-                float strip = 0;
-                if (selection_.size() > 1)
-                    strip = ta::selportraits::layout(int(selTypeGroups().size()), pr.w, pr.h, gap,
-                                                      room, kSelPortraitMinScale).width;
-                pr.x += strip;
-                shade(px, 288 + strip);
-                SDL_Texture* ic = selection_.size() > 1 ? nullptr : iconFor(u->type->id);
-                if (ic) {
-                    SDL_RenderCopyF(ren_, ic, nullptr, &pr);
-                    SDL_SetRenderDrawColor(ren_, 20, 18, 16, 255);
-                    SDL_RenderDrawRectF(ren_, &pr);
-                }
-                // A multi-selection draws its front portrait in the strip, sized like the rest.
-                if (selection_.size() > 1) drawSelPortraits(pr, room, gap, 1.8f);   // same layout as above
-                float tx = px + 70 + strip;
-                SDL_Color blk{0, 0, 0, 255};
-                if (selection_.size() > 1) {   // the group: its squad label + HP totals
-                    blockText(selSquadLabel(), tx, bar.y + 9, 2.6f, blk);
-                    const auto t = selTotals();
-                    std::snprintf(buf, sizeof buf, "HP %d/%d", int(t.hp), int(t.maxHp));
-                } else {
-                    blockText(u->displayName(), tx, bar.y + 9, 2.6f, blk);
-                    std::snprintf(buf, sizeof buf, "HP %d/%d", int(u->hp),
-                                  int(u->type->maxHp));
-                }
-                blockText(buf, tx, bar.y + 32, 2.3f, blk);
-                if (selection_.size() > 1) {
-                    std::snprintf(buf, sizeof buf, "%zu SELECTED", selection_.size());
-                    blockText(buf, tx, bar.y + 52, 1.8f, blk);
-                }
-            }
-        }
-
-        // Conjure menu: clickable build icons for the selected builder, in a
-        // horizontal row just above the info bar -- or several, stacked upward, when a
-        // long menu does not fit left of the command panel (client/buildrow.h, the one
-        // place the row's geometry is computed). Where the rows sit along the bottom is
-        // a user preference (Options "BUILD MENU": left / centered / right).
         iconRects_.clear();
         buildMenuRect_ = {};
         buildRowTop_ = 0;
-        // TA builds from the sidebar's build pages (renderTaHud), not a bottom row.
-        const UnitR* b = nullptr;   // never: TA builds from the sidebar (renderTaHud)
-        if (b) {
-            // Mission-filtered; an entry naming no known type takes no slot.
-            std::vector<const ta::sim::UnitType*> menu;
-            for (const auto& id : conjureMenu(b->type->id))
-                if (const auto* bt = registry_.find(id)) menu.push_back(bt);
-            int n = int(menu.size());
-            // Row size: the bar height (already uiScale-scaled) times the user's
-            // extra BUILD MENU SCALE, so the row can grow independently of the HUD.
-            const auto lay = ta::buildrow::layout(n, bar.y, float(barH()), buildBarScale_,
-                                                   float(winW), float(mapViewW(winW)),
-                                                   buildBarAlign_);
-            // Everything drawn INSIDE an icon (the +++ badge, the queue count, the
-            // tooltip) is sized from the scale in effect, so a shrunken icon does not
-            // get full-size furniture spilling out of it.
-            const float bScale = lay.scale;
-            const float iconTop = lay.top;   // the top row: the tooltip and TRAINING sit over it
-            if (n > 0) {
-                buildMenuRect_ = {lay.box.x, lay.box.y, lay.box.w, lay.box.h};
-                buildRowTop_ = lay.bandTop;
-            }
-            // A recessed container behind the rows so the conjure menu reads as one HUD
-            // strip (matching the InfoPanel bar's dark inset + bronze frame).
-            if (n > 0 && guiBar) {
-                const SDL_FRect& box = buildMenuRect_;
-                SDL_SetRenderDrawColor(ren_, 14, 12, 10, 225);
-                SDL_RenderFillRectF(ren_, &box);
-                SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
-                SDL_RenderDrawRectF(ren_, &box);
-            }
-            bool tipShown = false;   // the hover tooltip takes the TRAINING line's spot
-            for (int i = 0; i < n; ++i) {
-                const auto* bt = menu[size_t(i)];
-                const auto& li = lay.icons[size_t(i)];
-                SDL_FRect r{li.x, li.y, li.w, li.h};
-                SDL_SetRenderDrawColor(ren_, 20, 18, 14, 235);
-                SDL_FRect rb{r.x - 1, r.y - 1, r.w + 2, r.h + 2};
-                SDL_RenderFillRectF(ren_, &rb);
-                SDL_Texture* ic = iconFor(bt->id);
-                // isStructure(), not the canmove flag: a Barracks icon should sit
-                // square like the building it is, not turned like a soldier.
-                if (!ic) ic = modelIconTex(bt->id, playerColorSlot(hudPlayer()),
-                                           !isStructure(bt));
-                if (ic) {
-                    // A few retail portraits differ by a pixel, and generated
-                    // model thumbnails are square. Fit both without distortion.
-                    int iw = 0, ih = 0;
-                    if (SDL_QueryTexture(ic, nullptr, nullptr, &iw, &ih) == 0 &&
-                        iw > 0 && ih > 0) {
-                        float scale = std::min(r.w / iw, r.h / ih);
-                        SDL_FRect imageRect{r.x + (r.w - iw * scale) / 2,
-                                            r.y + (r.h - ih * scale) / 2,
-                                            iw * scale, ih * scale};
-                        SDL_RenderCopyF(ren_, ic, nullptr, &imageRect);
-                    }
-                }
-                else {
-                    SDL_SetRenderDrawColor(ren_, 60, 55, 50, 255);
-                    SDL_RenderFillRectF(ren_, &r);
-                }
-                bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w &&
-                           mouseY_ >= r.y && mouseY_ <= r.y + r.h;
-                SDL_SetRenderDrawColor(ren_, hot ? 255 : 110, hot ? 230 : 100,
-                                       hot ? 120 : 70, 255);
-                SDL_RenderDrawRectF(ren_, &r);
-                // Infinite-build marker: bright +++ over the repeating unit's icon.
-                if (b->repeatType == bt) {
-                    float px = 2.8f * bScale;   // badges track the row scale
-                    float pw = blockWidth("+++", px);
-                    SDL_SetRenderDrawColor(ren_, 0, 0, 0, 180);
-                    SDL_FRect pb{r.x + (r.w - pw) / 2 - 3, r.y + 4 * bScale,
-                                 pw + 6, 22 * bScale};
-                    SDL_RenderFillRectF(ren_, &pb);
-                    blockText("+++", r.x + (r.w - pw) / 2, r.y + 7 * bScale, px,
-                              {120, 255, 130, 255});
-                }
-                // Queued-count badge (bottom-right of the icon): how many are queued.
-                if (int qc = frameQueuedCount(b->id, bt)) {
-                    char num[8];
-                    std::snprintf(num, sizeof num, "%d", qc);
-                    float px = 2.2f * bScale, nw = blockWidth(num, px);
-                    SDL_SetRenderDrawColor(ren_, 0, 0, 0, 205);
-                    SDL_FRect nb{r.x + r.w - nw - 7 * bScale,
-                                 r.y + r.h - 21 * bScale,
-                                 nw + 7 * bScale, 20 * bScale};
-                    SDL_RenderFillRectF(ren_, &nb);
-                    blockText(num, r.x + r.w - nw - 4 * bScale,
-                              r.y + r.h - 18 * bScale, px, {255, 235, 140, 255});
-                }
-                if (hot) {
-                    char tip[80];
-                    std::snprintf(tip, sizeof tip, "%s  %d METAL  %d ENERGY", bt->name.c_str(),
-                                  int(bt->buildCostMetal), int(bt->buildCostEnergy));
-                    float px = 2.0f * bScale;
-                    float tw = blockWidth(tip, px);
-                    // Kept left of the command panel like the icons (a right-aligned
-                    // row's last tooltip would otherwise hang over the strip).
-                    float tipx = std::max(6.0f, std::min(r.x + r.w / 2 - tw / 2,
-                                                         float(mapViewW(winW)) - tw - 6));
-                    SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
-                    SDL_FRect tb{tipx - 6, iconTop - 28 * bScale,
-                                 tw + 12, 26 * bScale};
-                    SDL_RenderFillRectF(ren_, &tb);
-                    blockText(tip, tipx, iconTop - 24 * bScale, px, {255, 240, 190, 255});
-                    tipShown = true;
-                }
-                iconRects_.push_back({r, bt});
-            }
-            if (!b->buildQueue.empty() && !tipShown) {
-                char q[64];
-                // Infinite production reads +++, as its icon's badge does: its
-                // queue always holds just the one it re-queues.
-                if (b->repeatType && b->buildQueue.front() == b->repeatType && b->buildQueue.size() == 1)
-                    std::snprintf(q, sizeof q, "TRAINING %s (+++)", b->buildQueue.front()->name.c_str());
-                else
-                    std::snprintf(q, sizeof q, "TRAINING %s (%zu)",
-                                  b->buildQueue.front()->name.c_str(),
-                                  b->buildQueue.size());
-                // From the top row's first icon, but never on into the command panel
-                // (a short right-aligned menu leaves the line little room).
-                const float qx = std::max(ta::buildrow::kEdge,
-                    std::min(lay.textX, float(mapViewW(winW)) - ta::buildrow::kEdge -
-                                            blockWidth(q, 1.8f * bScale)));
-                blockText(q, qx, iconTop - 24 * bScale, 1.8f * bScale,
-                          {160, 210, 255, 255});
-            }
+        stockIconRect_ = {};
+        stockIconName_.clear();
+        const UnitR* b = selectedBuilder();
+        if (!b || b->player != hudPlayer()) return;
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        // Mission-filtered; an entry naming no known type takes no slot.
+        std::vector<const ta::sim::UnitType*> menu;
+        for (const auto& id : conjureMenu(b->type->id))
+            if (const auto* bt = registry_.find(id)) menu.push_back(bt);
+        const std::string& stock = stockButtonOf(b->type->id);
+        const int n = int(menu.size()) + (stock.empty() ? 0 : 1);
+        if (n <= 0) return;
+        const float areaW = float(mapViewW(winW));
+        // Square cells: TA's unitpics are 64x64.
+        const auto lay = ta::buildrow::layout(n, float(winH), buildRowBaseH(), buildBarScale_,
+                                              areaW, areaW, buildBarAlign_, 1.0f);
+        // Everything drawn INSIDE an icon (the +++ badge, the queue count, the
+        // tooltip) is sized from the scale in effect, so a shrunken icon does not
+        // get full-size furniture spilling out of it.
+        const float bScale = lay.scale * uiScale_;
+        const float iconTop = lay.top;   // the top row: the tooltip and the BUILDING line sit over it
+        buildMenuRect_ = {lay.box.x, lay.box.y, lay.box.w, lay.box.h};
+        buildRowTop_ = lay.bandTop;
+        {   // a recessed container behind the rows so the menu reads as one HUD strip
+            const SDL_FRect& box = buildMenuRect_;
+            SDL_SetRenderDrawColor(ren_, 14, 12, 10, 200);
+            SDL_RenderFillRectF(ren_, &box);
+            SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
+            SDL_RenderDrawRectF(ren_, &box);
         }
-
-        drawIdleBuilders(winW, winH, bar.y);
-
+        auto fitPicture = [&](SDL_Texture* ic, const SDL_FRect& r) {
+            int iw = 0, ih = 0;
+            if (!ic || SDL_QueryTexture(ic, nullptr, nullptr, &iw, &ih) != 0 || iw <= 0 || ih <= 0) return false;
+            // Retail portraits are 64x64 and generated thumbnails square: fit without distortion.
+            const float k = std::min(r.w / float(iw), r.h / float(ih));
+            const SDL_FRect d{r.x + (r.w - float(iw) * k) / 2, r.y + (r.h - float(ih) * k) / 2, float(iw) * k, float(ih) * k};
+            SDL_RenderCopyF(ren_, ic, nullptr, &d);
+            return true;
+        };
+        auto badge = [&](const std::string& t, const SDL_FRect& r, SDL_Color c) {   // bottom-right
+            const float px = 2.2f * bScale, w = blockWidth(t, px);
+            const SDL_FRect nb{r.x + r.w - w - 7 * bScale, r.y + r.h - 21 * bScale, w + 7 * bScale, 20 * bScale};
+            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 205);
+            SDL_RenderFillRectF(ren_, &nb);
+            blockText(t, r.x + r.w - w - 4 * bScale, r.y + r.h - 18 * bScale, px, c);
+        };
+        std::string tip;
+        float tipCentre = 0;
+        for (int i = 0; i < n; ++i) {
+            const auto& li = lay.icons[size_t(i)];
+            const SDL_FRect r{li.x, li.y, li.w, li.h};
+            const bool isStock = i == int(menu.size());
+            const ta::sim::UnitType* bt = isStock ? nullptr : menu[size_t(i)];
+            const bool allowed = isStock || worldTables().buildAllowed(bt);
+            SDL_SetRenderDrawColor(ren_, 20, 18, 14, 235);
+            const SDL_FRect rb{r.x - 1, r.y - 1, r.w + 2, r.h + 2};
+            SDL_RenderFillRectF(ren_, &rb);
+            SDL_Texture* ic = iconFor(isStock ? b->type->id : bt->id);
+            if (!ic && bt) ic = modelIconTex(bt->id, playerColorSlot(hudPlayer()), !isStructure(bt));
+            if (!fitPicture(ic, r)) {
+                SDL_SetRenderDrawColor(ren_, 60, 55, 50, 255);
+                SDL_RenderFillRectF(ren_, &r);
+            }
+            if (!allowed) {   // a unit the game's rules forbid: dimmed, as the build pages grey it
+                SDL_SetRenderDrawColor(ren_, 0, 0, 0, 150);
+                SDL_RenderFillRectF(ren_, &r);
+            }
+            const bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w && mouseY_ >= r.y && mouseY_ <= r.y + r.h;
+            SDL_SetRenderDrawColor(ren_, hot ? 255 : 110, hot ? 230 : 100, hot ? 120 : 70, 255);
+            SDL_RenderDrawRectF(ren_, &r);
+            if (isStock) {
+                // The stockpile: the stock on hand, then " +N" still queued (0x4199b0, 0x439d80).
+                const char* what = stock.size() >= 8 && stock.compare(stock.size() - 8, 8, "MAKEANTI") == 0 ? "ANTI" : "NUKE";
+                const float px = 2.0f * bScale, w = blockWidth(what, px);
+                SDL_SetRenderDrawColor(ren_, 0, 0, 0, 180);
+                const SDL_FRect pb{r.x + (r.w - w) / 2 - 3, r.y + 4 * bScale, w + 6, 18 * bScale};
+                SDL_RenderFillRectF(ren_, &pb);
+                blockText(what, r.x + (r.w - w) / 2, r.y + 6 * bScale, px, {255, 200, 120, 255});
+                std::string caption;
+                if (b->stock[0]) caption = std::to_string(int(b->stock[0]));
+                if (b->stockQueued) caption += (caption.empty() ? "+" : " +") + std::to_string(b->stockQueued);
+                if (!caption.empty()) badge(caption, r, {255, 235, 140, 255});
+                stockIconRect_ = r;
+                stockIconName_ = stock;
+                if (hot) {
+                    tip = std::string(what[0] == 'A' ? "BUILD ANTI-MISSILE" : "BUILD NUCLEAR MISSILE") +
+                          "  LEFT +1  RIGHT -1  SHIFT 5";
+                    tipCentre = r.x + r.w / 2;
+                }
+                continue;
+            }
+            // Repeated production: a bright +++ over the repeating unit's picture.
+            if (b->repeatType == bt) {
+                const float px = 2.8f * bScale, pw = blockWidth("+++", px);
+                SDL_SetRenderDrawColor(ren_, 0, 0, 0, 180);
+                const SDL_FRect pb{r.x + (r.w - pw) / 2 - 3, r.y + 4 * bScale, pw + 6, 22 * bScale};
+                SDL_RenderFillRectF(ren_, &pb);
+                blockText("+++", r.x + (r.w - pw) / 2, r.y + 7 * bScale, px, {120, 255, 130, 255});
+            }
+            // How many are queued, bottom-right.
+            if (int qc = frameQueuedCount(b->id, bt)) badge(std::to_string(qc), r, {255, 235, 140, 255});
+            if (hot) {
+                tip = bt->name;
+                if (!bt->description.empty() && bt->description != bt->name) tip += " - " + bt->description;
+                char cost[64];
+                std::snprintf(cost, sizeof cost, "   %d METAL  %d ENERGY", int(bt->buildCostMetal), int(bt->buildCostEnergy));
+                tip += cost;
+                tipCentre = r.x + r.w / 2;
+            }
+            iconRects_.push_back({r, bt});
+        }
+        if (!tip.empty()) {
+            const float px = 2.0f * bScale, tw = blockWidth(tip, px);
+            const float tipx = std::max(6.0f, std::min(tipCentre - tw / 2, areaW - tw - 6));
+            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
+            const SDL_FRect tb{tipx - 6, iconTop - 28 * bScale, tw + 12, 26 * bScale};
+            SDL_RenderFillRectF(ren_, &tb);
+            blockText(tip, tipx, iconTop - 24 * bScale, px, {255, 240, 190, 255});
+        } else if (!b->buildQueue.empty()) {
+            // What it is building now: +++ for repeated production (its queue only
+            // ever holds the one it re-queues), else how many are queued.
+            char q[96];
+            const auto* front = b->buildQueue.front();
+            if (b->repeatType && front == b->repeatType && b->buildQueue.size() == 1)
+                std::snprintf(q, sizeof q, "BUILDING %s (+++)", front->name.c_str());
+            else
+                std::snprintf(q, sizeof q, "BUILDING %s (%zu)", front->name.c_str(), b->buildQueue.size());
+            const float px = 1.8f * bScale;
+            const float qx = std::max(ta::buildrow::kEdge,
+                                      std::min(lay.textX, areaW - ta::buildrow::kEdge - blockWidth(q, px)));
+            blockText(q, qx, iconTop - 24 * bScale, px, {160, 210, 255, 255});
+        }
     }
 
 // A builder of yours with nothing to do: a mobile builder with no work order, site,
@@ -1417,9 +1344,12 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         if (!resultParticipants_ || (*resultParticipants_ & (1u<<p))) players.push_back(p);
     const auto eligible=eligibleGiftRecipients();
     const auto shareMask=requestedSharing_.value_or(framePlayer(localPlayer_).shareResources);
-    const float scale=std::min({1.0f,float(winW)/1080.0f,float(winH)/550.0f});
+    // The players, then SPECTATORS; up to ten players (sim::kMaxPlayers) shrink the panel
+    // to the window's height rather than run off it.
+    const float rows=172+44*float(players.size()+1);
+    const float scale=std::min({1.0f,float(winW)/1080.0f,float(winH)/std::max(550.0f,rows+20)});
     const float width=1040*scale,rowH=38*scale;
-    const float height=(172+44*(players.size()+1))*scale;   // the players, then SPECTATORS
+    const float height=rows*scale;
     const float x=(winW-width)/2,y=(winH-height)/2;
     SDL_SetRenderDrawBlendMode(ren_,SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(ren_,0,0,0,160);
@@ -1772,7 +1702,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         // whatever the other end chose, so "SERVER" from the wire gets no special look.
         if (notice) return {255, 214, 120, 255};
         SDL_Color c{200, 205, 215, 255};
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < ta::sim::kMaxPlayers; ++i)
             if (!playerName_[i].empty() && same(playerName_[i], who)) { c = playerColor(i); break; }
         // Too dark to read on black (the blue player is): mix toward white, keeping the hue.
         const float lum = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
@@ -1807,7 +1737,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         // Above the information bar AND the build row, its TRAINING line and tooltip
         // (chatbox.h hudFloor): the box never covers HUD text, at any scale.
         const float barTop = float(winH - barH());
-        const float bottom = cb::hudFloor(barTop, float(barH()), buildBarScale_, buildRowTop_,
+        const float bottom = cb::hudFloor(barTop, buildRowBaseH(), buildBarScale_, buildRowTop_,
                                           hudShown(), margin);
         // The box may use 45% of the play area's height, so long as it fits above the
         // HUD; higher up it would start to cover the battle rather than annotate it.

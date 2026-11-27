@@ -253,14 +253,14 @@ std::optional<ta::crt::Region> mirrorRegion(const ta::crt::Region& region,Xf xf,
     return out;
 }
 int nextStartNumber(const std::vector<ta::tnt::StartPos>& starts) {
-    for(int n=1;n<=8;++n)if(std::none_of(starts.begin(),starts.end(),[&](const auto& s){return s.number==n;}))return n;
+    for(int n=1;n<=ta::crt::kMaxOwners;++n)if(std::none_of(starts.begin(),starts.end(),[&](const auto& s){return s.number==n;}))return n;
     return 0;
 }
-std::array<int,9> mirrorPlayers(const std::vector<ta::tnt::StartPos>& starts,Xf xf,int width,int height) {
-    std::array<int,9> players{};for(int i=0;i<9;++i)players[size_t(i)]=i;
-    for(const auto& start:starts)if(start.number>=1 && start.number<=8)
+std::array<int,ta::crt::kNeutralOwner + 1> mirrorPlayers(const std::vector<ta::tnt::StartPos>& starts,Xf xf,int width,int height) {
+    std::array<int,ta::crt::kNeutralOwner + 1> players{};for(int i=0;i<=ta::crt::kNeutralOwner;++i)players[size_t(i)]=i;
+    for(const auto& start:starts)if(start.number>=1 && start.number<=ta::crt::kMaxOwners)
         if(const auto image=mirrorStart(start,xf,width,height))
-            for(const auto& other:starts)if(other.number>=1 && other.number<=8 && other.xpos==image->xpos && other.zpos==image->zpos)
+            for(const auto& other:starts)if(other.number>=1 && other.number<=ta::crt::kMaxOwners && other.xpos==image->xpos && other.zpos==image->zpos)
                 players[size_t(start.number-1)]=other.number-1;
     return players;
 }
@@ -567,7 +567,7 @@ SymmetryReport symmetrize(ta::tnt::Map& map,std::vector<ta::tnt::StartPos>& star
             if(from)sources.push_back(units[i]);
             if(from || selection)kept.push_back(units[i]);else ++report.removedUnits;
         }
-        std::vector<std::array<int,9>> owners;for(Xf xf:images)owners.push_back(mirrorPlayers(starts,xf,width,height));
+        std::vector<std::array<int,ta::crt::kNeutralOwner + 1>> owners;for(Xf xf:images)owners.push_back(mirrorPlayers(starts,xf,width,height));
         std::vector<PlacedUnit> copies;
         for(const auto& unit:sources) {
             std::vector<std::pair<float,float>> seen{{unit.x,unit.z}};
@@ -576,7 +576,7 @@ SymmetryReport symmetrize(ta::tnt::Map& map,std::vector<ta::tnt::StartPos>& star
                 if(!image) {++report.skippedUnits;continue;}
                 if(std::find(seen.begin(),seen.end(),std::pair{image->x,image->z})!=seen.end())continue;
                 seen.push_back({image->x,image->z});
-                if(unit.player>=0 && unit.player<=8)image->player=owners[k][size_t(unit.player)];
+                if(unit.player>=0 && unit.player<=ta::crt::kNeutralOwner)image->player=owners[k][size_t(unit.player)];
                 image->name.clear();copies.push_back(*image);
             }
         }
@@ -689,7 +689,7 @@ LiveMirrorResult mirrorUnitEdits(const std::vector<PlacedUnit>& before,std::vect
         auto image=mirrorUnit(unit,xf,width,height);
         if(!image) {++result.skipped;return;}
         if(samePlace(unit,image->x,image->z))return;
-        if(unit.player>=0 && unit.player<=8)image->player=mirrorPlayers(starts,xf,width,height)[size_t(unit.player)];
+        if(unit.player>=0 && unit.player<=ta::crt::kNeutralOwner)image->player=mirrorPlayers(starts,xf,width,height)[size_t(unit.player)];
         image->name.clear();
         for(size_t j=0;j<units.size();++j)if(j!=self && overlaps(units[j],*image)) {++result.skipped;return;}
         units.push_back(*image);++result.copies;

@@ -10,6 +10,7 @@
 // the render loop.
 
 #include <SDL.h>
+#include "net/protocol.h"
 
 #include <array>
 #include <string>
@@ -39,7 +40,7 @@ public:
     // Name the players in the game, in slot order; an empty name means the slot is
     // open/closed and gets no row. `you` is the local slot (its bar tracks our own
     // progress); pass -1 when spectating.
-    void setPlayers(const std::array<std::string, 8>& names, int you);
+    void setPlayers(const std::array<std::string, ta::net::kMaxSlots>& names, int you);
 
     // Mark a remote slot finished (its bar snaps to full). Driven by the server's
     // per-slot loaded status once every peer reports in.
@@ -76,8 +77,8 @@ private:
     int movieFrame_ = -1;
     std::string map_, status_;
     int pct_ = 0;
-    std::array<std::string, 8> names_{};
-    std::array<bool, 8> done_{};
+    std::array<std::string, ta::net::kMaxSlots> names_{};
+    std::array<bool, ta::net::kMaxSlots> done_{};
     int you_ = -1;
     bool headless_ = false;
 };

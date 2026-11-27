@@ -22,7 +22,7 @@ bool parseGeneratorFields(const GeneratorFields& f,ta::mapgen::Params& p,std::st
     };
     uint64_t value=0;
     if(!number(0,0,UINT64_MAX,value)) {error="Seed must be an unsigned 64-bit whole number.";return false;}next.seed=value;
-    if(!number(1,2,8,value)) {error="Choose 2 to 8 players.";return false;}next.players=uint8_t(value);
+    if(!number(1,2,ta::mapgen::kMaxPlayers,value)) {error="Choose 2 to "+std::to_string(ta::mapgen::kMaxPlayers)+" players.";return false;}next.players=uint8_t(value);
     if(!number(2,0,255,value)) {error="Hills must be a whole number from 0 to 255.";return false;}next.reliefDensity=uint8_t(value);
     p=next;error.clear();return true;
 }

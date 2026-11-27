@@ -211,6 +211,11 @@ Settings loadSettings(bool* fileFound) {
         // went to 400%, so 300-400% survived until the next restart and then silently
         // snapped back to 200%.
         else if (key == "buildBarScale")   s.buildBarScale = asFloat(0.5f, 4.0f);
+        else if (key == "minimapScale")    s.minimapScale = asFloat(0.5f, 4.0f);
+        else if (key == "statsScale")      s.statsScale = asFloat(0.5f, 4.0f);
+        else if (key == "ordersScale")     s.ordersScale = asFloat(0.5f, 4.0f);
+        else if (key == "resourceBarAlign") s.resourceBarAlign = asInt(0, 2);
+        else if (key == "resourceBarScale") s.resourceBarScale = asFloat(0.5f, 4.0f);
         else if (key == "idleBuilders")    s.idleBuilders = asInt(0, 3);
         else if (key == "idleBuildersScale") s.idleBuildersScale = asFloat(0.5f, 4.0f);
         else if (key == "chatScale")       s.chatScale = asFloat(0.5f, 3.0f);
@@ -327,6 +332,11 @@ std::string serializeSettings(const Settings& s) {
     o << "textureFilter = " << std::clamp(s.textureFilter, 0, 2) << "\n";
     o << "buildBarAlign = " << s.buildBarAlign << "\n";
     o << "buildBarScale = " << s.buildBarScale << "\n";
+    o << "minimapScale = " << s.minimapScale << "\n";
+    o << "statsScale = " << s.statsScale << "\n";
+    o << "ordersScale = " << s.ordersScale << "\n";
+    o << "resourceBarAlign = " << s.resourceBarAlign << "\n";
+    o << "resourceBarScale = " << s.resourceBarScale << "\n";
     o << "idleBuilders = " << s.idleBuilders << "\n";
     o << "idleBuildersScale = " << s.idleBuildersScale << "\n";
     o << "chatScale = " << std::clamp(s.chatScale, 0.5f, 3.0f) << "\n";

@@ -210,7 +210,8 @@ int seatedHumans(const ta::net::RoomView& room) {
                              applyGenParams(); }); py += kRowH + kGap;
         char pl[32]; std::snprintf(pl, sizeof pl, "PLAYERS:  %d", int(genParams_.players));
         lbCycle(px, py, kBtnW, kRowH, pl, true, [this](int direction) {
-            genParams_.players = uint8_t(2 + (genParams_.players - 2 + direction + 7) % 7);
+            constexpr int kCounts = ta::mapgen::kMaxPlayers - 1;   // 2..kMaxPlayers
+            genParams_.players = uint8_t(2 + (genParams_.players - 2 + direction + kCounts) % kCounts);
             applyGenParams();
         }); py += kRowH + kGap;
         // WIDTH and HEIGHT, in sections (32 cells), each on its own, over the menu's steps.

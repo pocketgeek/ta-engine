@@ -176,7 +176,7 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
     m.tileRows.assign(m.tileIndex.size(), 0);
 
     // Starts: evenly round the map, inset from the edge.
-    const int n = std::clamp(int(p.players), 2, 8);
+    const int n = std::clamp(int(p.players), 2, kMaxPlayers);
     for (int i = 0; i < n; ++i) {
         const double a = 2.0 * 3.14159265358979323846 * (double(i) + 0.125) / n;
         const int cx = int(m.width / 2 + std::cos(a) * m.width * 0.36);

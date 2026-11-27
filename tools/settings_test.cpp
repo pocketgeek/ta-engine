@@ -67,6 +67,11 @@ int main() {
     flips("textureFilter 0", [](Settings& s) { s.textureFilter = 0; });
     flips("buildBarAlign",   [](Settings& s) { s.buildBarAlign = (s.buildBarAlign + 1) % 3; });
     flips("buildBarScale",   [](Settings& s) { s.buildBarScale += 0.25f; });
+    flips("minimapScale",    [](Settings& s) { s.minimapScale += 0.25f; });
+    flips("statsScale",      [](Settings& s) { s.statsScale += 0.25f; });
+    flips("ordersScale",     [](Settings& s) { s.ordersScale += 0.25f; });
+    flips("resourceBarAlign",[](Settings& s) { s.resourceBarAlign = (s.resourceBarAlign + 1) % 3; });
+    flips("resourceBarScale",[](Settings& s) { s.resourceBarScale += 0.25f; });
     flips("chatScale",       [](Settings& s) { s.chatScale += 0.5f; });
     flips("chatAlign",       [](Settings& s) { s.chatAlign = 0; });
     flips("uiFont",          [](Settings& s) { s.uiFont = 1; });
@@ -315,6 +320,7 @@ int main() {
             all.ignoreDpiScaling = !all.ignoreDpiScaling; all.smoothArt = !all.smoothArt; all.treeSway = !all.treeSway;
             all.smoothMotion = !all.smoothMotion; all.scorecardScale = 1.5f; all.healthBars = 2; all.statsPanel = !all.statsPanel;
             all.buildBarAlign = 2; all.buildBarScale = 2.5f; all.idleBuilders = 3; all.idleBuildersScale = 2.0f;
+            all.minimapScale = 1.5f; all.statsScale = 1.5f; all.ordersScale = 1.5f; all.resourceBarAlign = 2; all.resourceBarScale = 1.5f;
             all.chatAlign = 1; all.chatScale = 2.0f; all.hardwareCursor = !all.hardwareCursor; all.cursorScale = 5;
             all.mouseZoomSpeed = 2.0f; all.mouseZoom = !all.mouseZoom; all.edgeScroll = !all.edgeScroll; all.edgeScrollSpeed = 3.0f;
             const Settings pages = ta::gameDefaults(ta::uiDefaults(ta::graphicsDefaults(all)));

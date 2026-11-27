@@ -417,7 +417,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             noteLine(std::string("CLICK AGAIN: TURNING MAP SCENARIO ") + (on ? "OFF " : "ON ") + seatPlanText(plan), kAmber);
         } else if (!roomNote_.empty() && now < roomNoteUntil_) noteLine(roomNote_, kAmber);
         // The options block: the host's rules, clickable for the host. Every rule stays
-        // visible with 8 slots.
+        // visible with all ten slots.
         y += 44;
         drawRoomRules(f, y);
     }
@@ -430,7 +430,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         // campaign mission or a Benchmark, nor once START is on its way.
         const bool edit = host && mp_->roomEditable();
         const bool watching = singlePlayer_ && host && mp_->isSpectator() && room.mySlot < 0;
-        const uint8_t needSeats = f.needSeats;
+        const uint16_t needSeats = f.needSeats;
         // START LOCATIONS: BY SLOT gives slot N the map's StartPos N. A seat past the map's
         // last start opens at a fallback, worked out by the sim's own rule and tagged under
         // its name. Seats are normally capped at the start count, so this shows only on a
@@ -457,19 +457,23 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         // slot table
         const char* typeName[4] = {"OPEN", "HUMAN", "AI", "CLOSED"};
         // Each column's start in the row: type, name, AI level, side, colour, team, READY.
+        // The row pitch: retail's ten seats (sim::kMaxPlayers) must leave room for the
+        // option toggles and the scenario lines below on the 540-high canvas (it was 30
+        // with eight seats).
+        constexpr float kSlotPitch = 24;
         constexpr float kType = 28, kName = 92, kLevel = 156, kSide = 232, kColour = 302, kTeam = 330, kReady = 372;
         for (int i = 0; i < ta::net::kMaxSlots; ++i) {
             const auto& s = room.slots[i];
             bool mine = (i == room.mySlot);
-            SDL_FRect row{x, y, rowW, 30};
+            SDL_FRect row{x, y, rowW, kSlotPitch};
             SDL_SetRenderDrawColor(ren_, mine ? 40 : 26, mine ? 48 : 30, mine ? 66 : 40, 255);
             SDL_RenderFillRectF(ren_, &row);
             // A seat the host changed flashes; this player's own row only behind its READY,
             // the line a host change clears.
-            if (mine && !singlePlayer_) drawPulse(ren_, {x + kReady - 4, y + 4, row.w - 50 - kReady, 22}, roomSeatFlashUntil_[i]);
+            if (mine && !singlePlayer_) drawPulse(ren_, {x + kReady - 4, y + 1, row.w - 50 - kReady, 22}, roomSeatFlashUntil_[i]);
             else drawPulse(ren_, row, roomSeatFlashUntil_[i]);
             char sn[12]; std::snprintf(sn, sizeof sn, "%d", i + 1);
-            blockText(sn, x + 8, y + 8, 1.8f, {150, 155, 170, 255});
+            blockText(sn, x + 8, y + 5, 1.8f, {150, 155, 170, 255});
             // type (host may cycle open<->closed on empty slots)
             SDL_Color tcol = s.type == 1 ? SDL_Color{200, 230, 200, 255}
                            : s.type == 2 ? SDL_Color{230, 220, 150, 255}
@@ -479,12 +483,12 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 const float fpx = ta::uiTextFitPx(t, px, colW * 0.97f, px * 0.7f);
                 blockText(ta::uiTextFit(t, fpx, colW), cx, cy + (px - fpx) * 3.5f, fpx, c);
             };
-            cell(typeName[s.type % 4], x + kType, y + 8, 1.6f, 56, tcol);
+            cell(typeName[s.type % 4], x + kType, y + 5, 1.6f, 56, tcol);
             if (edit && s.type != 1) {
                 // Host cycles an empty slot OPEN -> AI -> CLOSED. AI opponents are
                 // seated (and run) on the server; this is how you set up multi-AI
                 // games (including single-player vs several AIs).
-                SDL_FRect tb{x + kType, y + 6, 60, 18};
+                SDL_FRect tb{x + kType, y + 3, 60, 18};
                 lobbyHots_.push_back({tb, [this, i, t = s.type](int direction) {
                     roomSetSlotType(i, direction > 0 ? (t == 0 ? 2 : t == 2 ? 3 : 0)
                                                      : (t == 0 ? 3 : t == 3 ? 2 : 0)); }});
@@ -492,11 +496,11 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             // Single player has no READY column, so the side / colour / team columns move up
             // to the MOVE HERE / KICK column (row.w - 94) and the name takes the room.
             const float wide = singlePlayer_ ? row.w - 98 - (kTeam + 34) : 0.0f;
-            if (s.type == 1) cell(s.name, x + kName, y + 8, 1.8f, kSide - kName - 4 + wide, {225, 228, 236, 255});
+            if (s.type == 1) cell(s.name, x + kName, y + 5, 1.8f, kSide - kName - 4 + wide, {225, 228, 236, 255});
             else if ((s.type == 0 || s.type == 3) && (needSeats >> i & 1))
-                cell("NEEDED BY SCENARIO", x + kName, y + 9, 1.4f, kSide - kName - 4 + wide, {235, 205, 120, 255});
+                cell("NEEDED BY SCENARIO", x + kName, y + 6, 1.4f, kSide - kName - 4 + wide, {235, 205, 120, 255});
             else if (s.type == 2) {
-                cell(s.name.empty() ? "Computer" : s.name, x + kName, y + 8, 1.6f, kLevel - kName - 4 + wide, {210, 200, 150, 255});
+                cell(s.name.empty() ? "Computer" : s.name, x + kName, y + 5, 1.6f, kLevel - kName - 4 + wide, {210, 200, 150, 255});
                 // AI difficulty (host cycles PASSIVE -> EASY -> NORMAL -> HARD -> ABSURD ->
                 // DEFENSIVE -> ABSURDLY DEFENSIVE -> RETAIL EASY -> RETAIL MEDIUM ->
                 // RETAIL HARD: kCycle, which is not the wire aiLevel order that diffName
@@ -524,11 +528,11 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 // Two words that overrun the column stack in two smaller lines.
                 constexpr float kLevelW = kSide - kLevel - 2;
                 if (const char* gap = std::strchr(diffName[lvl], ' ')) {
-                    cell(std::string(diffName[lvl], gap), x + kLevel + wide, y + 3, 1.1f, kLevelW, diffCol[lvl]);
-                    cell(gap + 1, x + kLevel + wide, y + 13, 1.1f, kLevelW, diffCol[lvl]);
+                    cell(std::string(diffName[lvl], gap), x + kLevel + wide, y + 1, 1.1f, kLevelW, diffCol[lvl]);
+                    cell(gap + 1, x + kLevel + wide, y + 11, 1.1f, kLevelW, diffCol[lvl]);
                 } else
-                    cell(diffName[lvl], x + kLevel + wide, y + 9, 1.4f, kLevelW, diffCol[lvl]);
-                if (edit) { SDL_FRect db{x + kLevel - 2 + wide, y + 2, kLevelW + 2, 26};
+                    cell(diffName[lvl], x + kLevel + wide, y + 6, 1.4f, kLevelW, diffCol[lvl]);
+                if (edit) { SDL_FRect db{x + kLevel - 2 + wide, y, kLevelW + 2, kSlotPitch};
                     lobbyHots_.push_back({db, [this, i](int direction) { const auto& s2 = mpRoom().slots[i];
                         const int at = int(std::find(kCycle, kCycle + kLevels, s2.aiLevel) - kCycle);
                         mp_->setSlot(i, s2.type, s2.faction, s2.color, s2.team, s2.ready,
@@ -538,16 +542,16 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 const int spot = bySlotSpot[size_t(i)];
                 blockText("NO START " + std::to_string(i + 1) + ": " +
                           (spot < startCount ? "USES START " + std::to_string(spot + 1) : std::string("NEAR MAP CENTRE")),
-                          x + kName, y + 21.5f, 1.1f, {235, 205, 120, 255});
+                          x + kName, y + 17, 1.0f, {235, 205, 120, 255});
             }
             // faction / color / team edit: your own row (the host's only while it may edit),
             // or (host) any AI row.
             bool canEdit = (mine && (!host || edit)) || (edit && s.type == 2);
-            cell(factionName(s.faction), x + kSide + wide, y + 8, 1.6f, kColour - kSide - 4, {200, 205, 215, 255});
-            if (canEdit) { SDL_FRect fb{x + kSide + wide, y + 6, kColour - kSide - 4, 18};
+            cell(factionName(s.faction), x + kSide + wide, y + 5, 1.6f, kColour - kSide - 4, {200, 205, 215, 255});
+            if (canEdit) { SDL_FRect fb{x + kSide + wide, y + 3, kColour - kSide - 4, 18};
                 lobbyHots_.push_back({fb, [this, i](int direction) { const auto& s2 = mpRoom().slots[i];
                     mp_->setSlot(i, s2.type, (s2.faction + direction + ta::sides::count()) % std::max(1, ta::sides::count()), s2.color, s2.team, s2.ready, s2.aiLevel); }}); }
-            colorSwatch(x + kColour + wide, y + 5, 20, s.color, canEdit ? std::function<void(int)>([this, i](int direction) {
+            colorSwatch(x + kColour + wide, y + 2, 20, s.color, canEdit ? std::function<void(int)>([this, i](int direction) {
                 // Cycle to the next colour NOT already held by another used slot --
                 // landing on a taken colour just blocked READY, which was a trap.
                 const auto& r2 = mpRoom();
@@ -563,19 +567,19 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 }
                 mp_->setSlot(i, s2.type, s2.faction, next, s2.team, s2.ready, s2.aiLevel); }) : nullptr);
             char tm[8]; std::snprintf(tm, sizeof tm, "T%d", s.team + 1);
-            blockText(tm, x + kTeam + wide, y + 8, 1.8f, {200, 205, 215, 255});
-            if (canEdit) { SDL_FRect teb{x + kTeam + wide, y + 6, 34, 18};
+            blockText(tm, x + kTeam + wide, y + 5, 1.8f, {200, 205, 215, 255});
+            if (canEdit) { SDL_FRect teb{x + kTeam + wide, y + 3, 34, 18};
                 lobbyHots_.push_back({teb, [this, i](int direction) { const auto& s2 = mpRoom().slots[i];
                     mp_->setSlot(i, s2.type, s2.faction, s2.color, uint8_t((s2.team + direction + ta::net::kMaxSlots) % ta::net::kMaxSlots), s2.ready, s2.aiLevel); }}); }
             if (s.type == 1 && !singlePlayer_) {   // SP: the player is always ready, no column
                 // This player's NOT READY, while a host change that cleared it flashes, reads bright.
                 const bool lit = mine && SDL_GetTicks64() < roomSeatFlashUntil_[i];
                 SDL_Color rc = s.ready ? SDL_Color{130, 230, 140, 255} : lit ? SDL_Color{250, 245, 230, 255} : SDL_Color{120, 125, 135, 255};
-                cell(s.ready ? "READY" : "NOT READY", x + kReady, y + 8, 1.6f, row.w - 58 - kReady, rc);
+                cell(s.ready ? "READY" : "NOT READY", x + kReady, y + 5, 1.6f, row.w - 58 - kReady, rc);
             }
             // host kick button for other humans
             if (host && s.type == 1 && !mine) {
-                lbBtn(x + row.w - 54, y + 3, 50, 22, "KICK", edit, [this, i] { mp_->kick(i); });
+                lbBtn(x + row.w - 54, y + 1, 50, 22, "KICK", edit, [this, i] { mp_->kick(i); });
             }
             // Any seated player may take an OPEN seat (Msg::MoveSeat) where the seat picks
             // the start (seatPicks, above). Open seats are always inside the map's capacity
@@ -583,7 +587,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             // The seat buttons share MOVE HERE's label size.
             const float seatPx = ta::uiTextFitPx("MOVE HERE", kBtnLabelPx, 90 - 12.0f);
             if (room.mission.empty() && room.mySlot >= 0 && s.type == 0) {
-                const SDL_FRect move{x + row.w - 94, y + 3, 90, 22};
+                const SDL_FRect move{x + row.w - 94, y + 1, 90, 22};
                 lbBtn(move.x, move.y, move.w, move.h, "MOVE HERE", seatPicks && (!host || edit),
                       [this, i] { mp_->moveSeat(i); }, {60, 66, 86, 255}, seatPx);
                 if (!seatPicks && lbHot(move)) moveTipAt = move;
@@ -591,10 +595,10 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             // Single player: WATCH on the host's own row leaves the seat to watch the AIs;
             // while watching, SIT HERE on an OPEN or AI row takes that seat back.
             if (singlePlayer_ && mine && host && room.mission.empty() && !room.opts.benchmark)
-                lbBtn(x + row.w - 94, y + 3, 90, 22, "WATCH", edit, [this] { roomWatch(); }, {60, 66, 86, 255}, seatPx);
+                lbBtn(x + row.w - 94, y + 1, 90, 22, "WATCH", edit, [this] { roomWatch(); }, {60, 66, 86, 255}, seatPx);
             if (watching && (s.type == 0 || s.type == 2) && i < room.capacity)
-                lbBtn(x + row.w - 94, y + 3, 90, 22, "SIT HERE", edit, [this, i] { roomSitHere(i); }, {60, 66, 86, 255}, seatPx);
-            y += 30;   // slot row pitch: 8 rows must leave room for the option toggles below
+                lbBtn(x + row.w - 94, y + 1, 90, 22, "SIT HERE", edit, [this, i] { roomSitHere(i); }, {60, 66, 86, 255}, seatPx);
+            y += kSlotPitch;
         }
         if (moveTipAt.w > 0) {   // beside the greyed button, inside its own row
             const char* tip = "ONLY WITH START LOCATIONS: BY SLOT";
@@ -714,7 +718,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         const auto& room = mp_->room();
         const float x = f.x, rowW = f.rowW;
         const bool fileMap = f.fileMap, scenarioOn = f.scenarioOn;
-        const uint8_t needSeats = f.needSeats;
+        const uint16_t needSeats = f.needSeats;
         const SDL_Color infoColor{205,210,225,255};
         // Two columns of cells at a 19 pitch across the slot table's width (multiplayer
         // six rows, five for a generated map; single player five), then a MAP SCENARIO's
@@ -756,9 +760,9 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 if(lines.size()>3) rule(lines[3].text,lines[3].warning);
                 // Placements replace Commanders, so a seated player the scenario gives no
                 // units starts with nothing.
-                uint8_t empty=0;
+                uint16_t empty=0;
                 for(int i=0;i<ta::net::kMaxSlots;++i)
-                    if((room.slots[i].type==1 || room.slots[i].type==2) && !(scenarioLobby_.placedSeats>>i & 1)) empty|=uint8_t(1u<<i);
+                    if((room.slots[i].type==1 || room.slots[i].type==2) && !(scenarioLobby_.placedSeats>>i & 1)) empty|=uint16_t(1u<<i);
                 if(scenarioLobby_.placed>0 && empty) rule("NO PLACED UNITS: PLAYER "+ta::sim::seatList(empty),true);
             }
         }

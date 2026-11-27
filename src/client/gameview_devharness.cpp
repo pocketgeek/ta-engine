@@ -301,7 +301,7 @@
         // Dev harness: TA_FFA=N or TA_FFA=N,t0.t1.t2... sets up an N-player
         // game (each on its own team unless a team list is given), one commander +
         // a small army per player at N start positions, all AI-driven. Verifies
-        // the 8-player / team / shared-vision / win-condition paths before the
+        // the 10-player / team / shared-vision / win-condition paths before the
         // real lobby exists. (multiplayer M1)
         if (const char* ff = ta::devEnv("TA_FFA")) {
             int n = std::atoi(ff);
@@ -857,8 +857,9 @@
                 ta::TaGuiView* page=taHudPage_.empty() ? nullptr : taPage(taHudPage_);
                 if (!page) return out;
                 std::set<std::string> seen;
-                for (float y=0;y<float(H);y+=3)
-                    for (float x=0;x<float(taSideW());x+=3)   // the side panel (left)
+                const SDL_FRect& o=taOrdersRect_;   // the order buttons in the right-hand column
+                for (float y=o.y;y<o.y+o.h;y+=3)
+                    for (float x=o.x;x<o.x+o.w;x+=3)
                         if (const auto* g=page->at(x,y,taHudLayout_);
                             g && g->type==ta::tagui::Type::Button && !g->grayedOut && seen.insert(g->name).second)
                             out.push_back({g->name,{x+2-float(viewX0()),y+2-float(viewY0())}});   // as view coordinates
@@ -2987,6 +2988,56 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: reclaim fan-out to every selected reclaimer\n");
             return;
         }
+        if (ta::devFlag("TA_DEATH_BLAST_TEST")) {
+            // A Commander and a Peewee self-destruct through the real key path:
+            // each death weapon (SELFDESTRUCTAS: COMMANDER_BLAST's commboom, the
+            // Peewee's own) plays its explosiongaf/explosionart (TotalA.exe
+            // 0x499eb0 -> 0x49a00e), and the Killed script's SHATTER fragments
+            // fall back to the ground (0x420f81).
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("death blast: "+what);
+                std::fprintf(stderr,"PASS: death blast: %s\n",what.c_str());
+            };
+            noFog_=true;
+            const auto& m=mapView_.map();
+            float lx=-1,lz=-1;   // dry land near the middle
+            for(int r=0;r<m.width/2 && lx<0;r+=4)for(int dz=-r;dz<=r && lx<0;dz+=4)for(int dx=-r;dx<=r && lx<0;dx+=4) {
+                const float x=float(m.width/2+dx)*16+8,z=float(m.height/2+dz)*16+8;
+                if(x>200 && z>200 && x<float(m.width)*16-200 && z<float(m.height)*16-200 &&
+                   !worldTables().isWater(x,z) && !worldTables().isWater(x+120,z))
+                    {lx=x;lz=z;}
+            }
+            check(lx>0,"fixture found dry land");
+            for(const char* name:{"armcom","armpw"}) {
+                const int unit=spawn(name,name[3]=='c' ? lx : lx+120,lz,0,localPlayer_);
+                check(world_.unit(unit)!=nullptr,std::string("fixture has ")+name);
+                const auto* type=world_.unit(unit)->type;
+                const auto& weapon=type->hasSelfDestructAs ? type->selfDestructAs : type->explodeAs;
+                const EffectAnim* want=effectFor(weapon.explosionGaf+":"+weapon.explosionArt,"palettes/palette.pal");
+                check(want!=nullptr,std::string(name)+": its death weapon "+weapon.section+" has art "+
+                      weapon.explosionGaf+":"+weapon.explosionArt);
+                selection_={unit};captureFrame();beginFrame();cosmeticStep(0);
+                handleKey(SDLK_d,KMOD_CTRL|KMOD_SHIFT);
+                bool blast=false;size_t fragments=0;
+                for(int i=0;i<30*20;++i) {
+                    writableWorld().tick(1.f/30);
+                    captureFrame();beginFrame();cosmeticStep(1.f/30);
+                    for(const auto& e:effects_)blast|=e.anim==want;
+                    size_t now=0;
+                    for(const auto& d:detachedPieces_)now+=d.motion.shatter;
+                    fragments=std::max(fragments,now);
+                }
+                check(blast,std::string(name)+": the death weapon's explosion played");
+                size_t left=0;
+                for(const auto& d:detachedPieces_)left+=d.motion.shatter;
+                std::fprintf(stderr,"%s: most fragments %zu, left after 20 s %zu, debris %zu\n",
+                             name,fragments,left,detachedPieces_.size());
+                check(left==0,std::string(name)+": every SHATTER fragment came down");
+                // Every shipped non-SHATTER debris piece has FALL: down well inside 20 s.
+                check(detachedPieces_.empty(),std::string(name)+": every FALL piece came down");
+            }
+            return;
+        }
         if (ta::devFlag("TA_SELFDESTRUCT_NOTICE_TEST")) {
             // Ctrl+Shift+D through the real key path: the notice reads the unit's
             // own countdown (selfdestructcountdown, 2 s) and counts it down with
@@ -3024,6 +3075,112 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: self-destruct notice follows the countdown\n");
             return;
         }
+        if (ta::devFlag("TA_METAL_SNAP_TEST")) {
+            // Metal extractors on a map with deposits (client/metalspots.h), through the
+            // real input path: a click near a deposit builds on the deposit, a click with
+            // none in reach builds nothing, and a box queues one on every free deposit
+            // inside it, each on its spot.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("metal snap: "+what);
+                std::fprintf(stderr,"PASS: metal snap: %s\n",what.c_str());
+            };
+            noFog_=true;edgeScrollOn_=false;
+            constexpr int W=1280,H=960;
+            winW_=W;winH_=H;
+            const auto* mex=registry_.find("armmex");
+            check(mex && mex->extractsMetal>0,"armmex extracts metal");
+            check(snapsToMetal(mex),"Ashap Plateau has deposits: no metal planet");
+            const auto spots=metalSpots(mex);
+            check(spots.size()>=4,"its deposits are spots ("+std::to_string(spots.size())+")");
+            const auto& s0=spots[spots.size()/2];
+            const int me=localPlayer_;
+            const int com=spawn("armcom",s0.x+64,s0.z+64,0,me);
+            check(com>=0,"fixture commander spawned");
+            for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
+            const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
+            const auto mouse=[&](Uint32 type,float x,float y,Uint8 button) {
+                SDL_Event e{};e.type=type;
+                if (type==SDL_MOUSEMOTION) {e.motion.x=int(x);e.motion.y=int(y);}
+                else {e.button.button=button;e.button.x=int(x);e.button.y=int(y);e.button.clicks=1;}
+                input(e,W,H);
+            };
+            const auto mexOrders=[&] {
+                std::vector<std::pair<float,float>> out;
+                if (const auto* u=world_.unit(com))
+                    for (const auto& o:u->orders) if (o.buildType==mex) out.push_back({o.buildX.toFloat(),o.buildZ.toFloat()});   // the site, not the approach
+                return out;
+            };
+            const auto onSpot=[&](float x,float z) {
+                for (const auto& s:spots) if (std::fabs(s.x-x)<0.5f && std::fabs(s.z-z)<0.5f) return true;
+                return false;
+            };
+            mapView_.setZoom(1.0f);
+            const float vw=float(mapViewW(W)),vh=float(mapViewH(H));
+            mapView_.setOffset(s0.x-vw/2,s0.z-vh/2);
+            selection_={com};
+            frame();frame();
+            // A click 30 px off the deposit.
+            placing_=mex;
+            mouse(SDL_MOUSEMOTION,vw/2+30,vh/2+20,0);frame();
+            mouse(SDL_MOUSEBUTTONDOWN,vw/2+30,vh/2+20,SDL_BUTTON_LEFT);
+            mouse(SDL_MOUSEBUTTONUP,vw/2+30,vh/2+20,SDL_BUTTON_LEFT);
+            frame();
+            auto o=mexOrders();
+            check(o.size()==1,"a click near a deposit queues one extractor ("+std::to_string(o.size())+")");
+            check(onSpot(o[0].first,o[0].second) && std::hypot(o[0].first-s0.x,o[0].second-s0.z)<1.f,
+                  "on the deposit, snapped: order "+std::to_string(o[0].first)+","+std::to_string(o[0].second)+
+                  " spot "+std::to_string(s0.x)+","+std::to_string(s0.z));
+            check(!placing_,"and disarms (no Shift)");
+            // A click with no deposit in reach (if the map has such ground on screen).
+            {
+                float fx=-1,fy=-1;
+                for (float y=40;y<vh-40 && fx<0;y+=40)
+                    for (float x=40;x<vw-40;x+=40) {
+                        float wx,wz;pickWorld(x,y,wx,wz);
+                        if (!ta::client::metalspots::nearest(spots,wx,wz,ta::client::metalspots::kSnapRadius+32)) {fx=x;fy=y;break;}
+                    }
+                if (fx>=0) {
+                    placing_=mex;
+                    SDL_SetModState(KMOD_SHIFT);
+                    mouse(SDL_MOUSEBUTTONDOWN,fx,fy,SDL_BUTTON_LEFT);
+                    mouse(SDL_MOUSEBUTTONUP,fx,fy,SDL_BUTTON_LEFT);
+                    SDL_SetModState(KMOD_NONE);
+                    frame();
+                    check(mexOrders().size()==1,"a click with no deposit in reach builds nothing");
+                    placing_=nullptr;
+                }
+            }
+            // A box over the whole view: one on every free deposit inside, appended (Shift).
+            mapView_.setZoom(0.5f);
+            mapView_.setOffset(s0.x-vw,s0.z-vh);
+            frame();
+            float bx0,bz0,bx1,bz1;
+            pickWorld(10,10,bx0,bz0);pickWorld(vw-10,vh-10,bx1,bz1);
+            placing_=mex;
+            const size_t want=metalBoxSpots(bx0,bz0,bx1,bz1).size();
+            check(want>=2,"the box catches free deposits ("+std::to_string(want)+")");
+            SDL_SetModState(KMOD_SHIFT);
+            mouse(SDL_MOUSEBUTTONDOWN,10,10,SDL_BUTTON_LEFT);
+            mouse(SDL_MOUSEMOTION,vw-10,vh-10,0);frame();
+            if (const char* cap=ta::devEnv("TA_METAL_SNAP_CAPTURE")) {   // the box mid-drag
+                captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);
+                std::vector<uint8_t> px(size_t(W)*H*4);
+                const SDL_Rect r{0,0,W,H};
+                if (SDL_RenderReadPixels(ren_,&r,SDL_PIXELFORMAT_RGBA32,px.data(),W*4)==0) ta::png::write(cap,W,H,px);
+                endFrame();
+            }
+            mouse(SDL_MOUSEBUTTONUP,vw-10,vh-10,SDL_BUTTON_LEFT);
+            frame();
+            o=mexOrders();
+            check(o.size()>=want,"the box queues one per deposit ("+std::to_string(o.size())+" for "+std::to_string(want)+" + 1)");
+            bool all=true;for (const auto& [x,z]:o) all=all&&onSpot(x,z);
+            check(all,"every one on a deposit");
+            check(placing_==mex,"Shift keeps the extractor armed");
+            SDL_SetModState(KMOD_NONE);
+            placing_=nullptr;
+            std::fprintf(stderr,"PASS: metal snap build\n");
+            return;
+        }
         if (ta::devFlag("TA_FACTORY_MENU_TEST")) {
             // A factory's build page queues production (TotalA.exe 0x41aa00 ->
             // 0x419b00): a click on a mobile unit's picture is a Train order to the
@@ -3052,14 +3209,10 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             const auto clickAt=[&](float x,float y,Uint8 button) {
                 mouse(SDL_MOUSEMOTION,x,y,0);mouse(SDL_MOUSEBUTTONDOWN,x,y,button);mouse(SDL_MOUSEBUTTONUP,x,y,button);frame();
             };
-            // The page's gadget `name` on screen: scanned through the page's own hit test.
+            // The build row's picture of `name` on screen (drawPanel's rectangles).
             const auto buttonAt=[&](const std::string& name) -> std::optional<SDL_FPoint> {
-                ta::TaGuiView* page=taHudPage_.empty() ? nullptr : taPage(taHudPage_);
-                if (!page) return std::nullopt;
-                for (float y=0;y<float(H);y+=2)
-                    for (float x=0;x<float(W);x+=2)
-                        if (const auto* g=page->at(x,y,taHudLayout_); g && SDL_strcasecmp(g->name.c_str(),name.c_str())==0)
-                            return SDL_FPoint{x+3,y+3};
+                for (const auto& [r,bt]:iconRects_)
+                    if (bt && SDL_strcasecmp(bt->id.c_str(),name.c_str())==0) return SDL_FPoint{r.x+r.w/2,r.y+r.h/2};
                 return std::nullopt;
             };
             const auto queued=[&](const char* id) {
@@ -3068,9 +3221,9 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 return n;
             };
             mapView_.setZoom(1.0f);
-            selection_={lab};taBuildTab_=true;taBuildPage_=1;
+            selection_={lab};
             frame();frame();
-            check(SDL_strcasecmp(taHudPage_.c_str(),"ARMLAB1")==0,"the lab's first build page is on show: "+taHudPage_);
+            check(!iconRects_.empty() && buildMenuRect_.w>0,"the lab's build row is on show");
             if (const char* cap=ta::devEnv("TA_FACTORY_MENU_CAPTURE")) {   // the 640x480 frame, the lab selected
                 captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);
                 std::vector<uint8_t> px(size_t(W)*H*4);
@@ -3103,7 +3256,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             check(built>=0,"the lab builds the Peewee");
             // A mobile builder's page: a building's picture arms the placement.
-            selection_={com};taBuildTab_=true;taBuildPage_=1;
+            selection_={com};
             frame();frame();
             const auto solar=buttonAt("ARMSOLAR");
             check(solar.has_value(),"the Commander's page has the solar collector");
@@ -3252,7 +3405,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 return "missing";
             };
             const auto show=[&](std::vector<int> sel,const std::string& tag) {
-                selection_=std::move(sel);taBuildTab_=false;
+                selection_=std::move(sel);
                 frame();frame();
                 check(taHudPage_==pre+"GEN",tag+": the orders page is on show ("+taHudPage_+")");
                 std::string line;
@@ -3288,11 +3441,12 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             check(state("CLOAK")=="on" && state("ATTACK")=="grey","armspy: CLOAK works");
             show({ids["armcv"],ids["armpw"]},"armcv+armpw");
             check(state("REPAIR")=="on" && state("ATTACK")=="on" && state("FIREORD")=="on","a mixed selection: the union");
-            // The tabs: one builder may switch to its build page; two may not.
+            // The tabs are hidden: the build row is the builder's menu (drawPanel).
             show({ids["armcv"]},"armcv");
-            check(state("BUILD")=="on","one builder: BUILD works");
+            check(state("BUILD")=="hidden" && state("ORDERS")=="hidden","one builder: no tabs");
+            check(!iconRects_.empty(),"one builder: its build row is on show");
             show({ids["armcv"],ids["armck"]},"armcv+armck");
-            check(state("BUILD")=="grey" && state("ORDERS")=="grey","two builders: the tabs are grey (0x41b881)");
+            check(iconRects_.empty() && buildMenuRect_.w<=0,"two builders: no build row");
             // FIREORD steps the Peewee's fire state through the real input path.
             show({ids["armpw"]},"armpw");
             const auto fireOf=[&](int id){const auto* u=world_.unit(id);return u ? int(u->fireState) : -1;};
@@ -3347,7 +3501,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             const int commander=spawn("armcom",cx,cz,0,localPlayer_);
             check(commander>=0,"fixture commander spawned");
             const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
-            selection_={commander};taBuildTab_=false;
+            selection_={commander};
             frame();frame();
             const std::string pre=ta::sides::at(std::max(0,ta::sides::find(side_))).prefix;
             const auto press=[&](const std::string& gadget,const char* entry,const char* wav) {
@@ -3369,11 +3523,18 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             press(pre+"FIREORD","SETFIREORDERS","butnagr2.wav");      // 0x41a6af
             press(pre+"MOVEORD","SETMOVEORDERS","butnmbl2.wav");      // 0x41a5ac
             press(pre+"REPAIR","SPECIALORDERS","button5.wav");        // 0x419e9c
-            press(pre+"BUILD","BUILDBUTTON","butnmbl1.wav");          // 0x41ab39
-            check(taBuildTab_,"BUILD opened the build page "+taHudPage_);
-            press(pre+"SOLAR","ADDBUILD","button9.wav");              // 0x41ab97
-            placing_=nullptr;
-            press(pre+"ORDERS","ORDERSBUTTON","butnmbl1.wav");        // 0x41aaf8
+            {   // a building's picture on the build row: ADDBUILD (0x41ab97)
+                std::optional<SDL_FPoint> solar;
+                for (const auto& [r,bt]:iconRects_)
+                    if (bt && bt->id==[&]{std::string l=pre;for(char& ch:l)ch=char(std::tolower(static_cast<unsigned char>(ch)));return l;}()+"solar") solar=SDL_FPoint{r.x+r.w/2,r.y+r.h/2};
+                check(solar.has_value(),"the build row has the solar collector");
+                lastGuiSound_.clear();lastGuiWav_.clear();
+                check(buildIconClick(solar->x,solar->y,true,false),"the build row takes the press");
+                check(lastGuiSound_=="ADDBUILD" && lastGuiWav_=="button9.wav",
+                      "the solar collector requests ADDBUILD = button9.wav (got "+lastGuiSound_+" = "+lastGuiWav_+")");
+                check(placing_ && placing_->id==[&]{std::string l=pre;for(char& ch:l)ch=char(std::tolower(static_cast<unsigned char>(ch)));return l;}()+"solar","and arms its placement");
+                placing_=nullptr;
+            }
             std::fprintf(stderr,"PASS: gui sound sidebar\n");
             return;
         }
@@ -4545,6 +4706,26 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 command.unitId=id;command.targetId=targetId;command.player=localPlayer_;
                 ta::sim::applyCommand(writableWorld(),registry_,command);
                 std::printf("repair capture: worker #%d -> target #%d\n",id,targetId);
+            } else if (const char* what=ta::devEnv("TA_CONJURE_RECLAIM")) {
+                // TA_CONJURE_RECLAIM=feature|unit: the worker reclaims the nearest
+                // live map feature, or a <target> spawned at the site (the nano
+                // spray's reverse, 0x472200; --shot while it works).
+                ta::net::Command command;command.unitId=id;command.player=localPlayer_;
+                if (std::string(what)=="unit") {
+                    command.kind=ta::net::Cmd::ReclaimUnit;
+                    command.targetId=spawn(target,siteX,siteZ,0,localPlayer_);
+                } else {
+                    command.kind=ta::net::Cmd::Reclaim;
+                    float best=1e30f;
+                    for (const auto& f:features_) {
+                        if (f.simId<0 || !world_.featureAliveAt(f.x,f.z)) continue;
+                        const float d=std::hypot(f.x-originX,f.z-originZ);
+                        if (d<best) { best=d;command.targetId=f.simId;siteX=f.x;siteZ=f.z; }
+                    }
+                    if (best>1e29f) { std::fprintf(stderr,"conjure fixture: no feature to reclaim\n");return; }
+                }
+                ta::sim::applyCommand(writableWorld(),registry_,command);
+                std::printf("reclaim capture: worker #%d -> %s %d\n",id,what,command.targetId);
             } else if (const char* value=ta::devEnv("TA_CONJURE_REMAINING")) {
                 // TA_CONJURE_REMAINING=<f>: the site placed at once with that much of
                 // it left to build (1 = just placed), so --shot catches the nanoframe
@@ -4850,7 +5031,17 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             auto impact=detachedPieces_[0];
             impact.tick=front().gameTick-1;impact.motion.flags=16;
-            impact.motion.velocity[1]=-300*65536;
+            // TotalA.exe 0x421450: a contact bounces at half speed and ends only
+            // once the bounce is under 2 px a tick: land at 3 px a tick.
+            {
+                const auto& terrain=mapView_.map();
+                const int ground=ta::retailDebrisTerrainHeight(impact.motion.position[0],impact.motion.position[2],
+                    terrain.width,terrain.height,[&](int x,int z) {
+                        return terrain.heights[size_t(z)*size_t(terrain.width)+size_t(x)];
+                    });
+                impact.motion.position[1]=(ground+1)*65536;
+            }
+            impact.motion.velocity={0,-3*65536,0};
             const auto position=impact.motion.position;
             detachedPieces_.push_back(std::move(impact));
             const auto glows=explosionGlows_.size();
@@ -4880,9 +5071,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                    explosionGlows_.size()!=beforeGlow)
                     throw std::runtime_error("debris splash suppression/glow mismatch");
                 if(!suppressed) {
-                    bool matched=false;
-                    for(const auto& variant:explosionClasses_.at(explosionClassOrder_.at(lava?10:9)))
-                        matched|=effects_.back().anim==effectFor(variant);
+                    const bool matched=effects_.back().anim==
+                        effectFor(lava ? "fx:lavasplash" : "fx:h2oboom2","palettes/palette.pal");
                     if(!matched || effects_.back().worldPosition!=splashPosition ||
                        effects_.back().started!=front().gameTick)
                         throw std::runtime_error("debris splash class/position/tick mismatch");
@@ -5018,15 +5208,15 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             return;
         }
         if (ta::devEnv("TA_EXPLOSION_CLASSES_TEST")) {
-            loadExplosionClasses();
-            if(explosionClassOrder_.size()<9)throw std::runtime_error("missing numeric explosion classes");
+            if(!effectFor("fx:explosion","palettes/palette.pal"))
+                throw std::runtime_error("missing fx.gaf explosion sequences");
             UnitR unit{};unit.x=cx;unit.z=cz;
             Anim snapshot;
             const auto particleCount=particles_.size(),effectCount=effects_.size();
             for(int flags:{0x28,0x30,0x38})explodePiece(unit,snapshot,-1,flags);
             if(particles_.size()!=particleCount || effects_.size()!=effectCount)
                 throw std::runtime_error("bitmap-only debris flags spawned immediate effects");
-            for(unsigned cls=0;cls<9;++cls) {
+            for(unsigned cls=0;cls<6;++cls) {
                 const auto before=effects_.size();
                 explodePiece(unit,snapshot,-1,int32_t(0x20u|(0x100u<<cls)));
                 if(effects_.size()!=before+1)throw std::runtime_error("numeric explosion class failed to spawn");
@@ -5034,8 +5224,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                     throw std::runtime_error("explosion class did not start its tick clock");
             }
             const auto before=effects_.size();
-            explodePiece(unit,snapshot,-1,0x1ff20);
-            if(effects_.size()!=before+9)throw std::runtime_error("combined explosion flags lost effects");
+            explodePiece(unit,snapshot,-1,0x3f20);
+            if(effects_.size()!=before+6)throw std::runtime_error("combined explosion flags lost effects");
             const auto samples=effects_;
             effects_.clear();
             for (auto sample:samples) {
@@ -5053,7 +5243,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             effects_=samples;
             std::fprintf(stderr,"PASS: live authored effect expiry retains the last frame and removes at exact duration\n");
-            std::fprintf(stderr,"PASS: all nine authored explosion classes and combined flags spawn independently\n");
+            std::fprintf(stderr,"PASS: all six EXPLODE BITMAP sequences and combined flags spawn independently\n");
             return;
         }
         if (ta::devEnv("TA_GLOW_TEST")) {

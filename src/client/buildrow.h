@@ -44,14 +44,16 @@ struct Layout {
 
 // `n` icons over a bar at `barTop`, `barH` tall, at BUILD MENU SCALE `buildScale`, in
 // a window `winW` wide whose play area (left of the command panel) is `areaW` wide.
+// `aspect` is the icons' width over their height (the Kingdoms portraits' 4:3; TA's
+// unitpics are square, 1).
 inline Layout layout(int n, float barTop, float barH, float buildScale, float winW,
-                     float areaW, int align) {
+                     float areaW, int align, float aspect = 4.0f / 3.0f) {
     Layout L;
     if (n <= 0) return L;
     const float left = kEdge, right = std::max(left + 1.0f, areaW - kEdge);
     const float availW = right - left;
     const float availH = std::max(barTop - 10.0f, 24.0f);
-    const float unitH = barH - 10.0f, unitW = unitH * (4.0f / 3.0f), unitGap = 6.0f;
+    const float unitH = barH - 10.0f, unitW = unitH * aspect, unitGap = 6.0f;
     // The fewest rows that hold the menu at the chosen scale; a scale too big for the
     // room there is (in width for its widest row, in height for the stack) is lowered
     // to the largest any row count allows, and the fewest rows that reach it are used.

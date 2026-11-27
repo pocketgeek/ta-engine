@@ -219,6 +219,10 @@ int TaRetailBrain::score(const sim::World& world, size_t i) const {
     const auto& b = world.player(player_).books;
     const float eStored = b.stored[0], mStored = b.stored[1];
     if (eStored < 50 || mStored < 25) return 0;
+    // TotalA.exe 0x40bb70..0x40bbaa: in scenario mode 1 (0x435100 == 1, a campaign
+    // mission) a type with downloadable=1 (type+0x241 bit 0x20) scores 0, so the AI
+    // never builds the add-on units (docs/retail-ai.md section 2).
+    if (campaign_ && i < types_.size() && types_[i]->downloadable) return 0;
     int E = int(std::trunc(std::max(0.0f, (std::min(b.cap[0], 1000.0f) - eStored) * 0.125f)));
     int M = int(std::trunc(std::max(0.0f, (std::min(b.cap[1], 500.0f) - mStored) * 0.25f)));
     if (b.income[0] - b.expense[0] < 1) E += 20;
@@ -321,6 +325,11 @@ bool TaRetailBrain::findSite(const sim::World& world, const sim::UnitType*, floa
 void TaRetailBrain::assignSquads(const sim::World& world) {
     for (const auto& u : world.units()) {
         if (!u.alive() || !u.type || u.player != player_ || u.underConstruction) continue;
+        // TotalA.exe 0x408846..0x40884e: only a unit with flag 0x20 (selectable)
+        // joins a squad. A campaign unit under its InitialMission script has the
+        // bit cleared (docs/retail-campaign.md section 2.6), so the AI leaves its
+        // patrols, waits and ambushes alone until the script hands it back.
+        if (!u.selectable) continue;
         if (size_t(u.id) >= squadOf_.size()) squadOf_.resize(size_t(u.id) + 1, 0);
         if (squadOf_[size_t(u.id)] != 0) continue;
         const sim::UnitType& t = *u.type;

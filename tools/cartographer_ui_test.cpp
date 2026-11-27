@@ -2644,7 +2644,7 @@ int main(int argc,char** argv) {
         }
         case 27: check(std::string(SDL_GetWindowTitle(window)).find("Ashap Plateau")!=std::string::npos,"searchable Open chooses recent map");
             key(SDLK_TAB);key(SDLK_TAB);click(500,300);key(SDLK_RETURN);break;
-        case 28: text("9");key(SDLK_RETURN);key(SDLK_a,KMOD_CTRL);text("8");
+        case 28: text("11");key(SDLK_RETURN);key(SDLK_a,KMOD_CTRL);text("10");
             for(int i=0;i<6;++i)key(SDLK_TAB);
             text("UI neutral unit");key(SDLK_RETURN);break;
         case 29: check(dirty,"corrected unit properties apply");key(SDLK_s,KMOD_CTRL);break;
@@ -2669,7 +2669,7 @@ int main(int argc,char** argv) {
                 bool neutral=false;
                 for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt"))
                     for(const auto& unit:cart::toPlaced(ta::crt::parse(archive.read(entry))))
-                        if(unit.name=="UI neutral unit" && unit.player==8)neutral=true;
+                        if(unit.name=="UI neutral unit" && unit.player==ta::crt::kNeutralOwner)neutral=true;
                 if(!neutral)throw std::runtime_error("corrected owner and retained unit fields not saved");
             }
             if(std::string(file)=="Copied map.kmp") {

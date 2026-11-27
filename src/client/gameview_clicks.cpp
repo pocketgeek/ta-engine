@@ -361,6 +361,120 @@ namespace {
         sounds_.play(stem, 1.f, 1.f, 7, false);
     }
 
+    // The map's per-cell metal (World::cellMetal, fixed once the match is set up),
+    // re-read when the map changes; the spots are found again from it.
+    void GameView::loadMetalCells() {
+        const auto& w = worldTables();
+        const int cw = mapView_.map().blocksX * 2, ch = mapView_.map().blocksY * 2;
+        if (cw == metalCellsW_ && ch == metalCellsH_ && w.surfaceMetal() == metalCellsSurface_) return;
+        metalCellsW_ = cw; metalCellsH_ = ch; metalCellsSurface_ = w.surfaceMetal();
+        metalCellBuf_.assign(size_t(std::max(0, cw)) * size_t(std::max(0, ch)), 0);
+        for (int z = 0; z < ch; ++z)
+            for (int x = 0; x < cw; ++x) metalCellBuf_[size_t(z) * size_t(cw) + size_t(x)] = uint8_t(w.cellMetal(x, z));
+        metalSpots_.clear();
+        metalPlanet_ = ta::client::metalspots::metalPlanet({metalCellBuf_.data(), cw, ch, metalCellsSurface_});
+    }
+
+    bool GameView::snapsToMetal(const ta::sim::UnitType* t) {
+        if (!t || t->extractsMetal <= 0) return false;
+        loadMetalCells();
+        return !metalPlanet_;
+    }
+
+    const std::vector<ta::client::metalspots::Spot>& GameView::metalSpots(const ta::sim::UnitType* t) {
+        static const std::vector<ta::client::metalspots::Spot> kNone;
+        if (!snapsToMetal(t)) return kNone;
+        const int key = (std::max(1, t->footX) << 8) | std::max(1, t->footZ);
+        auto it = metalSpots_.find(key);
+        if (it == metalSpots_.end())
+            it = metalSpots_.emplace(key, ta::client::metalspots::find(
+                     {metalCellBuf_.data(), metalCellsW_, metalCellsH_, metalCellsSurface_},
+                     std::max(1, t->footX), std::max(1, t->footZ))).first;
+        return it->second;
+    }
+
+    bool GameView::snapToMetal(const ta::sim::UnitType* t, float& wx, float& wz) {
+        if (!snapsToMetal(t)) return true;
+        const auto* s = ta::client::metalspots::nearest(metalSpots(t), wx, wz);
+        if (!s) return false;
+        wx = s->x; wz = s->z;
+        return true;
+    }
+
+    bool GameView::placeMetalAt(float wx, float wz, uint8_t queue) {
+        if (!placing_ || selection_.empty() || !snapToMetal(placing_, wx, wz)) return false;
+        const int builder = selectedBuilder() ? selectedBuilder()->id : selection_.front();
+        if (canPlaceLocked(placing_, wx, wz)) {
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Build;
+            c.unitId = builder;
+            c.x = wx; c.z = wz;
+            c.queue = queue;
+            std::snprintf(c.type, sizeof c.type, "%s", placing_->id.c_str());
+            issue(c);
+            return true;
+        }
+        std::vector<int> feats;
+        if (clearableAt(placing_, wx, wz, feats) && !feats.empty()) {
+            issueClearThenBuild(builder, placing_, wx, wz, feats, queue);
+            return true;
+        }
+        return false;
+    }
+
+    // The deposits a box catches, in the order the builder will walk them (nearest
+    // first from where it stands), less those already taken (an extractor, a site).
+    std::vector<ta::client::metalspots::Spot> GameView::metalBoxSpots(float x0, float z0, float x1, float z1) {
+        std::vector<ta::client::metalspots::Spot> out;
+        if (!placing_ || selection_.empty()) return out;
+        const int builder = selectedBuilder() ? selectedBuilder()->id : selection_.front();
+        const UnitR* b = frameUnitP(builder);
+        const float fx = b ? b->x : (x0 + x1) / 2, fz = b ? b->z : (z0 + z1) / 2;
+        for (const auto& s : ta::client::metalspots::inBox(metalSpots(placing_), x0, z0, x1, z1, fx, fz))
+            if (canPlacePreview(placing_, s.x, s.z) || placePreviewClearable(placing_, s.x, s.z)) out.push_back(s);
+        return out;
+    }
+
+    // An extractor on every free deposit in the box, as one queue: a plain drag
+    // replaces the builder's work with them, Shift adds them after it, Ctrl puts them
+    // ahead of it (in walking order).
+    bool GameView::placeMetalBox(float x0, float z0, float x1, float z1, uint8_t queue) {
+        const auto spots = metalBoxSpots(x0, z0, x1, z1);
+        if (spots.empty()) return false;
+        const int builder = selectedBuilder() ? selectedBuilder()->id : selection_.front();
+        const uint8_t place = queue & 3;
+        auto issueAt = [&](const ta::client::metalspots::Spot& s, uint8_t q) {
+            std::vector<int> feats;
+            if (canPlaceLocked(placing_, s.x, s.z)) {
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::Build;
+                c.unitId = builder;
+                c.x = s.x; c.z = s.z;
+                c.queue = q;
+                std::snprintf(c.type, sizeof c.type, "%s", placing_->id.c_str());
+                issue(c);
+                return true;
+            }
+            if (clearableAt(placing_, s.x, s.z, feats) && !feats.empty()) {
+                issueClearThenBuild(builder, placing_, s.x, s.z, feats, q);
+                return true;
+            }
+            return false;
+        };
+        bool any = false;
+        if (place == ta::net::kQueueFront) {   // each to the head, the last first: they run in walking order
+            for (auto it = spots.rbegin(); it != spots.rend(); ++it) any |= issueAt(*it, ta::net::kQueueFront);
+        } else {
+            for (const auto& s : spots) {
+                // The first replaces (plain) or appends (Shift); the rest follow it. No
+                // toggle bit: a box never takes back a site it re-catches.
+                const uint8_t q = (!any && place == ta::net::kQueueReplace) ? ta::net::kQueueReplace : ta::net::kQueueAppend;
+                any |= issueAt(s, q);
+            }
+        }
+        return any;
+    }
+
     // Retail mode 14 on the minimap (0x527eb0 S): MOBILEBUILD at the minimap point
     // with the "oktobuild" sound when the placement flag passes, else
     // "notoktobuild". Its flag is the main view's (stale, I); ours is checked at
@@ -374,7 +488,9 @@ namespace {
         const int builder = selectedBuilder() ? selectedBuilder()->id : selection_.front();
         std::vector<int> feats;
         bool placed = false;
-        if (canPlaceLocked(placing_, wx, wz)) {
+        if (!snapToMetal(placing_, wx, wz)) {
+            // An extractor with no deposit near the point: refused, as in the view.
+        } else if (canPlaceLocked(placing_, wx, wz)) {
             ta::net::Command c;
             c.kind = ta::net::Cmd::Build;
             c.unitId = builder;

@@ -428,7 +428,7 @@ static void rules() {
     check(owner({}) == -1, "an empty box has no owner");
     check(owner({3, 3, 1}) == 3, "the most units win");
     check(owner({3, 1}) == 1, "a tie goes to the lower slot");
-    check(owner({8, 8, 2}) == 8, "neutral can win a box");
+    check(owner({10, 10, 2}) == 10, "neutral can win a box");
     check(ta::client::watchMayPace(true, true), "the host of a private game paces it");
     check(!ta::client::watchMayPace(false, true), "not a multiplayer room, even a host");
     check(!ta::client::watchMayPace(true, false) && !ta::client::watchMayPace(false, false), "nor a guest");

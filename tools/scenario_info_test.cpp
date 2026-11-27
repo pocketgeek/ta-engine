@@ -193,10 +193,30 @@ int main() {
     }
     {
         Case c = good; c.name = "neutral placements only"; c.scenario = emptyScenario();
-        c.scenario.units = {unit("soldier", 8)};
+        c.scenario.units = {unit("soldier", crt::kNeutralOwner)};
         auto info = expect(c, ScenarioStatus::Ok);
         check(info.content() && info.requiredSeats() == 0 && info.placedSeats == 0, "the neutral owner needs no seat");
         check(info.armySeats == 0 && !info.offerable(), "neutral placements leave every seat without an army");
+        // An eight-player (2.0) file stores the neutral owner as 8; it reads as neutral.
+        c.name = "neutral placements, 2.0 file"; c.scenario.version = crt::kVersionKills;
+        const auto old = crt::write(c.scenario);
+        check(old.size() > 4 + 4 + 4 + 0x20c + 4 && old[4 + 4 + 4 + 0x20c] == crt::kOldNeutralOwner,
+              "a 2.0 file keeps the neutral owner as 8 on disk");
+        check(crt::parse(old).units.at(0).player == crt::kNeutralOwner, "and parse renumbers it to 10");
+        info = expect(c, ScenarioStatus::Ok);
+        check(info.requiredSeats() == 0 && info.placedSeats == 0, "the 2.0 neutral owner still needs no seat");
+    }
+    {
+        // Retail's ten players: owners 8 and 9 are seats (3.0 numbering).
+        Case c = good; c.name = "players 9 and 10";
+        c.scenario.units = {unit("soldier", 0), unit("soldier", 8, 20, 20), unit("builder", 9, 30, 30)};
+        auto info = expect(c, ScenarioStatus::Ok);
+        check(info.placedSeats == (1u | 1u << 8 | 1u << 9) && sim::seatList(info.placedSeats) == "1 9 10",
+              "owners 8 and 9 are seats 9 and 10", sim::seatList(info.placedSeats));
+        c.name = "rules for player 10"; c.scenario.units = {unit("soldier", 0)};
+        c.scenario.players.resize(crt::kBanks); c.scenario.players[10].push_back(group({{0, {}}}, {{2, {"flag", "1"}}}));
+        info = expect(c, ScenarioStatus::Ok);
+        check(info.ruleSeats == (1u | 1u << 9), "bank 10 is player 10's", std::to_string(info.ruleSeats));
     }
 
     std::printf("player 1's army:\n");
@@ -211,7 +231,7 @@ int main() {
         std::string why;
         for (const auto& line : sim::scenarioReason(info)) why += (why.empty() ? "" : "|") + line;
         check(why == "PLAYER 1 GETS NO ARMY|(NO FIGHTER OR BUILDER)", "no-army reason", why);
-        check(inspect(c, false).offerable() && inspect(c, false).armySeats == 0xFF, "the army is a registry check");
+        check(inspect(c, false).offerable() && inspect(c, false).armySeats == sim::kAllSeats, "the army is a registry check");
         c.name = "a lodestone for player 1"; c.scenario.units[0] = unit("lodestone", 0);
         check(!expect(c, ScenarioStatus::Ok).offerable(), "an unarmed building that builds nothing is not an army");
         c.name = "nothing for player 1"; c.scenario.units = {unit("soldier", 1, 30, 30)};
@@ -226,7 +246,7 @@ int main() {
         c.name = "All Players' rules create armies"; c.scenario.players[1].clear();
         c.scenario.players[0].push_back(group({{0, {}}}, {{7, {"soldier", "Hill"}}}));
         info = expect(c, ScenarioStatus::Ok);
-        check(info.armySeats == 0xFF && info.offerable(), "an All Players Create rule arms every seat");
+        check(info.armySeats == sim::kAllSeats && info.offerable(), "an All Players Create rule arms every seat");
         c = good; c.name = "rules only"; c.scenario.units.clear();
         info = expect(c, ScenarioStatus::Ok);
         check(info.seatOneArmy() && info.offerable(), "a rules-only map keeps its Monarchs");
@@ -305,10 +325,10 @@ int main() {
         expect(c, ScenarioStatus::Ok);
     }
     {
-        Case c = good; c.name = "owner 9"; c.scenario.units.push_back(unit("soldier", 9));
+        Case c = good; c.name = "owner 11"; c.scenario.units.push_back(unit("soldier", crt::kNeutralOwner + 1));
         expect(c, ScenarioStatus::BadOwner);
-        c = good; c.name = "rules past the neutral bank"; c.scenario.players.resize(11);
-        c.scenario.players[10].push_back({});
+        c = good; c.name = "rules past the neutral bank"; c.scenario.players.resize(crt::kBanks + 2);
+        c.scenario.players[crt::kBanks + 1].push_back({});
         expect(c, ScenarioStatus::BadOwner);
     }
     {
@@ -404,7 +424,7 @@ int main() {
     // The agreement matrix: every case above through setupMatch with the option on and
     // every seat the inspector says the scenario needs (and only those) in use.
     std::printf("agreement with setupMatch:\n");
-    auto run = [&](const Case& c, uint8_t seats, std::string& error) {
+    auto run = [&](const Case& c, sim::SeatMask seats, std::string& error) {
         auto files = filesOf(c);
         hpi::Vfs vfs; vfs.setMapFiles(files);
         sim::MatchConfig cfg; cfg.vfs = &vfs; cfg.mapPath = kMap; cfg.mapScenario = true;
@@ -441,7 +461,7 @@ int main() {
         for (int i = 0; want == ScenarioStatus::Ok && i < sim::kMaxPlayers; ++i)
             if (info.requiredSeats() >> i & 1) {
                 std::string why;
-                run(c, uint8_t(info.requiredSeats() & ~(1u << i)) | uint8_t(i == 0 ? 0b10 : 0b1), why);
+                run(c, sim::SeatMask((info.requiredSeats() & ~(1u << i)) | (i == 0 ? 0b10u : 0b1u)), why);
                 check(why == "Seat player " + std::to_string(i + 1) + " in the lobby to play this scenario",
                       c.name + ": seat " + std::to_string(i + 1) + " is required", why);
             }

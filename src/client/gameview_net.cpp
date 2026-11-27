@@ -165,20 +165,20 @@
     void GameView::resetDiplomacy(const ta::net::RoomView& room) {
         // Chat and voice start with your allies only: the occupied slots on your team
         // (you included). A spectator has no team and keeps everyone.
-        uint8_t allies=0xff;
-        if (room.mySlot>=0 && room.mySlot<ta::net::kMaxSlots && room.mySlot<8) {
+        ta::net::SlotMask allies=ta::net::kEverySlot;
+        if (room.mySlot>=0 && room.mySlot<ta::net::kMaxSlots) {
             allies=0;
-            for (int i=0;i<ta::net::kMaxSlots && i<8;++i)
+            for (int i=0;i<ta::net::kMaxSlots;++i)
                 if ((room.slots[i].type==1 || room.slots[i].type==2) && room.slots[i].team==room.slots[room.mySlot].team)
-                    allies|=uint8_t(1u<<i);
+                    allies|=ta::net::SlotMask(1u<<i);
         }
         chatRecipients_=allies;voiceRecipients_=allies;requestedSharing_.reset();
         // Spectators: off (the Diplomacy SPECTATORS row ticks them in). A spectator never
         // chats or talks in a running game at all.
         chatSpectators_=voiceSpectators_=false;
         voiceVolume_.fill(100);voiceVolumeDrag_=-1;humanSlots_=0;
-        for (int i=0;i<ta::net::kMaxSlots && i<8;++i)
-            if (room.slots[i].type==1) humanSlots_|=uint8_t(1u<<i);
+        for (int i=0;i<ta::net::kMaxSlots;++i)
+            if (room.slots[i].type==1) humanSlots_|=uint16_t(1u<<i);
         giveUnitsMenu_=false;giveUnitsHots_.clear();
     }
 
@@ -203,7 +203,7 @@
             resultParticipants_=0;
             for (int i=0;i<ta::net::kMaxSlots;++i)
                 if (room.slots[i].type==1 || room.slots[i].type==2)
-                    *resultParticipants_|=uint8_t(1u<<i);
+                    *resultParticipants_|=uint16_t(1u<<i);
         }
         int maxSlot = 0;
         for (int i = 0; i < ta::net::kMaxSlots; ++i)
@@ -213,8 +213,8 @@
         loadScreen_ = std::make_unique<ta::LoadScreen>(
             ren_, vfs_, room.mission.empty() ? room.mapId : room.mission, settings_);
         {
-            std::array<std::string, 8> names{};
-            for (int i = 0; i <= maxSlot && i < 8; ++i) {
+            std::array<std::string, ta::sim::kMaxPlayers> names{};
+            for (int i = 0; i <= maxSlot && i < ta::sim::kMaxPlayers; ++i) {
                 if (room.slots[i].type != 1 && room.slots[i].type != 2) continue;
                 names[size_t(i)] = !room.slots[i].name.empty()
                                        ? room.slots[i].name
@@ -324,9 +324,9 @@
         if (room.opts.benchmark) benchmarkLevel_ = room.opts.benchmark;   // for the results label
         for (int i = 0; i <= maxSlot; ++i) {
             const auto& s = room.slots[i];
-            colorSlot_[i & 7] = s.color % 10;
-            playerAi_[i & 7] = (s.type == 2);
-            playerName_[i & 7] = !s.name.empty()
+            colorSlot_[i % ta::sim::kMaxPlayers] = s.color % 10;
+            playerAi_[i % ta::sim::kMaxPlayers] = (s.type == 2);
+            playerName_[i % ta::sim::kMaxPlayers] = !s.name.empty()
                                      ? s.name   // human name, or the AI's random name
                                      : s.type == 2 ? ("AI " + std::to_string(i + 1))
                                                    : ("Player " + std::to_string(i + 1));
@@ -1447,7 +1447,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
 
     // Display side of a bundle's lifecycle events (main thread; the sim applies them).
     void GameView::noteEvent(const ta::net::Event& e) {
-        if (e.kind != ta::net::Event::Kind::AiTakeover || e.player >= 8) return;
+        if (e.kind != ta::net::Event::Kind::AiTakeover || e.player >= ta::sim::kMaxPlayers) return;
         playerAi_[e.player] = true;
         if (replayInTransit_) return;   // a jump passes it by
         const std::string& name = playerName_[e.player];
@@ -1513,7 +1513,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (const char* be = ta::devEnv("TA_BENCH")) {   // headless: benchmark run
                 int lv = std::atoi(be);                        // TA_BENCH=<level 1..6>, default High
                 benchmarkLevel_ = (lv >= 1 && lv <= ta::sim::kBenchLevels) ? lv : 3;
-                benchmarkMode_ = true;                         // (forces watch + 8 AI + cap 8 + Painted Desert below)
+                benchmarkMode_ = true;                         // (forces watch + 10 AI + cap 10 + Painted Desert below)
             }
             // The Benchmark runs with no mod packs at all (a menu run already applied this).
             if (benchmarkMode_) ta::applyBenchmarkMods(mods_, mp_);
@@ -1562,7 +1562,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // slot can be an AI -- an all-AI game to watch.
             if (benchmarkMode_) o.benchmark = uint8_t(benchmarkLevel_);   // menu Benchmark: intensity level
             // Benchmark is an all-AI WATCH run (host takes no slot) on Painted Desert, forced
-            // to 8 slots regardless of the map's start-position count (setupMatch synthesises
+            // to all kMaxSlots (10) slots regardless of the map's start-position count (setupMatch synthesises
             // the extra starts), private (not in the browser).
             bool watch = (autoMode == 1 && ta::devEnv("TA_MP_WATCH")) || benchmarkMode_;
             // Mode 7 is interactive SINGLE-PLAYER: a private game (hidden from the
@@ -1617,7 +1617,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // don't seat self -- an all-AI game the host just watches.
             if (r.mySlot < 0 && (benchmarkMode_ || (autoMode == 1 && ta::devEnv("TA_MP_WATCH")))) {
                 const char* ai = ta::devEnv("TA_MP_AIS");
-                // Benchmark: always a full 8-player FFA (each AI its own team -> they fight,
+                // Benchmark: always a full 10-player FFA (each AI its own team -> they fight,
                 // which is the point of the load test). FIXED sides by slot (k % sides,
                 // ARM / CORE alternating) -- never random.
                 int nAi = benchmarkMode_ ? int(ta::net::kMaxSlots)
@@ -1643,21 +1643,35 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                     // TA SKIRMISH rows: the human takes its own seat, the computers
                     // the next ones, in row order; ally groups become teams.
                     const auto& sk = *skirmish_;
+                    // Each row's room slot first (the human's own, the computers the
+                    // next free ones), then the teams: a seat with no ally group is its
+                    // own slot's team, an ally group takes its first member's slot. Teams
+                    // stay inside 0..kMaxSlots-1 (the server keeps team % kMaxSlots), so
+                    // a group never lands on a lone seat's team.
+                    std::vector<int> slotOf(sk.seats.size(), -1);
                     int slot = 0;
-                    auto team = [&](const ta::SkirmishSeat& s, int sl) { return uint8_t(s.ally < 5 ? 10 + s.ally : sl); };
-                    for (const auto& seat : sk.seats)
-                        if (seat.controller == 1) {
-                            mp_->setSlot(r.mySlot, 1, uint8_t(seat.side), uint8_t(seat.color),
-                                         team(seat, r.mySlot), 1);
+                    for (size_t k = 0; k < sk.seats.size(); ++k) {
+                        if (sk.seats[k].controller == 1) slotOf[k] = r.mySlot;
+                        else if (sk.seats[k].controller == 2) {
+                            while (slot == r.mySlot) ++slot;
+                            if (slot < int(ta::net::kMaxSlots)) slotOf[k] = slot++;
                         }
-                    for (const auto& seat : sk.seats) {
-                        if (seat.controller != 2) continue;
-                        while (slot == r.mySlot) ++slot;
-                        if (slot >= int(ta::net::kMaxSlots)) break;
-                        // Difficulty Easy/Medium/Hard: the computer level (src/ai).
-                        mp_->setSlot(slot, 2, uint8_t(seat.side), uint8_t(seat.color), team(seat, slot), 1,
-                                     uint8_t(skirmishAiLevel(sk.difficulty)));
-                        ++slot;
+                    }
+                    auto team = [&](size_t k) {
+                        const int ally = sk.seats[k].ally;
+                        if (ally < 5)
+                            for (size_t j = 0; j < sk.seats.size(); ++j)
+                                if (slotOf[j] >= 0 && sk.seats[j].ally == ally) return uint8_t(slotOf[j]);
+                        return uint8_t(slotOf[k]);
+                    };
+                    for (size_t k = 0; k < sk.seats.size(); ++k) {
+                        const auto& seat = sk.seats[k];
+                        if (slotOf[k] < 0) continue;
+                        if (seat.controller == 1)
+                            mp_->setSlot(r.mySlot, 1, uint8_t(seat.side), uint8_t(seat.color), team(k), 1);
+                        else   // Difficulty Easy/Medium/Hard: the computer level (src/ai).
+                            mp_->setSlot(slotOf[k], 2, uint8_t(seat.side), uint8_t(seat.color), team(k), 1,
+                                         uint8_t(skirmishAiLevel(sk.difficulty)));
                     }
                     mp_->startGame();
                     mpStarted_ = true;

@@ -245,7 +245,8 @@ inline constexpr int kMaxActiveSearches = 1;
 // its death frees it (0x486dc7), so a pool has holes wherever units died. World owns this table (its unit IDs stay global and are never reused);
 // the scheduler reads it to walk slots, holes included, in retail order.
 struct EntitySlotTable {
-    std::array<std::vector<int32_t>,10> unitAt; // slot -> unit ID, -1 = hole
+    // slot -> unit ID, -1 = hole; per owner: retail's ten players and the scenario neutral
+    std::array<std::vector<int32_t>,RetailSearchScheduler::playerCount> unitAt;
     std::vector<int32_t> slotOf;                // unit ID -> slot, -1 = none
     int slot(int unitId) const {
         return unitId>=0 && size_t(unitId)<slotOf.size() ? slotOf[size_t(unitId)] : -1;
@@ -297,11 +298,11 @@ class PathService {
         slots_=table;
     }
     void setEntityPool(int player,int first,int count);
-    void restoreTraversal(int playerCursor,const std::array<int,10>& slots,
-                          const std::array<int,10>& wraps) {
-        if (activeId_>=0 || playerCursor<0 || playerCursor>=10)
+    void restoreTraversal(int playerCursor,const std::array<int,RetailSearchScheduler::playerCount>& slots,
+                          const std::array<int,RetailSearchScheduler::playerCount>& wraps) {
+        if (activeId_>=0 || playerCursor<0 || playerCursor>=RetailSearchScheduler::playerCount)
             throw std::invalid_argument("invalid scheduler restore boundary");
-        for (size_t i=0;i<10;++i)
+        for (size_t i=0;i<size_t(RetailSearchScheduler::playerCount);++i)
             if (slots[i]<0 || (poolSize_[i] && slots[i]>=poolSize_[i]))
                 throw std::invalid_argument("invalid scheduler slot cursor");
         scheduler_.playerCursor=playerCursor;
@@ -419,12 +420,12 @@ class PathService {
     std::vector<uint8_t> pendingIds_;
     // Derived queue counts: avoid walking thousands of scattered map nodes
     // each tick merely to reconstruct the scheduler's ten player records.
-    std::array<int,10> pendingByPlayer_{},priorityByPlayer_{};
+    std::array<int,RetailSearchScheduler::playerCount> pendingByPlayer_{},priorityByPlayer_{};
     void eraseRequest(std::unordered_map<int,Entry>::iterator it);
     RetailSearchWorker worker_;
     RetailSearchScheduler scheduler_;
-    std::array<int,10> poolFirst_{},poolSize_{};
-    std::array<bool,10> fixedPool_{};
+    std::array<int,RetailSearchScheduler::playerCount> poolFirst_{},poolSize_{};
+    std::array<bool,RetailSearchScheduler::playerCount> fixedPool_{};
     const EntitySlotTable* slots_=nullptr;
     // A unit's offset in its player's pool, or -1 when it has none.
     int slotOf(int unitId,int player) const;

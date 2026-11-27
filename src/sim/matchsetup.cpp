@@ -33,6 +33,10 @@
 
 namespace ta::sim {
 
+static_assert(ta::crt::kNeutralOwner == kNeutralPlayer && ta::crt::kMaxOwners == kMaxPlayers,
+              "the .crt owner numbering is the sim's player numbering");
+static_assert(ta::mapgen::kMaxPlayers == kMaxPlayers, "a random map has a start per player");
+
 
 // One explicit selection order (Cmd::Order): every member gets
 // the template command, in increasing id order, inside one World::beginOrder
@@ -463,6 +467,25 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
             byIndex[n] = {float(s->numberOr("xpos", 0) * k), float(s->numberOr("zpos", 0) * k)};
         }
         for (auto& [n, pos] : byIndex) out.push_back(pos);
+        // The map's own player count caps its starts. Cavedog's editor pads most
+        // multiplayer maps to ten StartPos specials (Sherwood: numplayers=2, 3 with
+        // StartPos8..10 stacked in the top-left corner), and retail reads all ten
+        // (0x436a9f..0x436b0e counts every StartPos* special in the schema). Here the
+        // largest numplayers entry bounds the starts, so the preview markers, the
+        // room's seats (capacityFor / seatsFor) and the Random shuffle all use the
+        // starts the map says it has. Not retail: retail seats past numplayers.
+        if (gh) {
+            int most = 0;
+            const std::string list = gh->valueOr("numplayers", "");
+            for (size_t i = 0; i < list.size();) {
+                if (std::isdigit(static_cast<unsigned char>(list[i]))) {
+                    size_t used = 0;
+                    most = std::max(most, std::stoi(list.substr(i), &used));
+                    i += used;
+                } else ++i;
+            }
+            if (most > 0 && size_t(most) < out.size()) out.resize(size_t(most));
+        }
     } catch (const std::exception&) {}
     return out;
 }
@@ -962,7 +985,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             auto scenario = ta::crt::parse(vfs.read(crtPath));
             if (scenario.version == 0) throw std::runtime_error("Scenario CRT file is damaged");
             auto requirePlayer = [&](int player) {
-                if (player == 8) { world.enableScenarioNeutralPlayer(); return; }
+                if (player == kNeutralPlayer) { world.enableScenarioNeutralPlayer(); return; }
                 if (player < 0 || player >= kMaxPlayers)
                     throw std::runtime_error("Scenario owner is outside the supported player range");
                 if (player >= int(cfg.slots.size()) || !cfg.slots[size_t(player)].used)
@@ -979,9 +1002,10 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 world.setScenarioTypeStats(name, std::clamp(type.stat[1],0,1000),
                     std::clamp(type.stat[2],0,1000), std::clamp(type.stat[3],0,65535));
             }
-            // Banks 1..8 belong to owners 0..7. A bank whose groups are all empty does
+            // Banks 1..10 belong to owners 0..9 (crt.h Owners: parse renumbers an older
+            // eight-player file). A bank whose groups are all empty does
             // nothing, so it needs no seat (259; it used to demand one). A bank past the
-            // ninth is not Cartographer output and keeps the old rule (the neutral owner,
+            // players' is not Cartographer output and keeps the old rule (the neutral owner,
             // or a refusal), so no file sets up differently except by starting at all.
             for (size_t p = 1; p < scenario.players.size(); ++p)
                 if (p > size_t(kMaxPlayers) ? !scenario.players[p].empty()
@@ -1583,6 +1607,30 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
     world.setStartResources(0, float(schema->numberOr("humanenergy", 1000)), float(schema->numberOr("humanmetal", 1000)));
     world.setStartResources(1, float(schema->numberOr("computerenergy", 1000)), float(schema->numberOr("computermetal", 1000)));
     if (gh->numberOr("waterdoesdamage", 0) != 0) world.setWaterDamage(int32_t(gh->numberOr("waterdamage", 0)));
+    // The computer's income by difficulty, as in a skirmish: TotalA.exe scales every
+    // resource credit to a type-2 player's units Easy x0.5, Medium x0.7, Hard x1.0
+    // (constants 0x4fc480/0x4fc488, production loop 0x401360; docs/retail-ai.md
+    // section 2). The difficulty is in the spec every peer sets up from.
+    static constexpr float kIncome[3] = {0.5f, 0.7f, 1.0f};
+    world.player(1).books.mult = kIncome[difficulty];
+    // UseOnlyUnits (TotalA.exe 0x431740 from game start 0x4974de; docs/retail-campaign.md
+    // section 2.5): camps\useonly\<file>.TDF clears the "available" type flag on every
+    // type, then sets it again for each top-level section naming a type. One global
+    // list, so it binds the human and the computer alike. No key or no file: no limit.
+    int useOnly = -1;   // buildable types, for the log; -1: no list
+    if (const std::string file = gh->valueOr("useonlyunits", ""); !file.empty()) {
+        std::string path = "camps/useonly/" + file;
+        if (vpath::extension(path) != ".tdf") path += ".tdf";
+        if (vfs.has(path)) {
+            const auto data = vfs.read(path);
+            const auto list = tdf::parseText(std::string(data.begin(), data.end()), path);
+            std::vector<std::string> allowed;
+            for (const auto& name : list.childOrder)
+                if (reg.find(name)) allowed.push_back(name);
+            useOnly = int(allowed.size());
+            world.setBuildRestrictions(std::move(allowed));
+        }
+    }
 
     int spawned = 0;
     std::vector<std::pair<int, std::string>> initialOrders;
@@ -1618,6 +1666,7 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
         }
     if (out) {
         out->aiSlots = {1};
+        out->difficulty = difficulty;
         out->aiProfile = schema->valueOr("aiprofile", "");
         std::transform(out->aiProfile.begin(), out->aiProfile.end(), out->aiProfile.begin(), ::tolower);
         out->playerDefs = {"", "strategic opponent"};
@@ -1643,8 +1692,8 @@ static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs
     world.setMission(std::move(ms));
     prebuildReachability(world, reg);
     humanOut = 0;
-    std::fprintf(stderr, "setupTaMission: %s (%s) -- %d placed units\n", stem.c_str(),
-                 order[difficulty][0], spawned);
+    std::fprintf(stderr, "setupTaMission: %s (%s) -- %d placed units, %s %d types\n", stem.c_str(),
+                 order[difficulty][0], spawned, useOnly < 0 ? "no UseOnly list," : "UseOnly", std::max(useOnly, 0));
     return true;
 }
 

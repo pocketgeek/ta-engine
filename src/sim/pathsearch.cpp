@@ -648,7 +648,7 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
         ~TelemetryTickScope(){active=previous;}
     } telemetryScope(telemetryTickActive_);
     const uint32_t now=simulationTick ? simulationTick : uint32_t(tickNo_);
-    std::array<RetailSearchScheduler::Player,10> players{};
+    std::array<RetailSearchScheduler::Player,RetailSearchScheduler::playerCount> players{};
     for (size_t i=0;i<players.size();++i) {
         auto& p=players[i];
         // TA credits every active player, requests or not (0x40eb70).

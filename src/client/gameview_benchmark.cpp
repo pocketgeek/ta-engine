@@ -244,7 +244,7 @@
         const char* title = "BENCHMARK RESULTS";
         char subBuf[160];
         std::snprintf(subBuf, sizeof subBuf,
-                      "8-AI FFA -- ULASEM ARENA -- %s: 1 UNIT/FACTION EVERY %s FOR 60S",
+                      "10-AI FFA -- ULASEM ARENA -- %s: 1 UNIT/FACTION EVERY %s FOR 60S",
                       ta::sim::benchmarkLevelName(benchmarkLevel_),
                       ta::sim::benchmarkLevelInterval(benchmarkLevel_));
         const char* sub = subBuf;

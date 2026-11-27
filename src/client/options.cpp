@@ -903,12 +903,10 @@ void OptionsScreen::build(int channels) {
         [] { return std::vector<std::string>{"Off", "Damaged", "Always"}; },
         [this] { return float(std::clamp(s_.healthBars, 0, 2)); },
         [this](float idx) { s_.healthBars = std::clamp(int(idx + 0.5f), 0, 2); });
-    // The right-hand strip between the minimap and the command panel is dead black
-    // space at every resolution. This fills it with a live readout. It is sized to the
-    // gap rather than assuming one: on a short window, or at a large UI SCALE, there is
-    // room for only the first row or two, and for none at all below that -- so the panel
-    // drops rows from the bottom of its priority list and disappears entirely rather
-    // than overlapping the command panel.
+    // A live readout in the right-hand column, between the selected unit's readout and
+    // the order buttons. It is sized to the room left there: on a short window, or at a
+    // large scale, it drops rows from the bottom of its priority list, and disappears
+    // entirely rather than pushing the order buttons off the window.
     toggle("STATS PANEL", [&] { return s_.statsPanel ? 1.0f : 0.0f; },
            [&](float v) { s_.statsPanel = v > 0.5f; });
     // Where the in-game conjure/build icon row sits along the bottom of the screen.
@@ -919,6 +917,21 @@ void OptionsScreen::build(int channels) {
     // Extra scale for the build icon row, applied ON TOP of UI SCALE (same range).
     slider("BUILD MENU SCALE", 0.5f, 4.0f, [&] { return s_.buildBarScale; },
            [&](float v) { s_.buildBarScale = v; }, [](float v) { return pctOf(v, 1); });
+    // The metal / energy bar over the top of the map: where it sits, and its size.
+    dropdown("RESOURCE BAR",
+        [] { return std::vector<std::string>{"Left", "Center", "Right"}; },
+        [this] { return float(std::clamp(s_.resourceBarAlign, 0, 2)); },
+        [this](float idx) { s_.resourceBarAlign = std::clamp(int(idx + 0.5f), 0, 2); });
+    slider("RESOURCE BAR SCALE", 0.5f, 4.0f, [&] { return s_.resourceBarScale; },
+           [&](float v) { s_.resourceBarScale = v; }, [](float v) { return pctOf(v, 1); });
+    // The right-hand column, top down: minimap, stats, order buttons. Each scales ON
+    // TOP of UI SCALE.
+    slider("MINIMAP SCALE", 0.5f, 4.0f, [&] { return s_.minimapScale; },
+           [&](float v) { s_.minimapScale = v; }, [](float v) { return pctOf(v, 1); });
+    slider("STATS SCALE", 0.5f, 4.0f, [&] { return s_.statsScale; },
+           [&](float v) { s_.statsScale = v; }, [](float v) { return pctOf(v, 1); });
+    slider("ORDERS SCALE", 0.5f, 4.0f, [&] { return s_.ordersScale; },
+           [&](float v) { s_.ordersScale = v; }, [](float v) { return pctOf(v, 1); });
     // A column of idle builders' portraits at the right edge of the play area.
     dropdown("IDLE BUILDERS",
         [] { return std::vector<std::string>{"Off", "Top", "Middle", "Bottom"}; },

@@ -233,9 +233,9 @@ struct Uplink {
                         std::lock_guard<std::mutex> lock(m);
                         auto it = progressSent.find(tick);
                         if (it != progressSent.end()) delays.push_back(double(at - it->second) / 1000.0);
-                    } else if (kind == net::Msg::VoiceUp && len >= 5) {
+                    } else if (kind == net::Msg::VoiceUp && len >= 6) {
                         std::lock_guard<std::mutex> lock(m);
-                        voice.push_back({at, p[3]});
+                        voice.push_back({at, p[4]});   // u16 seq, u16 recipients, u8 flags
                     }
                     off += 4 + len;
                 }
@@ -267,7 +267,7 @@ TalkResult talk(net::MpClient& client, Uplink& up, double seconds, int hitchMs =
         const uint64_t n = nowUs();
         while (n >= nextVoice) {
             nextVoice += 20000;
-            client.sendVoice(seq, 0xff, seq == 0 ? net::kVoiceStart : 0, opus);
+            client.sendVoice(seq, net::kEverySlot, seq == 0 ? net::kVoiceStart : 0, opus);
             ++seq;
         }
         while (n >= nextProgress) {
@@ -293,7 +293,7 @@ TalkResult talk(net::MpClient& client, Uplink& up, double seconds, int hitchMs =
         }
     }
     res.sent = seq;
-    client.sendVoice(seq, 0xff, net::kVoiceEnd, {});
+    client.sendVoice(seq, net::kEverySlot, net::kVoiceEnd, {});
     for (int i = 0; i < 300; ++i) { client.poll(); sleepMs(5); }   // let the queue drain
     std::lock_guard<std::mutex> lock(up.m);
     std::vector<double> d = up.delays;

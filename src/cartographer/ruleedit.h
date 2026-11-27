@@ -16,7 +16,7 @@ struct RuleTemplate {
     std::string name,description;
     ta::crt::RuleGroup group;
 };
-// CRT rule bank: 0 = All Players, 1..8 = Player 1..8 (not placed-unit owner ids).
+// CRT rule bank: 0 = All Players, 1..10 = Player 1..10 (not placed-unit owner ids).
 std::vector<RuleTemplate> ruleTemplates(int player,const std::string& unitType,const std::string& location);
 std::vector<int> matchingRuleTemplates(const std::vector<RuleTemplate>& templates,const std::string& query);
 std::vector<std::string> ruleFlags(const std::vector<ta::crt::RuleGroup>& groups);

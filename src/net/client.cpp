@@ -1000,8 +1000,8 @@ void MpClient::kick(int slot) { Writer w; w.u8(uint8_t(slot)); send(Msg::Kick, w
 
 void MpClient::moveSeat(int slot) { Writer w; w.u8(uint8_t(slot)); send(Msg::MoveSeat, w); }
 
-void MpClient::chat(const std::string& text, uint8_t recipients, bool spectators) {
-    Writer w; w.str(text); w.u8(recipients); w.u8(spectators ? 1 : 0); send(Msg::Chat, w);
+void MpClient::chat(const std::string& text, SlotMask recipients, bool spectators) {
+    Writer w; w.str(text); w.u16(recipients); w.u8(spectators ? 1 : 0); send(Msg::Chat, w);
 }
 
 void MpClient::setVoiceListen(bool on) {
@@ -1009,7 +1009,7 @@ void MpClient::setVoiceListen(bool on) {
     if (!on) voice_.clear();
 }
 
-void MpClient::sendVoice(uint16_t seq, uint8_t recipients, uint8_t flags, const std::vector<uint8_t>& opus) {
+void MpClient::sendVoice(uint16_t seq, SlotMask recipients, uint8_t flags, const std::vector<uint8_t>& opus) {
     if (state_ != State::InRoom && state_ != State::Starting && state_ != State::InGame) return;
     if (opus.size() > kVoiceMaxOpus || opus.empty() != bool(flags & kVoiceEnd) ||
         (flags & (kVoiceStart | kVoiceEnd)) == (kVoiceStart | kVoiceEnd)) return;   // the server fails these
@@ -1023,7 +1023,7 @@ void MpClient::sendVoice(uint16_t seq, uint8_t recipients, uint8_t flags, const 
     if (end) voiceRestart_ = false;
     else if (voiceRestart_) { flags |= kVoiceStart; voiceRestart_ = false; }   // a fresh start after a hold
     Writer w;
-    w.u16(seq); w.u8(recipients); w.u8(flags); w.u16(uint16_t(opus.size()));
+    w.u16(seq); w.u16(recipients); w.u8(flags); w.u16(uint16_t(opus.size()));
     w.b.insert(w.b.end(), opus.begin(), opus.end());
     voiceSeq_ = seq; voiceMask_ = recipients; voiceSpectators_ = flags & kVoiceSpectators; voiceOpen_ = !end;
     conn_.sendLow(Msg::VoiceUp, w.b);
@@ -1077,7 +1077,7 @@ void MpClient::holdVoice(uint64_t now) {
     if (voiceOpen_) {
         // Close the transmission now, as an ordinary frame: it follows whatever voice
         // already left, and the listeners stop waiting for more.
-        Writer w; w.u16(uint16_t(voiceSeq_ + 1)); w.u8(voiceMask_); w.u8(uint8_t(kVoiceEnd | voiceSpectators_)); w.u16(0);
+        Writer w; w.u16(uint16_t(voiceSeq_ + 1)); w.u16(voiceMask_); w.u8(uint8_t(kVoiceEnd | voiceSpectators_)); w.u16(0);
         send(Msg::VoiceUp, w);
         voiceOpen_ = false;
         voiceRestart_ = true;

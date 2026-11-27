@@ -159,11 +159,11 @@
                         case DiplomacyAction::Give: giveSelectedUnits(hot.player); break;
                         case DiplomacyAction::Chat:
                             if (hot.player==kDiplomacySpectators) chatSpectators_=!chatSpectators_;
-                            else chatRecipients_ ^= uint8_t(1u<<hot.player);
+                            else chatRecipients_ ^= ta::net::SlotMask(1u<<hot.player);
                             break;
                         case DiplomacyAction::Voice:
                             if (hot.player==kDiplomacySpectators) voiceSpectators_=!voiceSpectators_;
-                            else voiceRecipients_ ^= uint8_t(1u<<hot.player);
+                            else voiceRecipients_ ^= ta::net::SlotMask(1u<<hot.player);
                             break;
                         case DiplomacyAction::Volume: break;   // set on the press (above)
                         case DiplomacyAction::ShareMetal: case DiplomacyAction::ShareEnergy: {
@@ -229,7 +229,7 @@
             else if (unitInfoType_) unitInfoType_ = nullptr;   // close Unit Info first
             else if (outcome_ != 0 || watchOver_) { menuRequested_ = true; }
             else if (placing_ || pendingCmd_) {
-                placing_ = nullptr; pendingCmd_ = 0;buildDrag_=false;
+                placing_ = nullptr; pendingCmd_ = 0;buildDrag_=false;mexDrag_=false;
                 shiftBuildPlaced_ = shiftOrderArmed_ = false;
             }
             else if (!selection_.empty()) selection_.clear();
@@ -296,14 +296,14 @@
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
                    overBuildMenu(float(e.button.x), float(e.button.y))) {
             // Build-strip borders and gaps are UI too, not world order targets.
+        } else if (e.type == SDL_MOUSEBUTTONDOWN && taResourceRect_.w > 0 &&
+                   float(e.button.x) >= taResourceRect_.x && float(e.button.x) < taResourceRect_.x + taResourceRect_.w &&
+                   float(e.button.y) >= taResourceRect_.y && float(e.button.y) < taResourceRect_.y + taResourceRect_.h) {
+            // The resource bar over the top of the view: a press on it is not an order.
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
                    selPortraitClick(float(e.button.x), float(e.button.y),
                                     e.button.button == SDL_BUTTON_LEFT)) {
             // info-bar type portrait: select only that type (Shift: drop it)
-        } else if (e.type == SDL_MOUSEBUTTONDOWN && hudShown() &&
-                   e.button.y > winH - barH()) {
-            // bottom bar: build icons already handled above; swallow the rest so a stray
-            // click on the bar chrome doesn't deselect / order into the world
         } else if ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) &&
                    (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) &&
                    hudShown() && taHudEvent(e)) {
@@ -348,7 +348,16 @@
             // the elevated cell drawn under the cursor, not the low cell behind.
             float wx, wz;
             pickWorld(float(v.button.x), float(v.button.y), wx, wz);
-            if ((SDL_GetModState() & KMOD_SHIFT) && !(SDL_GetModState() & KMOD_CTRL)) {
+            if (snapsToMetal(placing_)) {
+                // A metal extractor on a map with deposits: the release decides -- a
+                // click builds on the deposit nearest it, a box on every free deposit
+                // inside (client/metalspots.h). Shift queues and keeps it armed.
+                mexDrag_ = true;
+                mdX0_ = wx;
+                mdZ0_ = wz;
+                mdQueue_ = keyQueue();
+                mdAnchor_ = dragAnchorAt(float(v.button.x), float(v.button.y));
+            } else if ((SDL_GetModState() & KMOD_SHIFT) && !(SDL_GetModState() & KMOD_CTRL)) {
                 // Shift: begin a drag — a whole line of these gets queued on
                 // release (a single shift-click is just a zero-length line).
                 buildDrag_ = true;
@@ -378,6 +387,21 @@
                     shiftBuildPlaced_ = false;
                 }
             }
+        } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
+                   mexDrag_) {
+            mexDrag_ = false;
+            float ewx, ewz;
+            pickWorld(float(v.button.x), float(v.button.y), ewx, ewz);
+            const bool box = areaBoxAt(mdAnchor_, float(v.button.x), float(v.button.y));
+            const bool placed = box ? placeMetalBox(mdX0_, mdZ0_, ewx, ewz, mdQueue_)
+                                    : placeMetalAt(ewx, ewz, mdQueue_);
+            playGuiSound(placed ? ta::guisound::kOkToBuild : ta::guisound::kNotOkToBuild, "game");
+            if (placed) {
+                if (ta::client::queuesBehind(mdQueue_) || shiftHeld()) shiftBuildPlaced_ = true;
+                else { placing_ = nullptr; shiftBuildPlaced_ = false; }
+            }
+            // Shift may have been let go during the drag: finish it, then disarm.
+            if (shiftBuildPlaced_ && !shiftHeld()) { placing_ = nullptr; shiftBuildPlaced_ = false; }
         } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT &&
                    buildDrag_) {
             buildDrag_ = false;
@@ -417,6 +441,7 @@
                    placing_) {
             placing_ = nullptr;
             buildDrag_ = false;
+            mexDrag_ = false;
             shiftBuildPlaced_ = false;
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             dragging_ = true;
@@ -786,7 +811,9 @@
         // A watcher (spectator or replay) gets no build menu: no row, no icons, no hotkeys.
         if (watchOnly() || selection_.size() != 1) return nullptr;
         const auto* u = frameUnitP(selection_.front());
-        return u && u->alive() && u->type && u->type->isBuilder ? u : nullptr;
+        if (!u || !u->alive() || !u->type || u->player != hudPlayer()) return nullptr;
+        // A builder, or a stockpiler (its MAKENUKE / MAKEANTI button is its menu).
+        return u->type->isBuilder || !stockButtonOf(u->type->id).empty() ? u : nullptr;
     }
 
     bool GameView::overBuildMenu(float mx, float my) const {
@@ -1133,12 +1160,12 @@
     }
 #endif
 
-std::array<bool,8> GameView::eligibleGiftRecipients() {
+std::array<bool,ta::sim::kMaxPlayers> GameView::eligibleGiftRecipients() {
     // Drawn every frame the menu is open, so never wait on the worker's tick for it: keep
     // the last answer when it holds the world (giveSelectedUnits checks again, blocking).
     const auto live = tryLiveWorld();
     if (!live) return giftEligibleLast_;
-    std::array<bool,8> eligible{};
+    std::array<bool,ta::sim::kMaxPlayers> eligible{};
     for (int p=0;p<(*live)->numPlayers();++p)
         for (int id:selection_)
             if ((*live)->canGiveUnit(id,localPlayer_,p)) {eligible[size_t(p)]=true;break;}

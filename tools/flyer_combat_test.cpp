@@ -438,6 +438,117 @@ int main(int argc,char** argv) {
             check(offset>16 && ticks>1000 && headed==ticks,"a hover attacker heads at its target's position (0x44e530)");
             check(refreshes>10 && ringed==refreshes,"a hover attacker holds two thirds of its range from the target (0x4139e0)");
         }
+        // The Brawler's hover is a jink between two holds, not a strafe round
+        // the target. AirToGroundHover's stage 3 (TotalA.exe 0x4139ad..0x413a83)
+        // runs on each arrival (0x20, posted by the navigator 0x490690 while
+        // the target controller 0x44e5b0 has the flyer within 16 px,
+        // 0x44e730(0x10)) and puts the next hold 45 degrees the other way round
+        // the bearing it then has (+0x36 flipped), so the holds alternate
+        // between two points 2 L sin(22.5) apart (L = 2 range / 3) and the
+        // flyer runs back and forth between them, nose on the target. The
+        // whole loop -- mission 0x413470, navigator 0x490690, controller
+        // 0x44e330, VTOL mover 0x43d290, attitude 0x43d0d0 -- replayed on
+        // TotalA.exe by tools/re/airhover_emu.py from the state this flyer has
+        // at tick 200 matches World's next 599 ticks bit for bit (position,
+        // heading, roll, pitch) when given this unit's maximum speed.
+        {
+            auto hoverer=*registry.find("armbrawl");hoverer.maxHp=30000;hoverer.healTime=0;
+            for (auto& weapon:hoverer.weapons) { weapon.damage=1;weapon.dmgVs.clear();weapon.dmgVsIds.clear();weapon.aoe=0; }
+            hoverer.weapon=hoverer.weapons.front();
+            auto victim=*registry.find("corak");victim.maxHp=30000;victim.healTime=0;
+            victim.weapons.clear();victim.weapon={};victim.maxVel={};
+            ta::sim::World w;
+            w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
+            w.buildNavClasses(registry);
+            const int target=w.spawn(&victim,2000,2000,0,0),flyer=w.spawn(&hoverer,2000,2600,0,1);
+            w.attack(flyer,target,false);
+            const float length=float(int(hoverer.weapons.front().range)*2/3);
+            const float chord=2.f*length*0.38268343f;   // 2 L sin(22.5 degrees)
+            struct Hold { float x,z; int side; float fromLast; };   // fromLast: the flyer's distance from the last hold
+            std::vector<Hold> holds;
+            std::vector<std::array<float,2>> track;
+            for (int tick=0;tick<1500;++tick) {
+                const auto* before=w.unit(flyer);
+                const float bx=before->x.toFloat(),bz=before->z.toFloat();
+                w.tick(1.f/30.f);
+                const auto* f=w.unit(flyer);const auto* t=w.unit(target);
+                if (f->orders.empty() || !f->orders.front().flightGoal || !(f->orders.front().flightGoal->flags&1)) continue;
+                const auto& o=f->orders.front();
+                if (std::getenv("HOVER_EMU_DUMP") && tick>=200) {   // tools/re/airhover_emu.py's input and reference
+                    const auto& n=f->flightNavigation;const auto& g=*o.flightGoal;
+                    if (tick==200)
+                        std::printf("DUMP %d %d %d %d %d %d %u %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
+                            f->x.v-t->x.v,f->flightY.v,f->z.v-t->z.v,f->flightVelocity.x,f->flightVelocity.y,f->flightVelocity.z,
+                            unsigned(ta::sim::portHeadingToRetail(f->heading)),f->speed.v,f->flightAcceleration[0],
+                            f->flightAcceleration[1],f->flightAcceleration[2],n.destination.x-t->x.v,n.destination.y,
+                            n.destination.z-t->z.v,n.velocity.x,n.velocity.y,n.velocity.z,g.point.x-t->x.v,g.point.y,
+                            g.point.z-t->z.v,(o.airRunCount>>16)&1,o.airRunCount&0xffff,int(n.heading),f->baseSpeed.v);
+                    else std::printf("RAW %d %d %d %u %u %u\n",f->x.v-t->x.v,f->flightY.v,f->z.v-t->z.v,
+                        unsigned(ta::sim::portHeadingToRetail(f->heading)),unsigned(f->groundRoll),unsigned(f->groundPitch));
+                }
+                const float hx=o.flightGoal->point.x/65536.f-t->x.toFloat(),hz=o.flightGoal->point.z/65536.f-t->z.toFloat();
+                track.push_back({f->x.toFloat()-t->x.toFloat(),f->z.toFloat()-t->z.toFloat()});
+                if (!holds.empty() && holds.back().x==hx && holds.back().z==hz) continue;
+                // The wake that moved the hold saw the flyer where it was before this tick.
+                const float fromLast=holds.empty() ? 0.f :
+                    std::hypot(bx-t->x.toFloat()-holds.back().x,bz-t->z.toFloat()-holds.back().z);
+                holds.push_back({hx,hz,int((o.airRunCount>>16)&1),fromLast});
+            }
+            int flips=0,chords=0,pairs=0,arrived=0;
+            for (size_t i=1;i<holds.size();++i) {
+                flips+=holds[i].side!=holds[i-1].side;
+                // 45 degrees from the bearing at the arrival, which is up to 16 px
+                // off the last hold: up to 16/L radians more or less.
+                chords+=std::abs(std::hypot(holds[i].x-holds[i-1].x,holds[i].z-holds[i-1].z)-chord)<16.f;
+                arrived+=holds[i].fromLast<16.f;
+                if (i>=2) pairs+=std::hypot(holds[i].x-holds[i-2].x,holds[i].z-holds[i-2].z)<8.f;
+            }
+            // Back and forth: the flyer's offset along the chord turns round once a leg.
+            int reversals=0;
+            if (holds.size()>=3) {
+                const float ax=holds[1].x-holds[2].x,az=holds[1].z-holds[2].z,norm=std::hypot(ax,az);
+                int last=0;
+                for (size_t i=1;i<track.size();++i) {
+                    const float along=((track[i][0]-track[i-1][0])*ax+(track[i][1]-track[i-1][1])*az)/norm;
+                    const int sign=along>0.5f ? 1 : along<-0.5f ? -1 : 0;
+                    if (sign && last && sign!=last) ++reversals;
+                    if (sign) last=sign;
+                }
+            }
+            std::printf("hover jink balance=%s armbrawl holds=%zu flips=%d chords=%d (%.1f px) pairs=%d arrived=%d reversals=%d\n",
+                        "standard",holds.size(),flips,chords,chord,pairs,arrived,reversals);
+            const int legs=int(holds.size())-1;
+            check(legs>=15,"a hover attacker keeps taking new holds, one per arrival (0x413a83)");
+            check(flips==legs,"each hold is on the other side of the bearing from the last (+0x36, 0x4139c2 / 0x4139d0)");
+            check(chords==legs && pairs==legs-1,"the holds alternate between two points about 2 L sin(22.5) apart (0x4139e0)");
+            check(arrived==legs,"a new hold comes only on arrival within 16 px of the last (0x44e5b0, 0x44e730(0x10))");
+            check(reversals>=legs-1 && reversals<=legs+1,"the hover attacker runs back and forth between its holds, once a leg");
+        }
+        // The flight attitude (TotalA.exe 0x43d0d0): bankscale defaults to 1.0
+        // (0x42c186), so the Core Shadow, Hurricane and the seaplane fighters,
+        // which name none, bank as fully as the rest; the denominator is the
+        // map's gravity (game +0x14263, 0x43d186).
+        {
+            for (const char* name:{"corshad","corhurc","armsfig","corsfig"})
+                check(registry.find(name) && registry.find(name)->bankScale==ta::sim::Fixed::fromInt(1),
+                      "a flyer without bankscale banks at 1.0 (0x42c186)");
+            const auto bank=[&](int32_t gravity) {
+                ta::sim::World w;
+                w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
+                w.buildNavClasses(registry);w.setBallisticGravityRaw(gravity);
+                const int id=w.spawn(registry.find("armfig"),1000,1000,0,0);
+                w.order(id,1800,1600,false);
+                int most=0;
+                for (int tick=0;tick<120;++tick) {
+                    w.tick(1.f/30.f);
+                    most=std::max(most,std::abs(int(int16_t(w.unit(id)->groundRoll))));
+                }
+                return most;
+            };
+            const int light=bank(8155),heavy=bank(8155*4);
+            std::printf("attitude balance=%s armfig most roll at gravity 112=%d at 448=%d\n","standard",light,heavy);
+            check(light>heavy && heavy>0,"the bank angle's denominator is the map's gravity (0x43d186)");
+        }
         // World's other flyer holds skip the flight body the same way, and none
         // stopped both. SetMission's wait ("w N") and ambush ("wa") and FlyingBuild waiting out mobile units on
         // its site kept the velocity the flyer came in with and only braked its

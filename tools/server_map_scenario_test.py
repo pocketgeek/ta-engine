@@ -167,7 +167,7 @@ def scenario_seats(port, h, packages, root):
         state = create(host, 'King of the Hill', 1, random_starts=1)
         assert state[2][SCENARIO] == 1, 'the room did not adopt MAP SCENARIO'
         assert state[2][RANDOM] == 0, 'MAP SCENARIO did not force fixed start locations'
-        assert [state[3][i][0][0] for i in range(8)] == [1, 0, 0, 0, 3, 3, 3, 3]
+        assert [state[3][i][0][0] for i in range(10)] == [1, 0, 0, 0, 3, 3, 3, 3, 3, 3]
         upload(host, state[0], 'King of the Hill', packages['King of the Hill'])
         ready_host(host, state)
         latest(host)

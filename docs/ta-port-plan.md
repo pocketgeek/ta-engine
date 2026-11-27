@@ -64,6 +64,18 @@ SetMaxReloadTime), with retail's reload formula, accuracy spread, tolerance defa
 burst emitters; the Kingdoms AimWeapon/FireWeapon/SET 21-23 handshake is gone. Units on a
 plain Move fire on the move. Differences: section 7.8 of the spec.
 
+Animation call-ins audited for ground and naval units (spec section 9, 2026-11-26):
+Create / SetMaxReloadTime, StartMoving / StopMoving / MoveRate1..3 (0x43da70), Aim / Fire /
+Query / AimFrom / SweetSpot / RockUnit / TargetCleared, Killed, SetSpeed / SetDirection.
+Fixed: HitByWeapon gets TotalA.exe's two arguments (400 cos h, 400 sin h) and only for a
+surviving, non-paralyzer hit (0x489efa..0x489f43; was Kingdoms' damage type / cos / sin /
+damage, which tipped hit vehicles sideways); the display VM's AimX / RockUnit get whole
+angle words (0x49e2da, 0x456200; was the high byte); a ship in an attack no longer pivots
+to face its target (Attack_Chase 0x4035b7 posts no heading; turrets aim). Evidence:
+ta_weapon_script sections 7 and 8, naval_combat. Still open: COB pass before the weapon
+update (one tick late), aim only in range, and the engine's line-of-fire tests
+(slotClearShot, blocked-shot write-off) that TotalA.exe does not have (0x49aa80).
+
 ## Known deviations from retail (deliberate)
 
 - All *.hpi are mounted (retail stops after 10, hiding totala3/4 and worlds.hpi on the GOG layout).
@@ -167,6 +179,28 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   (0x458845). Movement call-ins StartMoving/StopMoving/MoveRate1..3 (0x43da70);
   ground StartBuilding passes the heading (0x4385a7). Nano spray (0x4720d0,
   0x473d50) and the nanoframe (0x458dd0) ported; root pieces draw (0x459958).
+- Nano spray, rechecked (client/retailnano.h; tools/re/nano_emu.py emulates
+  the spray object; nano_spray test). Each spraying wake makes one object on
+  effect list 6 (0x4720d0, reverse 0x472200; at most 401, 0x47219f) that emits
+  5 particles at once and 5 more on the next tick (0x471d70(1), 0x472f60) --
+  10 a tick from a builder, not 5. A particle runs from the QueryNanoPiece
+  point (0x43e400: position + piece origin, true 3D) to a random point of the
+  middle 3/11 of the target's box in floor(len/4) ticks and steps a whole tick
+  at a time; it is one world pixel, opaque, and its colour steps 0xa1..0xa7
+  round every tick (0x4739b0; was a fixed green per particle). Boxes: a unit's
+  position +-footprint*8 and 0..model height (no 8 px floor); a feature's
+  footprint from its corner cell, from the ground there up by its TDF height
+  (0x404ceb..0x404d37; was a 16 px cube). Cadence follows the sim's spraying
+  wakes (Unit::constructionEmissions[0]): build/repair each tick (the old hp
+  test caught one tick in three), ReclaimUnit one 0x472200 per two-tick wake
+  (0x404a4e; was not sprayed), feature reclaim two per wake while the
+  countdown is above 15 (0x404cb5..0x404d4c), RESURRECT each channel tick
+  (0x40509d; was not sprayed); a factory's own BUILD (0x402abd) and the pad
+  still read progress / hp. Each dot is shown by the LOS of its projected cell
+  (0x473a7c..0x473b05), and list 6 draws after the whole ground pass
+  (0x469b18), before the flyers: dots no longer hide behind units. Capture
+  (0x404676, reverse, every 2 ticks) waits for a CAPTURE order. Harness:
+  TA_CONJURE_TEST (+ TA_CONJURE_RECLAIM=feature|unit) with --shot.
 - Sim (same pass): ground/naval chase closes to the order's weapon slot
   (0x4034a0/0x4897e0); Suppress/AirToGround have no group check or step-out
   (0x4038a0, 0x412710, 0x413470); flying builders never step out of a stack
@@ -264,6 +298,29 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   0x414569..0x41461a; retailTaBuildHoverGoal); until the first such tick they
   hold where they arrived. VTOL_RepairUnit (0x414e70) hovers over the target's
   position from its stage 1 (0x415048) and repairs under it (0x415098).
+
+- Ground construction (2026-11-26, assist_reach_test): HelpBuild (0x403f70)
+  approaches on its ring within builddistance of the site (0x403fd9, 0x44d3b0;
+  retailHelpBuildRing, Order::helpRing) instead of Kingdoms' rectangle round
+  the footprint, ends on a failed approach ("I can't get there", no reach
+  fallback), and calls StartBuilding then waits for INBUILDSTANCE before its
+  first work (0x4040d4, 0x4040ee); MobileBuild does the same after placing
+  (0x403de1, 0x403df5). Neither turns the body any more. A builder held at
+  its job still reports its movement rate (StopMoving: ARMCOM's StartBuilding
+  waits for its legs, MotionControl static 2), and a MobileBuild site counts
+  as begun only once the stance is up (our site's GetBuilt timer was woken by
+  the walk's site-work notes; retail's sleeps 300 ticks from placement). The client's ground
+  build stance follows the sim's StartBuilding/StopBuilding
+  (Unit::workScriptWorking) and a builder's nano sprays only on its own paid
+  steps (constructionEmissions), so a helper walking to a factory's output no
+  longer sprays at it from across the map (the output's progress was the
+  factory's work). Open: retail's HelpBuild walks on to a site finished
+  meanwhile and ends on arrival (ours ends at once); Follow_Ground (0x406300)
+  also copies its ward's ReclaimUnit (flag 0x100000 with a target, 0x4065e7)
+  and follows on a circle round ward + offset with radius +0x36/2, re-aimed
+  every 30 ticks (0x4066ac..0x4066e9), where ours keeps Kingdoms' ring and
+  15 + rand(15) look; RepairUnit's ground handler is TotalA.exe 0x405300
+  (ours cites Kingdoms' 0x407190: unverified).
 
 ## Ported details (formerly listed as Open)
 
@@ -704,6 +761,28 @@ What these entries describe is ported; what is left of each is under "Open".
   0x43f2fa); the engine's hover at a point is gone. AirToGroundHover's
   two-miss branch waits on 0x110e8 (0x413996), its 0x1000 the refused aim
   (World's 0x100000). Evidence: suppress, mission_orders, retail_mission.
+- The hover gunship's jink (2026-11-26, a "Brawler strafes" report):
+  AirToGroundHover's stage 3 wakes only on the target controller's arrival
+  (0x20 from the navigator 0x490690 while 0x44e5b0 has the flyer within 16
+  px, 0x44e730(0x10); the controller is kept, 0x44e3a0) and puts the next
+  hold 45 degrees the other way round the bearing it then has, so the holds
+  alternate between two points about 188 px apart for the Brawler and it runs
+  back and forth between them, nose on the target (0x44e530), about 76 ticks
+  a leg. The whole loop (mission 0x413470, controller 0x44e330 and its
+  vtable 0x4fd3b8, the flyer navigator 0x4fd9b0 / 0x4fd9e0 -> 0x490690 /
+  0x490650, the VTOL mover 0x43d290, attitude 0x43d0d0) replayed on
+  TotalA.exe under unicorn (tools/re/airhover_emu.py) matches World tick for
+  tick, bit for bit, over 1299 ticks and 17 holds. Three differences found on
+  the way are fixed: the mover's distance and approach factor are 53-bit, not
+  floats (0x43d51b..0x43d5bc), its X correction goes through a float as the
+  Z one does (0x43d5fe), and the retention is an integer division
+  (0x43d326); the attitude's denominator is the map's gravity (game +0x14263,
+  0x43d186), not 8155; a flyer's bankscale defaults to 1.0 (0x42c186; Core
+  Shadow, Hurricane, the seaplane fighters). Not fixed: World gives every
+  unit its own maximum speed (individualSpeed, 0.9..1.1 x maxvelocity, a
+  gameRand(201) at birth: Kingdoms' 0x512430); TotalA.exe's movers read the
+  type's +0x192 (0x43d301, 0x43cc76) and it has no such draw, so a TA unit's
+  speed is its type's. Evidence: flyer_combat ("hover jink", "attitude").
 - The hit response's tests (2026-11-24, World::taWeaponReach,
   taHitResponse, slotHitResponse): 0x49abb0 line by line (waterweapon:
   floater / hover against the sea; else the shooter's and target's tops,
@@ -1007,3 +1086,31 @@ None left: see "Resolved (close-final pass, 2026-11-25)".
   calls again every 30 + rand(30) ticks with the count kept (0x43b8e5..
   0x43b973) without a new circle -- retail stands too. Evidence: transport
   roster "hover unload against a cliff".
+
+## Resolved (ten players, 2026-11-26)
+
+- Player limit 8 -> 10, as retail: TotalA.exe's game struct holds ten 0x14b-byte
+  player records at game+0x1b63 (index math 0x4473b1..0x4473c3; the loop at
+  0x445799..0x4457ae steps to +0x2851 = 10 x 0x14b past the first); 98 maps of
+  the installed data define StartPos1..StartPos10 and textures/logos.gaf has ten
+  colour frames. `sim::kMaxPlayers` and `net::kMaxSlots` are 10 (static_assert
+  in net/matchconfig.cpp); random maps take 2..10 players (`mapgen::kMaxPlayers`).
+- The map scenario's neutral owner is one named id, `sim::kNeutralPlayer` = 10
+  (`crt::kNeutralOwner`), no longer the literal 8. It keeps colour slot 9, which
+  a tenth player may also wear (retail has no neutral owner in skirmish).
+- .crt 3.0: owners 0..9, neutral 10, banks 0 = All Players, 1..10 = players,
+  11 = neutral. `crt::parse` renumbers a 1.0 / 2.0 file (owner 8 -> 10, banks
+  from 9 on up two), `crt::write` renumbers back for those versions (byte-exact
+  round trip) unless the model needs the new numbering; Cartographer saves 3.0.
+  Its rule-name sidecar is version 2 (version 1 banks renumber the same way).
+- Protocol 343: RoomState and the replay header carry ten slots; Chat and VoiceUp
+  recipients are u16 (`net::SlotMask`, `kEverySlot` = 0xffff).
+- The retail path scheduler's record table (`RetailSearchScheduler::playerCount`)
+  is retail's ten plus one for the neutral owner; that record is empty outside
+  map scenarios and an empty record is skipped, so the walk is retail's.
+- Client: the battle room's slot rows are 24 px (ten rows above the rules on the
+  540-high canvas), the diplomacy panel shrinks to fit eleven rows, the skirmish
+  front end's ally groups take their first member's slot as the team (the old
+  `10 + group` folded onto other seats' teams under `team % kMaxSlots`).
+- Open: retail's load screen plate has seven player rows (guis/loadscreen.gui),
+  so a game of eight or more shows the first seven.

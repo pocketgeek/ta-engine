@@ -47,8 +47,8 @@ std::vector<PlacedUnit> toPlaced(const ta::crt::Scenario& s, const ta::sim::Type
 
 std::vector<uint8_t> saveScenario(ta::crt::Scenario base,
                                   const std::vector<PlacedUnit>& units) {
-    base.version = ta::crt::kVersionKills;   // saved with kill counts; an old rank file is upgraded
-    if (base.players.empty()) base.players.resize(9);   // retail always writes 9
+    base.version = ta::crt::kVersionCurrent;   // kill counts and ten players; an older file is upgraded
+    if (base.players.size() < ta::crt::kBanks) base.players.resize(ta::crt::kBanks);   // All Players + ten
     base.units.clear();
     base.units.reserve(units.size());
     for (const auto& p : units) {

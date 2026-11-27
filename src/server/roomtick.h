@@ -26,7 +26,7 @@ struct TickInput {
     bool clientHashes=true,replayTrail=true;
     // The players that have had living units in this game up to the last finished
     // tick, one bit each (TickResult::fielded of that tick; 0 before the first).
-    uint8_t fielded=0;
+    uint16_t fielded=0;
 };
 struct TickResult {
     std::vector<uint8_t> bundle;
@@ -43,7 +43,7 @@ struct TickResult {
     // fielded units (a game of one team never has one); in a map scenario, every
     // participant has its outcome. Recomputed each tick, as World::winningTeam()
     // is. winningTeam: World::winningTeam() when decided (-1: nobody won).
-    uint8_t fielded=0;
+    uint16_t fielded=0;
     bool decided=false;
     int8_t winningTeam=-1;
 };

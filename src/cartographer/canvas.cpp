@@ -9,10 +9,10 @@
 #include <cmath>
 
 namespace {
-// 8 player marker colours.
-const Uint8 kPlayerCol[9][3] = {
+// Ten player marker colours, then the neutral owner's grey (ta::crt::kNeutralOwner).
+const Uint8 kPlayerCol[ta::crt::kNeutralOwner + 1][3] = {
     {80,120,255},{230,70,60},{80,200,90},{235,210,80},
-    {200,90,220},{80,210,220},{240,140,40},{200,200,210},{150,150,150}};
+    {200,90,220},{80,210,220},{240,140,40},{200,200,210},{230,120,180},{140,90,50},{150,150,150}};
 }
 
 // Stamp a named section into the map at block (bx,by), returning whether it
@@ -335,12 +335,12 @@ void cart::Editor::handleCanvasInput(SDL_Event& e,float pointerDX,float pointerD
             int cx, cz;
             if (hit >= 0) draggingStart = hit;
             else if (mouseCell(e.button.x, e.button.y, cx, cz)) {
-                // Next free StartPos1..8: a match seats at most eight players, and
+                // Next free StartPos1..10: a match seats at most ten players, and
                 // Check Map rejects any other number.
                 if (const int num = cart::nextStartNumber(scenario.starts)) {
                     scenario.starts.push_back({num, cx, cz}); dirty = true; historyPending=true;
                     draggingStart = int(scenario.starts.size()) - 1;
-                } else openMessage("START POSITIONS FULL", "All eight start positions are on the map; a match seats at most eight players. Move or erase one first.");
+                } else openMessage("START POSITIONS FULL", "All ten start positions are on the map; a match seats at most ten players. Move or erase one first.");
             }
         }
     } else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
@@ -527,7 +527,7 @@ void cart::Editor::drawCanvas() {
         float sx = (units[i].x - mapView.offX()) * mapView.zoom();
         float sy = (units[i].z - mapView.offY()) * mapView.zoom();
         if (sx < -20 || sy < -20 || sx > canvasW + 20 || sy > canvasH + 20) continue;
-        const Uint8* pc = kPlayerCol[std::clamp(units[i].player,0,8)];
+        const Uint8* pc = kPlayerCol[std::clamp(units[i].player,0,int(ta::crt::kNeutralOwner))];
         SDL_SetRenderDrawColor(ren, pc[0], pc[1], pc[2], 255);
         SDL_Rect r{int(sx) - 5, int(sy) - 5, 10, 10};
         SDL_RenderFillRect(ren, &r);

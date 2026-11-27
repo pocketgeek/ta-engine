@@ -82,6 +82,10 @@ void Controller::setClassicProfile(const ClassicProfileScript& script) {
     retail_->useProfile(script.text);
 }
 
+void Controller::setCampaign(bool on) {
+    retail_->setCampaign(on);
+}
+
 Controller::Controller(Controller&&) noexcept = default;
 Controller::~Controller() = default;
 

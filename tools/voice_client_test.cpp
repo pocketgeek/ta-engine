@@ -111,7 +111,7 @@ int main() {
         check(server.drain(client).empty(), "and not again while it stays on");
 
         // Outside a room voice goes nowhere.
-        client.sendVoice(0, 0xff, net::kVoiceStart, std::vector<uint8_t>(60, 9));
+        client.sendVoice(0, net::kEverySlot, net::kVoiceStart, std::vector<uint8_t>(60, 9));
         check(server.drain(client).empty(), "no VoiceUp outside a room");
 
         client.joinGame(12, "");
@@ -123,17 +123,17 @@ int main() {
         client.sendVoice(300, 0x05, net::kVoiceStart, opus);
         sent = server.drain(client);
         {
-            net::Writer want; want.u16(300); want.u8(0x05); want.u8(net::kVoiceStart); want.u16(60);
+            net::Writer want; want.u16(300); want.u16(0x05); want.u8(net::kVoiceStart); want.u16(60);
             want.b.insert(want.b.end(), opus.begin(), opus.end());
             check(sent.size() == 1 && sent[0].kind == net::Msg::VoiceUp && sent[0].payload == want.b,
                   "VoiceUp carries seq, the VOICE mask, flags and the packet exactly");
         }
-        client.sendVoice(301, 0xff, 0, std::vector<uint8_t>(net::kVoiceMaxOpus + 1));
-        client.sendVoice(302, 0xff, 0, {});
+        client.sendVoice(301, net::kEverySlot, 0, std::vector<uint8_t>(net::kVoiceMaxOpus + 1));
+        client.sendVoice(302, net::kEverySlot, 0, {});
         check(server.drain(client).empty(), "oversized and empty audio frames are not sent");
-        client.sendVoice(303, 0xff, net::kVoiceEnd, {});
+        client.sendVoice(303, net::kEverySlot, net::kVoiceEnd, {});
         sent = server.drain(client);
-        check(sent.size() == 1 && sent[0].kind == net::Msg::VoiceUp && sent[0].payload.size() == 6,
+        check(sent.size() == 1 && sent[0].kind == net::Msg::VoiceUp && sent[0].payload.size() == 7,
               "an END marker goes out with no audio");
 
         // Incoming.

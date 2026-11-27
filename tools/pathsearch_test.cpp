@@ -12,7 +12,7 @@ using namespace ta::sim;
 namespace ta::sim {
 struct RetailReplayProbe {
     static bool counts(const PathService& service) {
-        std::array<int,10> pending{},priority{};
+        decltype(service.pendingByPlayer_) pending{},priority{};   // retail's 10 records + the neutral owner's
         for(const auto& [id,entry]:service.q_) {
             ++pending[size_t(entry.player)];priority[size_t(entry.player)]+=entry.priority;
         }

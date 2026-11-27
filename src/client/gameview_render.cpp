@@ -3,6 +3,7 @@
 #include "client/shadowcomposite.h"
 #include "util/virtualpath.h"
 #include "client/streaming.h"
+#include <limits>
 #include <set>
 #include <cstring>
 #include <functional>
@@ -50,7 +51,7 @@
         using RS = ta::render::Counter;
         using RP = ta::render::Phase;
         emoteNowMs_ = SDL_GetTicks64();
-        for (int p=0;p<8;++p)
+        for (int p=0;p<ta::sim::kMaxPlayers;++p)
             if (emoteTiming_[p].observe(framePlayer(p).emoteSequence, emoteNowMs_)) {
                 discoWas_[p] = headbangWas_[p] = false;
             }
@@ -81,7 +82,7 @@
             if (netTick_ > 0 || replayMode_ || !mp_ || loadScreen_->headless())
                 loadScreen_.reset();
             else {
-                for (int i = 0; i < 8; ++i)
+                for (int i = 0; i < ta::net::kMaxSlots; ++i)
                     if (mp_->slotLoaded(i)) loadScreen_->setSlotDone(i);
                 loadScreen_->draw();   // main owns the present + the AA resolve
                 return;
@@ -2521,8 +2522,11 @@
         } else if (buildDrag_ && placing_) {
             float mx, mz;
             pickWorld(mouseX_, mouseY_, mx, mz);
+            // Red only where the site cannot be built: one blocked just by features the
+            // builder can reclaim is queued with the clearing ahead of it (queueBuild),
+            // as a single placement is (drawGhost).
             for (auto& [x, z] : buildLinePositions(bdX0_, bdZ0_, mx, mz))
-                drawGhostAt(placing_, x, z, !canPlacePreview(placing_, x, z));
+                drawGhostAt(placing_, x, z, !canPlacePreview(placing_, x, z) && !placePreviewClearable(placing_, x, z));
             // The spacing, beside the cursor: for a moment after the wheel changes it,
             // and for the whole drag while it is not the tight default.
             if (buildLineGap_ > 0 || buildLineGapShown_ > 0) {
@@ -2536,6 +2540,20 @@
                 SDL_RenderFillRectF(ren_, &tb);
                 blockText(gap, lx, ly, px, {230, 230, 200, 255});
             }
+        } else if (mexDrag_ && placing_ && areaBoxAt(mdAnchor_, mouseX_, mouseY_)) {
+            // An extractor box (client/metalspots.h): the box, and a ghost on every
+            // free deposit it catches -- what the release will queue.
+            float mx, mz;
+            pickWorld(mouseX_, mouseY_, mx, mz);
+            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+            for (const auto& sp : metalBoxSpots(mdX0_, mdZ0_, mx, mz))
+                drawGhostAt(placing_, sp.x, sp.z, false);
+            const auto a = dragStartOnScreen(mdAnchor_);
+            const SDL_FRect box{std::min(a.x, mouseX_), std::min(a.y, mouseY_), std::fabs(mouseX_ - a.x), std::fabs(mouseY_ - a.y)};
+            SDL_SetRenderDrawColor(ren_, 255, 220, 90, 40);
+            SDL_RenderFillRectF(ren_, &box);
+            SDL_SetRenderDrawColor(ren_, 255, 220, 90, 220);
+            SDL_RenderDrawRectF(ren_, &box);
         } else if (placing_) {
             drawGhost();
         }
@@ -2839,15 +2857,15 @@
         // A MakePoster tile (posterStep) is the world alone.
         if (posterFrame_) { SDL_RenderSetClipRect(ren_, nullptr); SDL_RenderSetViewport(ren_, nullptr); return; }
 
-        // Done with world-space: drop the clip and the view's viewport and draw TA's
-        // frame in window coordinates -- the side panel with the minimap and the
-        // sidebar page, the top bar and the bottom bar (client/gameview_tahud.cpp).
-        // Spectators get the frame and the minimap; the sidebar page and the bars'
-        // readouts are the shown player's (hudShown).
+        // Done with world-space: drop the clip and the view's viewport and draw the
+        // HUD in window coordinates (client/gameview_tahud.cpp): the right-hand column
+        // with the minimap, the stats and the order buttons, the resource bar and the
+        // build row over the view. Spectators get the column, the minimap and the
+        // stats; the rest is the shown player's (hudShown).
         SDL_RenderSetClipRect(ren_, nullptr);
         SDL_RenderSetViewport(ren_, nullptr);
         iconRects_.clear();selPortraitRects_.clear();
-        buildMenuRect_={};buildRowTop_=0;
+        buildMenuRect_={};buildRowTop_=0;taResourceRect_={};
         renderTaFrame(winW, winH);
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
@@ -2855,15 +2873,14 @@
             profHudMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
                           (double(SDL_GetPerformanceFrequency()) / 1000.0);
         }
-        if (hudShown()) renderTaHud(winW, winH);   // TA sidebar page and the bars' readouts
+        renderTaHud(winW, winH);
         // The overlays that annotate the battle sit in the world view: back to its
         // viewport, with the view's size for their layout (centring, room), until the
         // window-wide menus below.
         const int fullW = winW, fullH = winH;
         SDL_RenderSetViewport(ren_, &viewRect);
         winW = mvw; winH = mvh;
-        drawStatsPanel(winW, winH);
-        drawIdleBuilders(winW, winH, float(mvh));   // under the stats column
+        drawIdleBuilders(winW, winH, float(mvh));   // under the resource bar, beside the build row
         // The top-left column (client/hudcorner.h), top down: the GAME TIME clock, the F4
         // scoreboard, the mission objectives, then (later) the voice speakers.
         if (front().scenarioClock) {
@@ -6267,6 +6284,7 @@
         std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
         inst.tree = (cat == "trees");
         inst.low = ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
+        inst.tdfHeight = uint8_t(int(di->second.numberOr("height", 0)));
         features_.push_back(inst);
         featureIndexDirty_=true;
         // NO NAV BLOCKING HERE. Feature blocking belongs to the SIM, and
@@ -6292,6 +6310,7 @@
         auto di = featureDefs_.find(name);
         fi.low = di != featureDefs_.end() &&
                  ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
+        fi.tdfHeight = di != featureDefs_.end() ? uint8_t(int(di->second.numberOr("height", 0))) : 0;
         FeatArt* a = di != featureDefs_.end() ? featureArtFor(di->second) : nullptr;
         if (!a) { fi.tex = nullptr; fi.frames = nullptr; fi.art = nullptr;
                   fi.shadow = nullptr; return; }   // no art: vanish (draw skips)
@@ -6452,38 +6471,55 @@
         featuresAtLoad_ = features_.size();
     }
 
+    // A press on the build row (drawPanel), as TotalA.exe's build-menu handler
+    // 0x41aa00 takes a press on a build page picture. A unit that is placed on the
+    // map -- its type's bmcode byte (+0x22f, stored at 0x42c422) is 0 -- arms the
+    // placement (0x41ab7f..0x41ab9c; left button). Anything else, a mobile unit or
+    // the stockpile button (MAKENUKE / MAKEANTI), is queued in the builder
+    // (0x41abd9..0x41ac3c -> 0x419b00: MOBILEBUILD / BUILDINGBUILD, or BUILDWEAPON):
+    // a left click +1, a right click -1, Shift five, Ctrl+Shift ten. Ctrl+left click
+    // on a mobile unit toggles repeated production (+++), as the TAK engine's menu
+    // does (RepeatTrain, not retail).
     bool GameView::buildIconClick(float mx, float my, bool lmb, bool rmb) {
         if (!lmb && !rmb) return false;
         const auto* b = selectedBuilder();
         if (!b) return false;   // selection can change before the next HUD draw
+        const uint16_t mod = SDL_GetModState();
+        const bool ctrl = (mod & KMOD_CTRL) != 0, shift = (mod & KMOD_SHIFT) != 0;
+        const int count = (ctrl && shift) ? 10 : shift ? 5 : 1;
+        auto inside = [&](const SDL_FRect& r) { return r.w > 0 && mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h; };
+        if (inside(stockIconRect_) && !stockIconName_.empty()) {
+            playGuiSound(ta::guisound::sidebar(stockIconName_, false, rmb), "sidebar", stockIconName_);
+            ta::net::Command c;
+            c.kind = lmb ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
+            c.unitId = b->id;
+            c.targetId = count;
+            std::snprintf(c.type, sizeof c.type, "%s", stockIconName_.c_str());
+            issue(c);
+            return true;
+        }
         for (const auto& [r, bt] : iconRects_) {
-            if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
-            playClickTone();
-            if (!bt) return true;   // consume the click even if it can't act
-            uint16_t mod = SDL_GetModState();
-            bool ctrl = (mod & KMOD_CTRL) != 0, shift = (mod & KMOD_SHIFT) != 0;
-            // Ctrl+left-click = infinite production (RepeatTrain), FIRST so it also
-            // works for a mobile conjurer (a beast tamer): the sim spawns each new
-            // unit beside the producer and re-queues, no manual placement needed.
-            // A structure is always placed (the sim refuses to repeat one), so
-            // Ctrl+click on its icon starts a placement like a plain click.
-            if (lmb && ctrl && !shift && !isStructure(bt)) {
-                ta::net::Command c;
-                c.kind = ta::net::Cmd::RepeatTrain;
-                c.unitId = b->id;
-                std::snprintf(c.type, sizeof c.type, "%s", bt->id.c_str());
-                issue(c);
+            if (!inside(r)) continue;
+            if (!bt || !worldTables().buildAllowed(bt)) return true;   // consume the click even if it can't act
+            if (bt->buildMovementCode == 0) {
+                if (lmb) {   // a fresh placement
+                    playGuiSound(ta::guisound::sidebar(bt->id, true), "sidebar", bt->id);   // addbuild, 0x41ab97
+                    placing_ = bt;
+                    shiftBuildPlaced_ = false;
+                }
                 return true;
             }
-            if (isStructure(bt) || !isStructure(b->type)) {
-                if (lmb) { placing_ = bt;shiftBuildPlaced_=false; } // fresh manual placement
-                return true;
-            }
+            playGuiSound(ta::guisound::sidebar(bt->id, true, rmb), "sidebar", bt->id);   // addbuild / subbuild
             ta::net::Command c;
             c.unitId = b->id;
             std::snprintf(c.type, sizeof c.type, "%s", bt->id.c_str());
+            if (lmb && ctrl && !shift) {
+                c.kind = ta::net::Cmd::RepeatTrain;
+                issue(c);
+                return true;
+            }
             c.kind = lmb ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
-            c.targetId = (ctrl && shift) ? 10 : shift ? 5 : 1;
+            c.targetId = count;
             issue(c);
             return true;
         }
@@ -6499,8 +6535,18 @@
             // the portrait is edge-upscaled 2x and filtered linearly, so it stops
             // looking blocky at large build-bar scales. Callers size from their own
             // boxes (or the texture's aspect), so the 2x dimensions change no layout.
-            auto img = ta::jpeg::load(vread("anims/buildpic/" + typeId + ".jpg"));
-            tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
+            // TA's build picture: unitpics/<id>.pcx, 8-bit with its own palette (the
+            // build pages' art); a Kingdoms-style anims/buildpic/<id>.jpg otherwise.
+            std::string id = typeId;
+            for (char& c : id) c = char(std::tolower(static_cast<unsigned char>(c)));
+            const std::string pcx = "unitpics/" + id + ".pcx";
+            if (vfs_.has(pcx)) {
+                auto img = ta::gaf::loadPcx(vread(pcx), pcx);
+                tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
+            } else {
+                auto img = ta::jpeg::load(vread("anims/buildpic/" + typeId + ".jpg"));
+                tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
+            }
         } catch (const std::exception&) {}
         icons_[typeId] = tex;
         return tex;
@@ -6743,13 +6789,29 @@
         // unit/building -- a plain ghost where it can go, red-washed where it can't.
         float wx, wz;
         pickWorld(mouseX_, mouseY_, wx, wz);
-        bool ok = canPlacePreview(placing_, wx, wz);
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        // A metal extractor on a map with deposits snaps onto the nearest one
+        // (client/metalspots.h); with none in reach it can go nowhere. The free
+        // deposits on screen are outlined so the player sees where it can go.
+        const bool onDeposit = snapToMetal(placing_, wx, wz);
+        if (snapsToMetal(placing_)) {
+            const float hw = float(placing_->footX) * 8 * zm, hh = float(placing_->footZ) * 8 * zm;
+            for (const auto& sp : metalSpots(placing_)) {
+                const float sx = (sp.x - mapView_.offX()) * zm - terrainLiftX(sp.x, sp.z) * zm;
+                const float sy = (sp.z - mapView_.offY()) * zm - terrainLift(sp.x, sp.z) * zm;
+                if (sx < -hw || sy < -hh || sx > float(mapViewW(winW_)) + hw || sy > float(mapViewH(winH_)) + hh) continue;
+                if (!canPlacePreview(placing_, sp.x, sp.z)) continue;   // taken
+                const SDL_FRect r{sx - hw, sy - hh, 2 * hw, 2 * hh};
+                SDL_SetRenderDrawColor(ren_, 255, 220, 90, 150);
+                SDL_RenderDrawRectF(ren_, &r);
+            }
+        }
+        bool ok = onDeposit && canPlacePreview(placing_, wx, wz);
         // A site blocked only by clearable doodads isn't a refusal any more -- the
         // click sends the builder to clear it first -- so don't red-wash it. The
         // notice tells the player what the click will actually do.
-        if (!ok && placePreviewClearable(placing_, wx, wz))
+        if (!ok && onDeposit && placePreviewClearable(placing_, wx, wz))
             ok = true;
-        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         drawGhostAt(placing_, wx, wz, !ok);
         // Small name tag above the ghost so the player still sees what's queued.
         float cxp = (wx - mapView_.offX()) * zm - terrainLiftX(wx, wz) * zm;
@@ -6834,10 +6896,13 @@
         if(ta::devEnv("TA_BLOOD_TEST"))
             for(const auto& debris:detachedPieces_)bloodBefore+=debris.blood.size();
 #endif
+        const int32_t gravity=world_.ballisticGravityRaw();
         std::erase_if(detachedPieces_,[&](DetachedPiece& debris) {
             while(int32_t(front().gameTick-debris.tick)>0) {
                 ++debris.tick;
-                const auto result=debris.motion.tick(uint8_t(terrain.seaLevel),8155,debrisLavaWorld_,debrisNoSeaTrigger_,
+                // TotalA.exe 0x4213b0 / 0x420f81: the game's gravity +0x14263, the
+                // map's (World::ballisticGravityRaw).
+                const auto result=debris.motion.tick(uint8_t(terrain.seaLevel),gravity,debrisLavaWorld_,debrisNoSeaTrigger_,
                     [&](const auto& position) {
                         return terrain.heights.empty() ? -1 : ta::retailDebrisTerrainHeight(
                             position[0],position[2],terrain.width,terrain.height,[&](int x,int z) {
@@ -6845,16 +6910,11 @@
                             });
                     });
                 if(!result.alive) {
-                    loadExplosionClasses();
-                    if(result.light>=0)
+                    if(result.effect!=ta::RetailFx::None)
+                        spawnRetailEffect(std::string("fx:")+ta::retailFxSequence(result.effect),
+                                          debris.motion.position,result.light,debris.tick);
+                    else if(result.light>=0)
                         explosionGlows_.push_back({0,0,0,debris.tick,unsigned(result.light),debris.motion.position});
-                    if(result.effect>=0 && size_t(result.effect)<explosionClassOrder_.size()) {
-                        const auto& p=debris.motion.position;
-                        if(spawnEffect(explosionClassOrder_[size_t(result.effect)],
-                                       float(p[0])/65536.f,float(p[2])/65536.f)) {
-                            effects_.back().worldPosition=p;effects_.back().started=debris.tick;
-                        }
-                    }
                     return true;
                 }
                 std::erase_if(debris.blood,[&](auto& particle) {
@@ -7053,6 +7113,22 @@
             if(!cellVisibleR(p.x,p.z))continue;
             add(FxKind::Particle,&p,0,p.x,p.z);
         }
+        // Nanolathe dots (client/retailnano.h): each shown by the line of sight
+        // of its own projected cell (0x473a7c..0x473b05), and list 6 is drawn
+        // after the whole ground pass (0x469b18): the last ground items, under
+        // the flyers.
+        {
+            const uint32_t now=frame.gameTick;
+            for(const auto& d:nanoDots_) {
+                float x,y,z;d.at(now,x,y,z);
+                const float pz=z-y*kProjY;
+                const float sx=(x-offX)*zm,sy=(pz-offY)*zm;
+                if(sx<-8 || sx>float(winW_)+8 || sy<-8 || sy>float(winH_)+8)continue;
+                if(!projectedVisibleR(x,pz))continue;
+                add(FxKind::Nano,&d,0,x,z);
+                if(fxItems_.back().queued)paintItems_.back().z=std::numeric_limits<float>::max();
+            }
+        }
         // Shockwave rings, a sprite at a time, each at its own point of the circle.
         for(const auto& r:rings_) {
             const float local=r.age-r.delay;
@@ -7148,7 +7224,7 @@
         };
         for (size_t i = 0; i < count; ++i) {
             const FxItem& item = fxItems_[order[i]];
-            if (item.kind != FxKind::Particle) flush();
+            if (item.kind != FxKind::Particle && item.kind != FxKind::Nano) flush();
             drawFxItem(item);
         }
         flush();
@@ -7183,10 +7259,21 @@
             float t = std::clamp(p.life / std::max(p.maxLife, 1e-3f), 0.0f, 1.0f);
             sx -= terrainLiftX(p.x, p.z) * zm;
             sy -= terrainLift(p.x, p.z) * zm;
-            float r = p.size * zm * (p.kind == 1 ? (1.4f - t) : p.kind == 2 ? 0.5f : t);
-            Uint8 a = p.kind == 2 ? 255 : Uint8(std::clamp(t * 255.0f, 0.0f, 255.0f));
-            if (p.kind == 2) r = std::max(r, 0.5f);   // a nano dot stays at least a pixel
+            float r = p.size * zm * (p.kind == 1 ? (1.4f - t) : t);
+            Uint8 a = Uint8(std::clamp(t * 255.0f, 0.0f, 255.0f));
             pushQuad(partBatch_, sx - r, sy - r, 2 * r, 2 * r, SDL_Color{p.r, p.g, p.b, a});
+            return;
+        }
+        case FxKind::Nano: {   // one world pixel (0x473b1d: a 1x1 fill), opaque, palette colour
+            const auto& d = *static_cast<const ta::client::nano::Dot*>(item.p);
+            const uint32_t now = front().gameTick;
+            float x, y, z; d.at(now, x, y, z);
+            // 0x473a10..0x473a3d: the whole-pixel x, and z less half the whole y.
+            const float sx = (std::floor(x) - mapView_.offX()) * zm;
+            const float sy = (std::floor(z) - std::floor(std::floor(y) * 0.5f) - mapView_.offY()) * zm;
+            const uint32_t c = nanoGamePalette_[size_t(d.paletteIndex(now))];
+            pushQuad(partBatch_, sx, sy, zm, zm,
+                     SDL_Color{Uint8(c >> 24), Uint8(c >> 16), Uint8(c >> 8), 255});
             return;
         }
         case FxKind::Ring: {
@@ -7824,7 +7911,6 @@
         for (auto& p : particles_) {
             p.life -= dt;
             p.x += p.vx * dt; p.z += p.vz * dt;
-            if (p.kind == 2) { p.alt += p.valt * dt; continue; }   // nanolathe: straight line
             if (p.kind == 1) { p.x += windDX; p.z += windDZ; }
             p.alt += p.valt * dt;
             p.valt -= (p.kind == 1 ? 6.0f : 90.0f) * dt;   // smoke floats, sparks fall
@@ -8831,7 +8917,7 @@
             lines.push_back("CONNECTION LOST -- RECONNECTING  " + std::to_string(secs(reconnectUntilMs_, now)));
         else
             for (const auto& w : mp_->waiting()) {
-                if (w.slot >= 8) continue;
+                if (w.slot >= ta::sim::kMaxPlayers) continue;
                 const std::string& name = playerName_[w.slot];
                 lines.push_back("WAITING FOR " + (name.empty() ? "PLAYER " + std::to_string(w.slot + 1) : name) +
                                 "  " + std::to_string(secs(w.untilMs, wall)));

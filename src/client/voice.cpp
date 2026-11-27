@@ -149,7 +149,7 @@ struct VoiceEngine::Impl {
         uint64_t lastMs = 0;
     };
     std::map<uint32_t, Talker> talkers;
-    std::array<uint8_t, 8> playerVol{100, 100, 100, 100, 100, 100, 100, 100};   // diplomacy VOLUME, by slot
+    std::array<uint8_t, ta::net::kMaxSlots> playerVol{100, 100, 100, 100, 100, 100, 100, 100, 100, 100};   // diplomacy VOLUME, by slot
     Stats stats;
 
     uint64_t now() const { return SDL_GetTicks64(); }
@@ -297,7 +297,7 @@ void VoiceEngine::update(bool inRoom, bool transmit, const Sender& send) {
                     case voice::Playout::Idle: break;
                 }
                 if (!ok) continue;
-                mixTalker(mix, pcm, voice::kFrame, t.slot < 8 ? p.playerVol[t.slot] : 100);
+                mixTalker(mix, pcm, voice::kFrame, t.slot < ta::net::kMaxSlots ? p.playerVol[t.slot] : 100);
                 any = true;
             }
             if (!any) break;   // nobody talking: let the device drain to silence
@@ -326,10 +326,10 @@ void VoiceEngine::push(Incoming in) {
 void VoiceEngine::clearTalkers() { p_->talkers.clear(); }
 
 void VoiceEngine::setPlayerVolume(int slot, int percent) {
-    if (slot >= 0 && slot < 8) p_->playerVol[size_t(slot)] = uint8_t(std::clamp(percent, 0, 100));
+    if (slot >= 0 && slot < ta::net::kMaxSlots) p_->playerVol[size_t(slot)] = uint8_t(std::clamp(percent, 0, 100));
 }
 
-int VoiceEngine::playerVolume(int slot) const { return slot >= 0 && slot < 8 ? p_->playerVol[size_t(slot)] : 100; }
+int VoiceEngine::playerVolume(int slot) const { return slot >= 0 && slot < ta::net::kMaxSlots ? p_->playerVol[size_t(slot)] : 100; }
 
 void VoiceEngine::mixTalker(float* mix, const float* pcm, int n, int percent) {
     const float g = float(std::clamp(percent, 0, 100)) / 100.0f;

@@ -22,13 +22,13 @@ TerrainOverlay terrainOverlay(const ta::tnt::Map& map,const ta::sim::TypeRegistr
         world->setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
         world->buildNavClasses(registry);ta::sim::registerMapFeatures(*world,map,vfs,&registry);
         if(kind==OverlayKind::Buildability) {
-            world->setPlayerCount(8);
+            world->setPlayerCount(ta::sim::kMaxPlayers);
             for(const auto& occupant:occupants) {
                 if(cancelled())return {};
                 auto name=occupant.type;std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return char(std::tolower(c));});
                 const auto* placed=registry.find(name);
                 if(placed && std::isfinite(occupant.x) && std::isfinite(occupant.z) && occupant.x>=0 && occupant.z>=0 && occupant.x<map.width*16.f && occupant.z<map.height*16.f)
-                    world->spawn(placed,occupant.x,occupant.z,{},std::clamp(occupant.player,0,7));
+                    world->spawn(placed,occupant.x,occupant.z,{},std::clamp(occupant.player,0,ta::sim::kMaxPlayers-1));
             }
         }
         world->navFor(type).ensureClearance();

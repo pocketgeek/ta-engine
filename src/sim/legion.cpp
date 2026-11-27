@@ -3692,7 +3692,9 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         if(workLeg(leg,WBuild))return Kind::Build;
         if(workLeg(leg,WRepair))return Kind::Repair;
         if(workLeg(leg,WReclaim))return Kind::Reclaim;
-        // A ground HelpBuild's approach: a build site's rectangle.
+        // A ground HelpBuild's approach is a ring (TotalA.exe 0x403fd9,
+        // Order::helpRing), not a rectangle: never a work leg here, so the
+        // native navigator drives it.
         if(workLeg(leg,WHelp))return Kind::Build;
         if(leg.targetId&&(workLeg(leg,WLoad)||workLeg(leg,WPickup)))return Kind::Load;
         return Kind::None;

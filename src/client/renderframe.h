@@ -102,7 +102,14 @@ struct UnitR {
     float paralyzedFor = 0;
     float selfDestructT = -1;   // >=0 = self-destruct countdown (seconds) armed
     int buildSiteId = 0, productionSiteId = 0, reclaimId = 0, repairId = 0;
+    // The nano spray's other targets: the live unit a RECLAIMUNIT leg takes
+    // apart (Order::reclaimUnit) and a RESURRECT channel's body (Unit::reviveTarget,
+    // a feature as -id).
+    int reclaimUnitId = 0, reviveTarget = 0;
     bool conjuring = false;
+    // sim Unit::workScriptWorking: the sim called StartBuilding (a ground
+    // job's work stance, TotalA.exe 0x438590) and not yet StopBuilding.
+    bool workScript = false;
     bool hasConstructionEmitter = false;
     std::array<uint32_t,2> constructionEmissions{};
     std::vector<ta::sim::RetailConstructionParticle> constructionParticles;
@@ -320,7 +327,7 @@ struct Frame {
     // interpPose (px + pox + (x + swap.ox - px - pox) a, a in [0, 1]) never puts a unit further
     // than this from its snapshot position.
     float maxInterpStep = 0;
-    std::array<PlayerR, 8> players{};
+    std::array<PlayerR, ta::sim::kMaxPlayers> players{};
     int numPlayers = 0;
     // The local display plane (client/retailfog.h): one byte per 32 px projected
     // cell, kUnexplored/kExplored/kInView. Empty for a noFog_ view. fogGen bumps

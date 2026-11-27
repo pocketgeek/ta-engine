@@ -383,7 +383,7 @@ struct Editor : Session {
     // Choice lists are read-only unless explicitly editable (flag suggestions).
     const std::vector<std::string>* mfChoices[kMaxFields] = {};
     bool mfEditableChoice[kMaxFields] = {};
-    int scrPlayer = 0;                     // 0=All Players, 1..8=Player 1..8
+    int scrPlayer = 0;                     // 0=All Players, 1..10=Player 1..10 (crt::kBanks)
     int mDropScroll=0;
     std::vector<std::string> ruleChoices[kMaxFields];
     int mDropOpen = -1;                       // which field's dropdown list is open (-1 none)

@@ -52,7 +52,8 @@ threads start with 1, 0x4b091a; a START/CALL child inherits the parent's, 0x4b19
 | Lost target | `TargetCleared(slot)` | 0x489893, 0x489943, 0x48a144, 0x48a2db | new thread, 1 arg = slot 0..2, not immediate |
 | Recoil | `RockUnit(a, b)` | 0x499c57, 0x49cbe6, 0x49cda1, 0x49cfc5 | new thread, 2 args, not immediate |
 | Reload info | `SetMaxReloadTime(ms)` | 0x49e181 | new thread at unit creation, 1 arg |
-| (other) | `QueryNanoPiece`, `HitByWeapon`, `StartBuilding`... | | not weapon-slot related |
+| Hit | `HitByWeapon(400 cos h, 400 sin h)` | 0x489f3f | new thread, **2 args**, not immediate; only for a surviving, non-paralyzer hit (§9) |
+| (other) | `QueryNanoPiece`, `StartBuilding`... | | not weapon-slot related |
 
 All [S]. TotalA.exe 3.1c contains **no** `AimWeapon`, `AimWeapon1..3`, `QueryWeapon`,
 `FireWeapon`, `EndBurst`, `Shot` or `RestoreAfterDelay` strings (searched the whole
@@ -632,3 +633,128 @@ port artefact. (Not observed in a running TotalA.exe.)
 3. Clear `aimRequested` only at the sites in (c). Keep `aimRequested` across
    `setSlotTarget` to a new live target. Any timed re-arm would be an engine
    deviation, not retail.
+
+## 9. Animation call-ins audit (ground and naval units, 2026-11-26)
+
+Survey of the 278 shipped `scripts/*.cob` (cobtool info): Create 278, SweetSpot 258,
+Killed 256, SmokeUnit 244 (script-internal, started by Create), QueryPrimary 130,
+Activate/Deactivate 123/119, FirePrimary 118, AimPrimary 112, StartMoving/StopMoving
+100/102, AimFromPrimary 102, Go/Stop 96 (script-internal, RequestState), RestoreAfterDelay
+91 (script-internal), SetMaxReloadTime 80, HitByWeapon 45, MotionControl 44 (internal),
+QuerySecondary 23, AimSecondary 20, RockUnit 19, TargetCleared 10, SetSpeed 8,
+MoveRate2 7, AimTertiary 6, MoveRate1/3 2, SetDirection 2. No TA script defines
+TurnDirection, WindChange, SwitchWeapon or Dying (the display VM's Kingdoms call-ins
+for them are inert on TA data).
+
+Checked against the binary [S]:
+
+- **Create** (0x485de2): `0x4b0940(name, 0, immediate 1)`, no arguments; then
+  **SetMaxReloadTime** (0x49e14b..0x49e186): `max(reloadtime word +0xe4)·1000/30`, one
+  argument, not immediate. Engine: same order and value (`maxWeaponReloadMs`); Create is
+  not run at once (its first slice runs in the next pass, still before SetMaxReloadTime,
+  which has the higher thread index).
+- **StartMoving / StopMoving / MoveRate1..3** (0x43da70, from the mover tail 0x43dd5d):
+  tier 0 when the mover's +0x2e bit 2 is set, the unit is attached (+0x86) or speed and
+  turn are both 0; else 1 at speed ≤ type+0x1ae, 2, or 3 above type+0x1b2. Tier 0 →
+  StopMoving; from 0 → StartMoving; then MoveRateN; each `0x4b0940(name, 0, 1)`
+  (immediate). Engine: `retailMovementCallins` (sim `notifyMovementRate`, display
+  `updateRetailMovementAnimationCallbacks`), immediate in the sim.
+- **HitByWeapon** (0x489ce0, record from 0x489bb0): the weapon hit 0x499d84..0x499da3
+  forms `h = atan2(impact.x − victim.x, impact.z − victim.z) − victim heading`; the
+  record keeps its high byte (+7, 0x489c81). The handler starts HitByWeapon only for a
+  record of kind 1 (+8; a paralyzer's is 2, 0x499e20) and only when the hit did not
+  kill (hit points ≤ 0 returns at 0x489ebc..0x489eee), with **two** arguments
+  `(400·cos h, 400·sin h)` (0x4b7123 / 0x4b70ef, 0x489f04..0x489f43), not immediate.
+  The 45 scripts that define it rock the hull: `turn base to z-axis anglez; turn base to
+  x-axis anglex; wait; turn back` (armstump, armflash, corlevlr, …; armsolar /
+  corsolar / armarad close instead). **Fixed**: World passed Kingdoms' four arguments
+  `(damage type, cos, sin, damage)` (anglex = 1, anglez = 400 cos h: vehicles tipped
+  sideways for a frontal hit), also on the killing hit; the display VM likewise.
+- **Killed** (0x4865c3): synchronous `0x4b0bc0(&severity, &corpsetype, NULL, NULL)`
+  (ebp = 0 at 0x48653d), so words 2/3 are 0. World passes the death type in word 2
+  (Kingdoms' `Killed(severity, corpse, deathType)`); no shipped Killed declares a third
+  local, so it is unread. Not changed. A following `Dying(deathType)` is Kingdoms; no TA
+  script has it.
+- **Aim / Fire / RockUnit display angles**: AimX gets the whole heading and pitch words
+  (0x49e2da..0x49e3ab), and even the multiplayer copy (packet 0x10, 0x456200) carries the
+  script arguments as dwords. **Fixed**: the display callbacks kept only the high byte of
+  each angle (a Kingdoms packet rule), so a drawn turret was up to 1.4° off the shot.
+- **SetSpeed / SetDirection** (0x437910, wind generators; 0x4378fe metal extractors) and
+  **RockUnit**, **TargetCleared**, **SweetSpot**, **AimFromX/QueryX**: as §1-§5; matched.
+- **Turning to face a target** (ground and naval): Attack_Chase in range stops the path
+  (0x4035b7 → 0x4388d0) and hands the slot its target (0x4035f2..0x403606); it posts no
+  heading, and 0x49e1a0 has no facing request. TA FBIs have no `turninplacerate`, so
+  World's ground pivot (`brakeGround(u, want)`, Kingdoms 4d9ad0) is idle for TA bodies.
+  The only non-turret ground/naval weapons are vlaunch rockets (AimX(0,0)) and the
+  torpedoes / depth charges, all with tolerance 32767, so 0x49d880 passes them at any
+  heading. **Fixed**: World pivoted a ship without turninplacerate to face its target at
+  its turnrate once in range (Kingdoms); a TA ship now stops and its turrets turn.
+- Open (engine deviations, not changed): the COB pass runs before the weapon update
+  (§7.8: aims and FireX one tick late); an aim starts only once the target is in range
+  (§7.8); `slotClearShot` / the blocked-shot write-off are engine line-of-fire tests that
+  TotalA.exe lacks (0x49aa80 has no ray test, §3.3).
+
+Evidence: `ta_weapon_script_test` sections 7 (armstump's base turns to
+`(400 cos h, 400 sin h)` the pass after a surviving hit; a killing hit starts none) and 8
+(armroy attacking a target off its beam keeps its heading and hits it); `naval_combat`.
+
+## 10. Debris, death explosions and impact art (2026-11-26) [S]
+
+Engine: `client/retaildebris.h` (`RetailDebrisMotion`, `RetailFx`), `GameView::explodePiece`,
+`GameView::spawnWeaponImpact`, `GameView::spawnRetailEffect`; test `debris_motion_test`,
+dev harness `TA_DEATH_BLAST_TEST`.
+
+**COB EXPLODE** (opcode 0x10071000, VM 0x4b1b1f → unit-script vtable 0x4fd698 slot +0x34 =
+**0x481140**(piece, flags)):
+- Unless BITMAPONLY (0x20): six draws of the game random 0x4b6c30 (`rand % n`): three spin
+  rates `rand(3000)`, then `vx = (20 - rand(40)) << 14`, `vy = rand(10) << 16` (upward),
+  `vz = (20 - rand(40)) << 14`; lifetime 900 (0x4811c3). Descriptor flags (0x4811d0..0x481238):
+  FIRE 16 → 1, SMOKE 8 → 2, SHATTER 1 → 4, FALL 4 → 8, EXPLODE_ON_HIT 2 → 0x10, or 0x20 with
+  SHATTER. Then 0x421620(descriptor).
+- Each of flags 0x100..0x2000 (BITMAP1..5, BITMAPNUKE) adds an effect-list entry at the piece
+  (0x43e060) with glow 2: fx.gaf `explosion`, `explode2`..`explode5`, `nuke1` (game
+  +0x147f7..+0x1480b, loaded 0x429a11..0x429ae6; `h2oboom2` +0x147eb, `lavasplash` +0x147ef).
+  TA has no `gamedata/explosions/explosions.tdf` (a Kingdoms file).
+- 0x421620 hides the live piece and either shatters it (descriptor & 4 → 0x421700) or copies
+  it into the 100-slot debris pool 0x511df0, at the unit position plus the piece's offset.
+
+**Whole piece, tick 0x4213b0** (from the game tick 0x495539 → 0x420f30):
+1. lifetime: when it was already 0, gone (so 900 updates live);
+2. at or under the sea line (`y <= sea << 16`, sea = game +0x1427f): gone; with
+   EXPLODE_ON_HIT and not nosealeveltrigger (rules +0xd48), `lavasplash` on a lavaworld
+   (+0xd44) else `h2oboom2`, no glow;
+3. `h` = 0x485140 (mean of the 16 px cell's high/low bytes, -1 off the map) under the
+   present point; if `y + vy <= h << 16`: `vy = -(vy >> 1)`, `vx >>= 1`, `vz >>= 1`, and when
+   the new `vy < 0x20000` it is gone (EXPLODE_ON_HIT: `explosion`, glow 0);
+4. `pos += v`; piece turns +0x10/+0x12/+0x14 += spin draw 2/3/1;
+5. only with FALL: `vy -= gravity` (game +0x14263, the map's: `World::ballisticGravityRaw`).
+A non-FALL whole piece flies straight for its 900 updates, in retail too; shipped Killed
+scripts give every non-SHATTER debris piece FALL.
+
+**SHATTER, 0x421700:** each of the piece's own quads (4 vertices, not primitive flag bit 0),
+while the shared 300-entry effect list (game +0x1491b, 0x54 bytes) has room, becomes a
+fragment: the quad and its copy 1 px behind it along the face normal
+`n = normalize((v2 - v1) × (v0 - v1))`, recentred on their mean, drawn at the piece's
+point. Draws: `vx`, `vz`, `vy = (80 - rand(160)) << 9`, `vy += 30 * gravity`; spins
+`800 - rand(1600)` ×3, rotation 0; `vx += rand(200) * (short)(n.x * 512)`,
+`vz -= rand(200) * (short)(n.z * 512)`. A constant drift of half the unit's velocity
+(0x421830) is added each tick (the display has none: 0). Explodes on hit when the script
+said SHATTER | EXPLODE_ON_HIT.
+**Fragment tick** (inline in 0x420f30, 0x420f81..0x4210ac): `pos += drift + v`;
+`vy -= gravity` always; turn; then at the new point: in water (`y <= sea << 16` and the cell
+lower than the sea) gone (splash as above); above the ground (`(short)(y >> 16) > h`) lives;
+else back to the old point, `vy = -(vy / 2)`, and gone once `(short)(vy >> 16) <= 0`
+(`explosion`, glow 0, when it explodes on hit). No lifetime.
+The engine had treated SHATTER as a whole piece without FALL: it flew off for 900 ticks.
+
+**Effect list entry 0x420a30**(point, sequence, light, quiet): the sequence's animation, the
+glow `light` (-1 none; three procedural radial glows built at 0x420640, 64→8, 128→16,
+200→32 px), and unless `quiet`, a burst 0x472630(point, 7, 15, 9) above the sea (not drawn).
+
+**Shot explosion 0x499eb0** (death weapons too: EXPLODEAS / SELFDESTRUCTAS): water = no
+unit struck and the cell's +5 under the sea. Water: sound `soundwater` (+0xf8), art weapon
++0x7c — `lavaexplosiongaf/art` on a lavaworld, else `waterexplosiongaf/art` (parser
+0x42ee09..0x42eec9) — glow 0, quiet. Otherwise sound `soundhit` (+0xf6) and, unless
+`endsmoke` (+0x111 bit 10: smoke 0x472810 instead, not drawn), `explosiongaf/explosionart`
+(+0x78, 0x42edb3..0x42ee03), glow 0. The engine had read the Kingdoms `explosionclass`,
+never set for a TA weapon, so no impact (COMMANDER_BLAST's `commboom` included) showed.

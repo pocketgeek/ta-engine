@@ -199,6 +199,7 @@ struct MissionSetup {
     std::vector<std::string> playerDefs;
     bool fullVision = false;   // .ota lineofsight=0: the mission is played revealed
     bool preMapped = false;    // .ota mapping=1: terrain starts explored (units still fogged)
+    int difficulty = 1;        // a TA campaign mission's difficulty (0 Easy, 1 Medium, 2 Hard)
 };
 
 // The map of a mission spec: Kingdoms' missions/<stem>.tnt, or for a TA campaign

@@ -41,7 +41,7 @@ void cart::Editor::ruleOperation(int operation) {
 }
 
 void cart::Editor::openScripting() {
-    if (int(scen.players.size()) < 9) scen.players.resize(9);   // retail writes 9
+    if (scen.players.size() < ta::crt::kBanks) scen.players.resize(ta::crt::kBanks);   // All Players + ten
     scriptOpen = true; scrPlayer = 0;ruleColumn=cart::RuleColumn::Group;
     scrGroup = scen.players[0].empty() ? -1 : 0;
     scrCondSel = scrActSel = -1;
@@ -165,10 +165,10 @@ void cart::Editor::handleScripting(SDL_Event& e) {
         bool dbl = e.button.clicks >= 2;
         if (cart::pointIn(mx, my, rScrDone)) scriptOpen = false;
         else if (cart::pointIn(mx, my, rPrevP)) {
-            ruleColumn=cart::RuleColumn::Group;scrPlayer = (scrPlayer + 8) % 9; scrGroup = scen.players[size_t(scrPlayer)].empty() ? -1 : 0;
+            ruleColumn=cart::RuleColumn::Group;scrPlayer = (scrPlayer + int(ta::crt::kBanks) - 1) % int(ta::crt::kBanks); scrGroup = scen.players[size_t(scrPlayer)].empty() ? -1 : 0;
             scrCondSel = scrActSel = -1; scrRuleScroll = scrCondScroll = scrActScroll = 0;
         } else if (cart::pointIn(mx, my, rNextP)) {
-            ruleColumn=cart::RuleColumn::Group;scrPlayer = (scrPlayer + 1) % 9; scrGroup = scen.players[size_t(scrPlayer)].empty() ? -1 : 0;
+            ruleColumn=cart::RuleColumn::Group;scrPlayer = (scrPlayer + 1) % int(ta::crt::kBanks); scrGroup = scen.players[size_t(scrPlayer)].empty() ? -1 : 0;
             scrCondSel = scrActSel = -1; scrRuleScroll = scrCondScroll = scrActScroll = 0;
         } else if (cart::pointIn(mx, my, rAddRule)) {
             ruleColumn=cart::RuleColumn::Group;gs.push_back({}); scrGroup = int(gs.size()) - 1; scrCondSel = scrActSel = -1; dirty = true; historyPending=true;

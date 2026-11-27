@@ -1496,8 +1496,12 @@ int main(int argc,char** argv) {
         const auto& aimEvents=world.unit(sid)->weaponAnimations;
         require(aimEvents.count==1 && aimEvents.events[0].kind==ta::RetailWeaponAnimation::Aim,
             "the regular script pass clears the old aim before starting the new AimWeapon callback");
-        require(aimEvents.events[0].heading==(expected->heading&0xff00) &&
-            aimEvents.events[0].pitch==(expected->pitch&0xff00),"display angles use native packet precision");
+        // TotalA.exe hands AimX whole words (0x49e2da..0x49e3ab; packet 0x10
+        // at 0x456200 copies dwords): the display gets the slot's angles.
+        (void)expected;
+        require(aimEvents.events[0].heading==world.unit(sid)->weaponAim[0].heading &&
+            aimEvents.events[0].pitch==world.unit(sid)->weaponAim[0].pitch,
+            "display angles are the AimX arguments, whole words");
         world.tick(1.f/30);
         require(world.unit(sid)->weaponAnimations.count==0,"callback events expire on the next simulation update");
         std::cout<<"PASS: live script-timed aim, firing callback, reload and delayed projectile\n";
