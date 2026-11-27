@@ -3040,7 +3040,8 @@ public:
     int32_t sonarDistance(const UnitType& type) const { return type.sonar * (doubleSight_ ? 2 : 1); }
     // TotalA.exe 0x467440 / 0x467840 (docs/retail-fog.md 4.1): is `u` a sonar contact
     // of `player` -- at or below sea level, within the sonar distance of an activated
-    // sonar unit whose sight `player` shares, and not inside an activated sonar jammer
+    // sonar unit whose sight `player` shares (its own, or an ally's by the engine's D2 rule --
+    // retail allies share no sonar), and not inside an activated sonar jammer
     // of another player? From this tick's sonar sources (collectSonar).
     bool sonarContact(int player, const Unit& u) const;
     // Monarch-expendable rule (net GameOptions): when FALSE, losing your Monarch

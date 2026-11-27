@@ -278,7 +278,7 @@ The minimap is never dithered and has no edge pieces.
 - **10:** a submerged enemy is seen only as a sonar contact (`World::playerSees`, hashed).
 - **12:** `nodrawundergray`.
 
-Open: 11 (retail ally sharing, untraced; the engine keeps D2), 13 (R:/S: hover text), 14 (draw order) and 15 (nanoframe sight). `radlogohigh` (G+0x2cba) and the blinking dot are not drawn.
+Intentional: 11 (allies share sight, radar and sonar, owner decision D2). Open: 13 (R:/S: hover text), 14 (draw order) and 15 (nanoframe sight). `radlogohigh` (G+0x2cba) and the blinking dot are not drawn.
 
 1. **The out-of-view look.** Retail desaturates out-of-view terrain through the
    GRAY TABLE, or covers it with a 50% black checkerboard (DitheredFog), with no
@@ -335,11 +335,11 @@ Open: 11 (retail ally sharing, untraced; the engine keeps D2), 13 (R:/S: hover t
     `playerSees` (`sim.cpp:16012`) have no such rule. *Fix:* add the sea test
     gated on a sonar contact. Note that `playerSees` is used by the sim, so the
     change is hashed.
-11. **Allied sight.** The engine shares view and exploration with every ally
-    (`viewShareMask`, `sim.cpp:15889`; owner decision D2). Retail stamps each
-    player's own plane only and displays `V`'s plane alone. How allies share in
-    retail multiplayer (ShareMapping, info `+0x97` bit 5) is **not traced**
-    [U]. Keep D2 unless that path is found.
+11. **Allied sight and radar (intentional, not a bug).** Retail allies share
+    neither sight nor radar: each player stamps and sees only its own plane,
+    and only its own radar, sonar and jammers count. The engine deliberately
+    shares view, exploration, radar and sonar with every ally
+    (`viewShareMask`, owner decision D2). Keep it.
 12. **`nodrawundergray` features.** The engine draws every explored feature
     (`gameview_render.cpp:239`). Retail hides `nodrawundergray` features
     (dragon's teeth, fortifications) out of LOS. *Fix:* test LOS for those

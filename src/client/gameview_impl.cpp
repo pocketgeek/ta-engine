@@ -1721,8 +1721,9 @@
             fb.fogGen = fogPlaneGen_;
         }
         fb.fogW = w; fb.fogH = h;
-        // TotalA.exe 0x467440: the viewed player's radar -- its own units', and (our
-        // allied-sight rule) its sight-sharing allies' -- built and switched on, each
+        // TotalA.exe 0x467440: the viewed player's radar -- its own units', and its
+        // sight-sharing allies' (an engine rule, owner decision D2: retail allies share
+        // neither sight nor radar) -- built and switched on, each
         // reaching its radar distance plus twice its height (altitude extends radar);
         // and every other player's switched-on radar jammer (an ally's too, 0x467960).
         for (const auto& u : world_.units()) {
