@@ -177,7 +177,10 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     if (g.headersInArt && !g.bgPcx.empty()) {
         try {
             tagui::Screen s = tagui::load(vfs, "endmsn");
-            if (const tagui::Gadget* b = s.find("MainMenu")) {
+            if (tagui::Gadget* b = s.find("MainMenu")) {
+                // ENDMSN.GUI places it for outcome1 (y 395); on outcome0 retail moves it
+                // down into the plate's slot: ypos (+0x15) = 0x1a0 (TotalA.exe 0x41f57a).
+                b->y = 416;
                 g.menuBtn = {float(b->x), float(b->y), float(b->w), float(b->h)};
                 std::vector<std::string> hide;
                 for (const auto& w : s.gadgets)
