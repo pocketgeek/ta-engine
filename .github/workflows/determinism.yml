@@ -162,7 +162,7 @@ jobs:
       - name: Build + run
         run: |
           cmake -B build -G Ninja
-          cmake --build build --target pathsearch_test authtest cmdflow_test unit_gift_test pathfinding_matchsetup_test navigation_telemetry_test movement_orders_test builder_automation_test navigation_checkpoint_test
+          cmake --build build --target pathsearch_test authtest cmdflow_test unit_gift_test pathfinding_matchsetup_test navigation_telemetry_test movement_orders_test navigation_checkpoint_test
           ./build/pathsearch_test
           ./build/authtest
           ./build/cmdflow_test

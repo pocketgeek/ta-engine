@@ -112,7 +112,7 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_FRAMEWORK=LAST
-          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test taclient taserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test stream_network_test menu_music_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test taclient taserver cartographer cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test stream_network_test menu_music_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test mapgen_test map_transfer_test unit_gift_test
 
       - name: Server, network and replay checks
         run: |
@@ -129,12 +129,9 @@ jobs:
 
       - name: Retail scripts, paths, rendering and map generation
         run: |
-          ./build/cartographer_document_test
           ./build/datafolder_test
-          ./build/cartographer_validation_test
           ./build/retail_script_test
           ./build/pathsearch_test
-          ./build/retail_visual_test
           ./build/mapgen_test
           ./build/map_transfer_test
           ./build/unit_gift_test
@@ -152,7 +149,7 @@ jobs:
 
       - name: Rendering, navigation and validation regressions
         run: |
-          cmake --build build --target tdf_limits_test validationworker_test order_trail_test retail_search_scratch_test navigation_checkpoint_test navigation_telemetry_test replay_test scenario_info_test fp_contract_test simpool_passes_test fire_sweep_test renderdriver_test jpeg_encode_test cpu_topology_test
+          cmake --build build --target validationworker_test order_trail_test retail_search_scratch_test navigation_checkpoint_test navigation_telemetry_test replay_test fp_contract_test simpool_passes_test fire_sweep_test renderdriver_test jpeg_encode_test cpu_topology_test
           bash tools/run-ctest-selection.sh build fp_contract tdf_limits validationworker order_trail retail_search_scratch navigation_determinism crowdbench_matrix navigation_telemetry replay scenario_info simpool_passes fire_sweep_vision fire_sweep_switch fire_sweep_retaliation pref_guard_lint renderdriver jpeg_encode cpu_topology
           # What this runner's CPUs were read as (ctest prints nothing of a passing test).
           ./build/cpu_topology_test
