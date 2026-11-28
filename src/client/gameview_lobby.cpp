@@ -797,6 +797,32 @@ std::string defaultGameName(const std::string& player) {
 
     std::vector<uint8_t> GameView::radarPicture(ta::tnt::Map& m, const ta::hpi::Vfs& vfs, const std::string& world,
                                                 int& w, int& h) {
+        // A Total Annihilation map (its own tiles; a random map's too) has no large overview,
+        // only its 252 x 252 minimap: that picture, cut to the map's aspect, through the
+        // game palette -- as buildMapPreview shows a shipped map. Without this a random
+        // map's preview came back empty and the panel said GENERATING for ever.
+        if (m.overview.empty() && m.tileCount > 0 && vfs.has("palettes/palette.pal")) {
+            // Its tiles are game-palette pixels: the picture is built and read in palette.pal
+            // (a TA world has no palettes/<world>.pcx; that loader's fallback is a grey ramp).
+            const auto pb = vfs.read("palettes/palette.pal");
+            const auto pal = ta::gaf::Palette::fromBytes(pb, "palettes/palette.pal");
+            if (m.minimap.empty()) {
+                ta::terrain::Compositor compositor(vfs);
+                ta::terrain::generateMinimaps(m, compositor, pal);
+            }
+            const auto fit = ta::terrain::minimapContent(m);
+            if (fit.width > 0 && fit.height > 0 && m.minimap.size() >= size_t(m.minimapW) * m.minimapH) {
+                w = fit.width; h = fit.height;
+                std::vector<uint8_t> rgba(size_t(w) * h * 4);
+                for (int y = 0; y < h; ++y)
+                    for (int x = 0; x < w; ++x) {
+                        const uint8_t p = m.minimap[size_t(y) * m.minimapW + x];
+                        std::copy(pal.rgba[p], pal.rgba[p] + 3, rgba.begin() + (size_t(y) * w + x) * 4);
+                        rgba[(size_t(y) * w + x) * 4 + 3] = 255;
+                    }
+                return rgba;
+            }
+        }
         // The large radar picture a saved map carries, built from the map's tiles as the
         // Cartographer builds it, through the world's palette (index 9 transparent, as
         // buildMapPreview draws a shipped map's).
