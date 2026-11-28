@@ -6845,6 +6845,9 @@
                 const float sy = (sp.z - mapView_.offY()) * zm - terrainLift(sp.x, sp.z) * zm;
                 if (sx < -hw || sy < -hh || sx > float(mapViewW(winW_)) + hw || sy > float(mapViewH(winH_)) + hh) continue;
                 if (!canPlacePreview(placing_, sp.x, sp.z)) continue;   // taken
+                // Only ground the player has explored: a deposit under the black is
+                // terrain it has not seen.
+                if (fogCellR(sp.x, sp.z) == ta::retailfog::kUnexplored) continue;
                 const SDL_FRect r{sx - hw, sy - hh, 2 * hw, 2 * hh};
                 SDL_SetRenderDrawColor(ren_, 255, 220, 90, 150);
                 SDL_RenderDrawRectF(ren_, &r);
