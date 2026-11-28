@@ -117,8 +117,9 @@ struct RetailSightFootprint {
     bool active=false;
     bool trueLos=false;     // stamped with True sight's rays, else Circular's mask
     // DOUBLE SIGHT/RADAR (an engine option, not retail): 2 doubles the footprint
-    // past retail's caps -- True's rays scaled x2 from the undoubled sight's table,
-    // Circular's disc past the 14-cell mask (retailSightMask). 1: retail exactly.
+    // past retail's caps -- True: rays to the rim of a disc twice the undoubled
+    // sight's table (retailRimRays); Circular: a disc past the 14-cell mask
+    // (retailSightMask). 1: retail exactly.
     uint8_t scale=1;
 };
 
@@ -134,6 +135,60 @@ inline const RetailLosTable* retailLosTable(const RetailSightFootprint& sight) {
     const int r=std::min(std::max(0,sightPx/32),int(tables.size())-1);
     return r>=1 ? &tables[size_t(r-1)] : nullptr;
 }
+// The table's index (TABLE r: r cells), 0 with no table.
+inline int retailLosTableRadius(const RetailSightFootprint& sight) {
+    const auto& tables=retailLosTableData();
+    if (tables.empty()) return 0;
+    const int sightPx=int(sight.distance)/std::max(1,int(sight.scale));
+    return std::min(std::max(0,sightPx/32),int(tables.size())-1);
+}
+
+// DOUBLE SIGHT under True sight (engine option): retail's tables stop at 8 cells,
+// and scaling their rays x2 also doubled the angle between neighbouring rays,
+// leaving a lattice of cells no ray reached. Instead the doubled footprint casts
+// a ray to every cell on the rim of a disc of radius R (twice the undoubled
+// table's), each a straight line out from the centre (a DDA, the major axis one
+// cell a step), so every cell within R lies on some ray. The horizon test is
+// retail's (retailTrueSightCells).
+inline const RetailLosTable& retailRimRays(int R) {
+    static const auto all=[] {
+        std::array<RetailLosTable,33> t;
+        for (int r=1;r<int(t.size());++r) {
+            RetailLosTable& rays=t[size_t(r)];
+            const auto inside=[&](int x,int z){return x*x+z*z<=r*r+r;};
+            const int w=2*r+1;
+            std::vector<uint8_t> covered(size_t(w)*w,0);
+            const auto cast=[&](int x,int z) {
+                RetailLosRay ray;
+                const int n=std::max(std::abs(x),std::abs(z));
+                for (int k=1;k<=n;++k) {
+                    // Rounded to the nearest cell, halves away from zero, in integers.
+                    const auto at=[&](int v){const int num=2*v*k;return (num>=0 ? num+n : num-n)/(2*n);};
+                    const int cx=at(x),cz=at(z);
+                    ray.push_back({int8_t(cx),int8_t(cz)});
+                    covered[size_t(cz+r)*w+size_t(cx+r)]=1;
+                }
+                rays.push_back(std::move(ray));
+            };
+            for (int z=-r;z<=r;++z) for (int x=-r;x<=r;++x) {
+                if (!inside(x,z)) continue;
+                if (inside(x+1,z) && inside(x-1,z) && inside(x,z+1) && inside(x,z-1)) continue;   // not on the rim
+                cast(x,z);
+            }
+            // The rounded lines skip a few cells near the diagonals: a ray of its own to
+            // each cell still uncovered, farthest first, so none lies off every ray.
+            std::vector<std::array<int,2>> rest;
+            for (int z=-r;z<=r;++z) for (int x=-r;x<=r;++x)
+                if ((x || z) && inside(x,z) && !covered[size_t(z+r)*w+size_t(x+r)]) rest.push_back({x,z});
+            std::stable_sort(rest.begin(),rest.end(),[](const auto& a,const auto& b) {
+                return a[0]*a[0]+a[1]*a[1]>b[0]*b[0]+b[1]*b[1];
+            });
+            for (const auto& c:rest) if (!covered[size_t(c[1]+r)*w+size_t(c[0]+r)]) cast(c[0],c[1]);
+        }
+        return t;
+    }();
+    return all[size_t(std::clamp(R,1,int(all.size())-1))];
+}
 
 // 0x482270: the cells a True footprint counts. The centre always (0x48239c);
 // then along each ray, step j = 1, 2, ..., the horizon (h, d) starting at
@@ -148,22 +203,11 @@ void retailTrueSightCells(const RetailSightFootprint& sight,int width,int height
     const RetailLosTable* table=retailLosTable(sight);
     if (!table) return;
     const int e=sight.eyeHeight;
-    // DOUBLE SIGHT (scale 2, engine option): every cell of the ray at twice its
-    // offset, with the midpoint of each pair of neighbours between them, so the
-    // doubled ray is as continuous as the authored one and twice as long.
-    thread_local std::vector<std::array<int,2>> steps;
+    // DOUBLE SIGHT (scale 2, engine option): rays to the rim of the doubled disc.
+    if (sight.scale>1) table=&retailRimRays(2*retailLosTableRadius(sight));
     for (const RetailLosRay& ray:*table) {
-        steps.clear();
-        if (sight.scale>1) {
-            std::array<int,2> prev{0,0};
-            for (const auto& c:ray) {
-                steps.push_back({prev[0]+c[0],prev[1]+c[1]});   // the midpoint: (2·prev + 2·c) / 2
-                steps.push_back({2*c[0],2*c[1]});
-                prev={c[0],c[1]};
-            }
-        } else for (const auto& c:ray) steps.push_back({c[0],c[1]});
         int32_t bestH=-1,bestD=0,j=1;
-        for (const auto& step:steps) {
+        for (const auto& step:ray) {
             const int x=sight.x+step[0],z=sight.z+step[1];
             if (uint32_t(x)<uint32_t(width) && uint32_t(z)<uint32_t(height)) {
                 const auto h=heightAt(x,z);
@@ -208,9 +252,10 @@ inline const RetailVisMask& retailSightMask(const RetailSightFootprint& sight) {
 inline int retailSightRadius(const RetailSightFootprint& sight) {
     if (sight.trueLos) {
         int reach=0;
+        if (sight.scale>1) return retailLosTable(sight) ? 2*retailLosTableRadius(sight) : 0;
         if (const RetailLosTable* t=retailLosTable(sight))
             for (const auto& ray:*t) for (const auto& c:ray) reach=std::max({reach,std::abs(int(c[0])),std::abs(int(c[1]))});
-        return reach*std::max(1,int(sight.scale));
+        return reach;
     }
     const RetailVisMask& m=retailSightMask(sight);
     return std::max({int(m.xoff),int(m.width)-1-m.xoff,int(m.yoff),int(m.height)-1-m.yoff});

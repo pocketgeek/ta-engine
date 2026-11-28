@@ -210,17 +210,35 @@ static void trueSight() {
     check(cells() == std::vector<int>{2, 3, 4, 6}, "a tower taller than the horizon shows over the wall");
     f.distance = 20;
     check(cells() == std::vector<int>{2}, "under 32 px there is no table: the centre alone");
-    // DOUBLE SIGHT (scale 2, engine option): the undoubled sight's table, its ray
-    // scaled x2 with the midpoints between, so twice as far and still unbroken.
+    // DOUBLE SIGHT (scale 2, engine option): rays to every cell on the rim of a disc
+    // twice the undoubled table's radius, so on flat ground the whole disc is seen,
+    // with no lattice of cells between the rays.
     {
-        RetailSightFootprint d = f;
-        d.distance = 80; d.scale = 2; d.x = 1;   // 40 px of own sight, doubled
-        std::vector<RetailExplorationHeight> flat(size_t(12) * H, RetailExplorationHeight{0, 0});
-        auto flatAt = [&](int x, int z) { return flat[size_t(z) * 12 + size_t(x)]; };
-        std::vector<int> xs;
-        retailTrueSightCells(d, 12, H, flatAt, [&](int x, int z) { if (z == 2) xs.push_back(x); });
-        check(xs == std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8, 9}, "double sight: the ray reaches twice as far, unbroken");
-        check(retailSightRadius(d) == 8, "double sight: the footprint's reach doubles");
+        std::vector<RetailLosTable> eight(8, east);   // numtables 8: TABLE7 for 224..255 px
+        setRetailLosTables(eight);
+        RetailSightFootprint d;
+        d.trueLos = true; d.scale = 2; d.distance = 2 * 230; d.x = 20; d.z = 20; d.eyeHeight = 30;
+        constexpr int N = 41;
+        std::vector<RetailExplorationHeight> flat(size_t(N) * N, RetailExplorationHeight{0, 0});
+        auto flatAt = [&](int x, int z) { return flat[size_t(z) * N + size_t(x)]; };
+        std::vector<uint8_t> seen(size_t(N) * N, 0);
+        retailTrueSightCells(d, N, N, flatAt, [&](int x, int z) { seen[size_t(z) * N + size_t(x)] = 1; });
+        const int R = 14;   // TABLE7 doubled
+        bool full = true, outside = false;
+        for (int z = 0; z < N; ++z)
+            for (int x = 0; x < N; ++x) {
+                const int dx = x - 20, dz = z - 20;
+                const bool in = dx * dx + dz * dz <= R * R + R;
+                if (in && !seen[size_t(z) * N + size_t(x)]) full = false;
+                if (!in && seen[size_t(z) * N + size_t(x)]) outside = true;
+            }
+        check(full && !outside, "double sight: flat ground sees the whole doubled disc, no holes");
+        check(retailSightRadius(d) == R, "double sight: the footprint's reach doubles");
+        // A wall still hides what lies behind it.
+        flat[size_t(20) * N + 23] = {120, 120};
+        std::fill(seen.begin(), seen.end(), 0);
+        retailTrueSightCells(d, N, N, flatAt, [&](int x, int z) { seen[size_t(z) * N + size_t(x)] = 1; });
+        check(seen[size_t(20) * N + 23] && !seen[size_t(20) * N + 30], "double sight: a wall hides the ground behind it");
     }
     setRetailLosTables({});
     // Circular past the largest mask: retail clamps at 14 cells; doubled sight draws

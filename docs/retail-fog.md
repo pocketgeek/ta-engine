@@ -312,7 +312,7 @@ The minimap is never dithered and has no edge pieces.
 - **15:** nanoframes see.
 - **Minimap:** `radlogohigh` over the unit under the pointer, and a damaged unit's dot blinks for 240 ticks.
 
-Intentional: 11 (allies share sight, radar and sonar, owner decision D2). DOUBLE SIGHT/RADAR, an engine option, doubles radar and sonar and goes past retail's sight caps (owner decision): True uses the undoubled sight's table with every ray scaled ×2, midpoints filled, so up to 16 cells; Circular keeps the vismasks to 14 cells and past that draws a disc of sight/32 cells (dx² + dz² ≤ r² + r), up to 28. Nothing else is open in §7.
+Intentional: 11 (allies share sight, radar and sonar, owner decision D2). DOUBLE SIGHT/RADAR, an engine option, doubles radar and sonar and goes past retail's sight caps (owner decision): True casts a ray to every cell on the rim of a disc twice the undoubled sight's table radius (plus one to any cell those miss), so up to 16 cells with no gaps, and keeps retail's horizon test along each; Circular keeps the vismasks to 14 cells and past that draws a disc of sight/32 cells (dx² + dz² ≤ r² + r), up to 28. Nothing else is open in §7.
 
 1. **The out-of-view look.** Retail desaturates out-of-view terrain through the
    GRAY TABLE, or covers it with a 50% black checkerboard (DitheredFog), with no
