@@ -76,7 +76,7 @@ void recipes() {
           "sanitize clamps the world, the sides and the players");
     check(s.name == "abcde", "sanitize keeps only safe name characters, trimmed");
     Params many; many.players = 12;
-    check(sanitize(many).players == 8, "sanitize caps the players at 8");
+    check(sanitize(many).players == ta::mapgen::kMaxPlayers, "sanitize caps the players at kMaxPlayers (10)");
 
     Params label; label.widthCells = label.heightCells = 8 * 32; label.players = 4; label.mapType = Green;
     check(friendlyLabel(label) == "Random 8x8 4P Green", "friendlyLabel reads \"Random 8x8 4P Green\": " + friendlyLabel(label));

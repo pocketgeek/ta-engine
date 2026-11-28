@@ -6835,24 +6835,9 @@
         pickWorld(mouseX_, mouseY_, wx, wz);
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         // A metal extractor on a map with deposits snaps onto the nearest one
-        // (client/metalspots.h); with none in reach it can go nowhere. The free
-        // deposits on screen are outlined so the player sees where it can go.
+        // (client/metalspots.h); with none in reach it can go nowhere. No deposit is
+        // outlined (owner decision): the ghost itself shows where it will go.
         const bool onDeposit = snapToMetal(placing_, wx, wz);
-        if (snapsToMetal(placing_)) {
-            const float hw = float(placing_->footX) * 8 * zm, hh = float(placing_->footZ) * 8 * zm;
-            for (const auto& sp : metalSpots(placing_)) {
-                const float sx = (sp.x - mapView_.offX()) * zm - terrainLiftX(sp.x, sp.z) * zm;
-                const float sy = (sp.z - mapView_.offY()) * zm - terrainLift(sp.x, sp.z) * zm;
-                if (sx < -hw || sy < -hh || sx > float(mapViewW(winW_)) + hw || sy > float(mapViewH(winH_)) + hh) continue;
-                if (!canPlacePreview(placing_, sp.x, sp.z)) continue;   // taken
-                // Only ground the player has explored: a deposit under the black is
-                // terrain it has not seen.
-                if (fogCellR(sp.x, sp.z) == ta::retailfog::kUnexplored) continue;
-                const SDL_FRect r{sx - hw, sy - hh, 2 * hw, 2 * hh};
-                SDL_SetRenderDrawColor(ren_, 255, 220, 90, 150);
-                SDL_RenderDrawRectF(ren_, &r);
-            }
-        }
         bool ok = onDeposit && canPlacePreview(placing_, wx, wz);
         // A site blocked only by clearable doodads isn't a refusal any more -- the
         // click sends the builder to clear it first -- so don't red-wash it. The
