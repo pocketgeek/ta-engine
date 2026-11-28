@@ -74,6 +74,7 @@ Controller::Controller(int player, const ta::sim::TypeRegistry& registry,
                 : diff_ == Difficulty::Easy ? 0
                 : (diff_ == Difficulty::Hard || diff_ == Difficulty::Absurd) ? 2 : 1;
     retail_ = std::make_unique<TaRetailBrain>(player, seed, registry, d);
+    retail_->setSmart(!retailLevel(diff_));   // the engine's levels; RETAIL ones stay exact
     retail_->setAggressive(!(diff_ == Difficulty::Defensive || diff_ == Difficulty::AbsurdlyDefensive ||
                              stayHome_));
 }

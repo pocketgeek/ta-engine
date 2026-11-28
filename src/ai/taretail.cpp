@@ -41,6 +41,7 @@ TaRetailBrain::TaRetailBrain(int player, uint32_t gameSeed, const sim::TypeRegis
     const size_t n = types_.size();
     weight_.assign(n, 100); limit_.assign(n, -1); wlock_.assign(n, 0); llock_.assign(n, 0);
     count_.assign(n, 0); value_.assign(n, 0); base_.assign(n, 0); baseML_.assign(n, 0); baseEL_.assign(n, 0);
+    noSiteUntil_.assign(n, 0);
     squadOf_.clear();
     if (std::getenv("TA_AILOG")) std::fprintf(stderr, "ai p%d: TA retail brain, difficulty %d\n", player, difficulty_);
 }
@@ -236,7 +237,119 @@ int TaRetailBrain::score(const sim::World& world, size_t i) const {
     return int(std::trunc(double(G * base_[i] + M * baseML_[i] + E * baseEL_[i]) * weight_[i] / 10000.0));
 }
 
+// The engine levels' pick (smart_). Needs before wants, in this order: two
+// extractors, an energy producer, a factory; then metal or energy whichever is
+// running short (income at or below spending with the store under a quarter);
+// another factory as income grows; a factory makes constructors until there are
+// enough. Everything else is retail's weighted score. Nothing that would take
+// more than ~40 s of current income to pay for, so a big project never hangs the
+// economy, and no type that recently found no site.
+const sim::UnitType* TaRetailBrain::chooseSmart(const sim::World& world, const sim::UnitType* builder) {
+    const auto& b = world.player(player_).books;
+    const float eSt = b.stored[0], mSt = b.stored[1];
+    const float eCap = std::max(1.0f, b.cap[0]), mCap = std::max(1.0f, b.cap[1]);
+    const float eIn = b.income[0], mIn = b.income[1], eEx = b.expense[0], mEx = b.expense[1];
+    const float windSpeed = float(world.wind().speed);
+    const bool factory = builder->isStructure();
+    enum Kind { Mex, Maker, Energy, Factory, Builder, Other };
+    auto kindOf = [&](const sim::UnitType& t) {
+        if (t.extractsMetal > 0) return Mex;
+        if (t.makesMetal) return Maker;
+        if (t.isStructure() && t.isBuilder && !reg_.buildable(t.id).empty()) return Factory;
+        if (!t.isStructure() && t.isBuilder && !reg_.buildable(t.id).empty()) return Builder;
+        if (energyNet(t, windSpeed, 0.5f) < 0 && !armed(t)) return Energy;   // net use < 0: a producer
+        return Other;
+    };
+    // What it has, sites going up included: a second factory is not started while
+    // the first is still a frame.
+    int have[6] = {0, 0, 0, 0, 0, 0};
+    for (const auto& u : world.units())
+        if (u.alive() && u.type && u.player == player_) ++have[kindOf(*u.type)];
+    auto affordable = [&](const sim::UnitType& t) {
+        const float needM = std::max(0.0f, t.buildCostMetal - mSt), needE = std::max(0.0f, t.buildCostEnergy - eSt);
+        return needM <= 40.0f * std::max(0.3f, mIn) && needE <= 40.0f * std::max(5.0f, eIn);
+    };
+    std::vector<std::pair<const sim::UnitType*, int>> cand;   // type, retail score
+    for (const auto& name : reg_.buildable(builder->id)) {
+        const sim::UnitType* t = reg_.find(name);
+        if (!t || lower(t->side) != lower(builder->side)) continue;
+        const size_t i = typeIndex(t);
+        if (i >= types_.size() || now_ < noSiteUntil_[i]) continue;
+        if (campaign_ && t->downloadable) continue;
+        if (!(limit_[i] == -1 || count_[i] < limit_[i])) continue;
+        if (t->canTransport || t->classicFbi.isFeature) continue;
+        if (t->windGenerator != 0 && world.wind().maximum < 2500) continue;
+        if (!affordable(*t)) continue;
+        cand.push_back({t, score(world, i)});
+    }
+    if (cand.empty()) return nullptr;
+    // The kind wanted, else nothing forced; within a kind the most productive extractor,
+    // else the cheapest.
+    auto pick = [&](Kind k) -> const sim::UnitType* {
+        const sim::UnitType* best = nullptr;
+        for (const auto& [t, s] : cand) {
+            (void)s;
+            if (kindOf(*t) != k) continue;
+            if (!best) { best = t; continue; }
+            // A first factory makes ground units (its first unit cannot fly): cheaper to
+            // feed, and its constructors build the base. An aircraft plant later.
+            if (k == Factory && have[Factory] == 0) {
+                auto ground = [&](const sim::UnitType* f) {
+                    for (const auto& n : reg_.buildable(f->id))
+                        if (const sim::UnitType* o = reg_.find(n); o && !o->canFly && o->landMinWaterDepth <= 0) return true;
+                    return false;
+                };
+                if (ground(t) != ground(best)) { if (ground(t)) best = t; continue; }
+            }
+            if (k == Mex ? t->extractsMetal > best->extractsMetal ||
+                               (t->extractsMetal == best->extractsMetal && t->buildCostMetal < best->buildCostMetal)
+                         : t->buildCostMetal + t->buildCostEnergy / 60 < best->buildCostMetal + best->buildCostEnergy / 60)
+                best = t;
+        }
+        return best;
+    };
+    const bool metalShort = (mSt < 0.25f * mCap && mIn <= mEx + 0.5f) || mIn < 3.0f;
+    const bool energyShort = (eSt < 0.25f * eCap && eIn <= eEx + 5.0f) || eIn < 30.0f;
+    const sim::UnitType* t = nullptr;
+    if (factory) {
+        const int wantBuilders = std::clamp(2 + int(mIn / 6.0f), 2, 8);
+        if (have[Builder] < wantBuilders) t = pick(Builder);
+        if (!t) {   // the army: retail's weighted pick over what it can afford, no economy kinds
+            int total = 0;
+            for (const auto& [c, s] : cand) {
+                if (s <= 0 || kindOf(*c) != Other) continue;
+                total += s;
+                if (int(random(uint32_t(total))) < s) t = c;
+            }
+        }
+        // Nothing scored (the profile's weights can rule most out): a factory is not
+        // left idle while the stores fill -- any armed unit it can afford, at random.
+        if (!t) {
+            std::vector<const sim::UnitType*> armedOnes;
+            for (const auto& [c, s] : cand) { (void)s; if (armed(*c) && kindOf(*c) == Other) armedOnes.push_back(c); }
+            if (!armedOnes.empty()) t = armedOnes[size_t(random(uint32_t(armedOnes.size())))];
+        }
+        return t;
+    }
+    if (have[Mex] < 2) t = pick(Mex);
+    if (!t && have[Energy] < 1) t = pick(Energy);
+    if (!t && have[Factory] < 1 && have[Mex] >= 2) t = pick(Factory);
+    if (!t && metalShort) t = pick(Mex);
+    if (!t && metalShort && !energyShort && eSt > 0.5f * eCap) t = pick(Maker);
+    if (!t && energyShort) t = pick(Energy);
+    if (!t && have[Factory] < 1 + int(mIn / 12.0f)) t = pick(Factory);
+    if (t) return t;
+    int total = 0;
+    for (const auto& [c, s] : cand) {
+        if (s <= 0) continue;
+        total += s;
+        if (int(random(uint32_t(total))) < s) t = c;
+    }
+    return t;
+}
+
 const sim::UnitType* TaRetailBrain::choose(const sim::World& world, const sim::UnitType* builder) {
+    if (smart_) return chooseSmart(world, builder);
     const sim::UnitType* choice = nullptr;
     int total = 0;
     for (const auto& name : reg_.buildable(builder->id)) {
@@ -265,7 +378,8 @@ bool TaRetailBrain::findSite(const sim::World& world, const sim::UnitType*, floa
     }
     // Extractors go to the ore features when Random(255) > SurfaceMetal (0x40bfe0):
     // the most metal under the footprint (0x40a260), no fallback when none fits.
-    if (t->extractsMetal != 0 && int(random(255)) > world.surfaceMetal()) {
+    // Smart: always to the ore while the map has any, nearest first.
+    if (t->extractsMetal != 0 && (smart_ ? !oreBuilt_ || !oreSpots_.empty() : int(random(255)) > world.surfaceMetal())) {
         if (!oreBuilt_) {
             for (int z = 0; z < world.mapH(); ++z)
                 for (int x = 0; x < world.mapW(); ++x) {
@@ -407,13 +521,25 @@ void TaRetailBrain::taskBuilders(const sim::World& world, uint32_t now, const Co
         if (!u || !u->type || !builds(reg_, *u->type)) continue;
         if (kLogB) std::fprintf(stderr, "ai p%d   %s orders %zu hold %u\n", player_, u->type->id.c_str(), u->orders.size(), cmdHoldUntil_);
         if (u->type->commander && (buildCapable_ >= 5 || now < cmdHoldUntil_)) continue;
-        if (!u->orders.empty()) continue;
+        // Smart: a builder only patrolling (pass 2 sends the idle ones round the base)
+        // is free for work; retail's never builds again once it patrols.
+        const bool onlyPatrol = smart_ && !u->orders.empty() && u->buildSiteId == 0 &&
+            std::all_of(u->orders.begin(), u->orders.end(), [](const sim::Order& o) {
+                return !o.buildType && !o.reclaimFeat && !o.repairTarget && !o.targetId && !o.load && !o.unload; });
+        if (!u->orders.empty() && !onlyPatrol) continue;
         const sim::UnitType* t = choose(world, u->type);
         static const bool kLog = std::getenv("TA_AILOG") != nullptr;
         if (!t) { if (kLog) std::fprintf(stderr, "ai p%d t%u: %s chose nothing\n", player_, now, u->type->id.c_str()); continue; }
         float sx = 0, sz = 0;
-        if (!findSite(world, u->type, u->x.toFloat(), u->z.toFloat(), t, sx, sz)) {
+        bool sited = findSite(world, u->type, u->x.toFloat(), u->z.toFloat(), t, sx, sz);
+        // Smart: the site search widens each call (R_ grows 160 px); a big building
+        // gets a few widenings now rather than one a think.
+        for (int more = 0; smart_ && !sited && more < 4; ++more)
+            sited = findSite(world, u->type, u->x.toFloat(), u->z.toFloat(), t, sx, sz);
+        if (!sited) {
             if (kLog) std::fprintf(stderr, "ai p%d t%u: no site for %s (R %.0f)\n", player_, now, t->id.c_str(), R_);
+            // Smart: not that type again for a minute (an underwater extractor on dry land).
+            if (smart_) if (const size_t i = typeIndex(t); i < noSiteUntil_.size()) noSiteUntil_[i] = now + 1800;
             continue;
         }
         if (kLog) std::fprintf(stderr, "ai p%d t%u: %s builds %s at %.0f,%.0f\n", player_, now, u->type->id.c_str(), t->id.c_str(), sx, sz);
@@ -572,6 +698,7 @@ void TaRetailBrain::taskAir(const sim::World& world, const CommandSink& sink) {
 }
 
 void TaRetailBrain::tick(const sim::World& world, uint32_t now, const CommandSink& sink) {
+    now_ = now;
     if (!latticeBuilt_) { buildLattice(world); cache(world); tables(world); lastCache_ = now; cacheRan_ = true; }
     // Commander hit: hold new builds for 30 + Random(300) ticks.
     for (const auto& u : world.units())
@@ -589,7 +716,7 @@ void TaRetailBrain::tick(const sim::World& world, uint32_t now, const CommandSin
         case 1: T.next = now + 30; taskEconomy(world, now, sink); break;
         case 2: T.next = now + 300; taskStrike(world, 2, 3, 20000, sink); break;
         case 3: T.next = now + 150; taskFollow(world, 3, 2, sink); break;
-        case 4: T.next = now + 90; taskBuilders(world, now, sink); break;
+        case 4: T.next = now + (smart_ ? 30 : 90); taskBuilders(world, now, sink); break;
         case 5: T.next = now + 30; break;   // E: no-op
         case 6: T.next = now + 300; taskStrike(world, 6, 7, 50000, sink); break;
         case 7: T.next = now + 150; taskFollow(world, 7, 6, sink); break;

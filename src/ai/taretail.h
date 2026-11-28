@@ -31,6 +31,10 @@ public:
     void setAggressive(bool on) { aggressive_ = on; }
     // Retail scenario mode 1 (a campaign mission): never build downloadable units.
     void setCampaign(bool on) { campaign_ = on; }
+    // The engine's own levels (not the RETAIL ones): a sounder economy on top of the
+    // retail brain -- an opening, needs before wants, nothing it cannot pay for,
+    // no retries of types it found no site for, constructors from its factories.
+    void setSmart(bool on) { smart_ = on; }
     int difficulty() const { return difficulty_; }
     bool aggressive() const { return aggressive_; }
     void tick(const ta::sim::World& world, uint32_t now, const CommandSink& sink);
@@ -51,6 +55,7 @@ private:
     void tables(const ta::sim::World& world);
     int score(const ta::sim::World& world, size_t t) const;
     const ta::sim::UnitType* choose(const ta::sim::World& world, const ta::sim::UnitType* builder);
+    const ta::sim::UnitType* chooseSmart(const ta::sim::World& world, const ta::sim::UnitType* builder);
     bool findSite(const ta::sim::World& world, const ta::sim::UnitType* builder, float px, float pz,
                   const ta::sim::UnitType* t, float& sx, float& sz);
     void assignSquads(const ta::sim::World& world);
@@ -91,6 +96,9 @@ private:
     int lastCommanderHp_ = -1;
     bool aggressive_ = true;
     bool campaign_ = false;
+    bool smart_ = false;
+    uint32_t now_ = 0;
+    std::vector<uint32_t> noSiteUntil_;   // smart: a type found no site; not tried again until then
 };
 
 }  // namespace ta::ai
