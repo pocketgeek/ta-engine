@@ -2,6 +2,7 @@
 
 #include "hpi/hpi.h"
 
+#include <cmath>
 #include <algorithm>
 #include <cctype>
 #include <cstring>

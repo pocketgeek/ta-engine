@@ -473,7 +473,7 @@ int main(int argc,char** argv) {
         using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
         {
-            UnitType monarch, soldier, building;monarch.id="zonhunt";
+            UnitType monarch, soldier, building;monarch.id="armcom";monarch.commander=true;   // TA's commander (sidedata.tdf), not Kingdoms' zonhunt
             monarch.maxHp=soldier.maxHp=building.maxHp=100;
             monarch.maxVel=soldier.maxVel=Fixed::fromInt(1);
             building.maxVel={};building.canMove=true; // authored Keep flag does not make it mobile
