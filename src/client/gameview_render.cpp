@@ -2621,35 +2621,20 @@
         overlayBatch_.clear();
         if (!selSet_.empty()) {
             float zms = mapView_.zoom();
-            // Retail's selection indicator (0x4fd0d0) is not a bracket or a sprite --
-            // it is TWO counter-rotating dashed ellipses lying on the unit's ground
-            // plate, coloured by health. Straight from the binary:
-            //   * angle = ((perUnitPhase + tick) << 14) / 30 BAM, so 16384/30 BAM a
-            //     tick = 120 ticks = 4s per revolution. One ring runs +A, the other
-            //     -A, hence counter-rotating.
-            //   * 6 dashes per ring at 0x2aaa BAM = 60.0 degrees apart, each dash an
-            //     0xccc BAM = 18.0 degree chord (retail computes 2 points per dash and
-            //     joins them, so they are chords, not arcs). 12 dashes, 24 points.
-            //   * radii = 1.2 (the double at 0x5f03f0) times the half-extents of the
-            //     ROOT piece's box, centred on that box (client/selectionring.h).
-            //   * every point turns by the unit's three angles (0x535d50 with
-            //     unit+0x7c), so the ring keeps the plate's place and shape as the
-            //     unit turns. [unit+2] is a per-unit phase added to the tick, so
-            //     neighbouring units are out of step with each other.
-            const uint64_t ringTime=ta::devFlag("TA_RENDER_STUDY")
-                ? uint64_t(animClock_*1000) : SDL_GetTicks64();
-            const float spin = float(ringTime % 4000) / 4000.0f;   // 1 rev / 4s
-            // Iterate the (few) selected ids, not the whole world -- frameUnitP(id)
-            // is O(1). (A duplicate id would just redraw the same brackets in place.)
+            // TotalA.exe's selection box (0x4699c3 / 0x469b6d -> 0x46a530 -> 0x467a50):
+            // one solid rectangle, the footprint of the root piece's box (origin
+            // included, no padding) at the box's bottom, its corners turned with the
+            // unit, joined by four lines in G+0xdcb[10] -- guipal 10, palette.pal 233
+            // (83,223,79), the minimap's radar-ring green. Not animated. (The SelBoxes
+            // developer code would hide it; the game starts with it on, 0x430e84.)
             for (int selId : selection_) {
                 if (dotsFrame_) break;   // a selected dot carries its own outline
                 const UnitR* up = frameUnitP(selId);
                 if (!up || !up->alive() || !up->type) continue;
                 const UnitR& u = *up;
                 // unitScreen puts the model's origin on screen (the +12 undoes its
-                // body bias, as the click test does) and already carries terrain lift
-                // and flyer altitude, so the ring tracks a unit up a cliff or in the
-                // air.
+                // body bias, as the click test does) and carries terrain lift and
+                // flyer altitude.
                 SDL_FPoint hp = unitScreen(u);
                 const RingBox& rb = unitRingBox(u.type);
                 float ix, iz, ih; interpPose(u, ix, iz, ih);
@@ -2657,45 +2642,17 @@
                 const Xform body = bodyTransform(u);
                 const float cosF = std::cos(-ih), sinF = std::sin(-ih);
                 const float ox0 = hp.x, oy0 = hp.y + 12.0f * zms;
-                const float rx = 1.2f * rb.halfX, ry = 1.2f * rb.halfZ;
-                const SDL_FPoint mid = selectionRingPoint(rb, 0, 0, 1, 0, body, cosF, sinF);
-                const float cx = ox0 + mid.x * zms, cy = oy0 + mid.y * zms;
-                // Cull against the RING, not its centre: a big unit just off the edge
-                // still has half a ring inside the viewport.
-                const float reach = std::max(rx, ry) * zms;
-                if (cx + reach < 0 || cx - reach > mvw || cy + reach < 0 || cy - reach > winH) continue;
-                // Health ramp, exactly retail's two halves: full green -> yellow at
-                // half -> red at death, blue always 0.
-                int hp16 = std::max(0, int(u.hp)), mx = std::max(1, int(u.type->maxHp));
-                SDL_Color col{255, 255, 0, 255};
-                if (hp16 * 2 >= mx) {
-                    col.r = Uint8(std::min(255, 255 * (mx - hp16) / std::max(1, mx / 2)));
-                    col.g = 255;
-                } else {
-                    col.r = 255;
-                    col.g = Uint8(std::min(255, 255 * hp16 / std::max(1, mx / 2)));
-                }
-                // Per-unit phase so neighbouring units are out of step, as retail's
-                // [unit+2] does.
-                float phase = float(selId * 37 % 360) / 360.0f;
-                float th = std::max(1.0f, 1.2f * zms);
-                const float kTwoPi = 6.28318530718f;
-                const float kDash = kTwoPi * 18.0f / 360.0f;
-                for (int ring = 0; ring < 2; ++ring) {
-                    // One ring runs with the clock, the other against it.
-                    float a0 = (ring == 0 ? (spin + phase) : -(spin + phase)) * kTwoPi;
-                    float dash = (ring == 0 ? -kDash : kDash);
-                    float ox = (ring == 1 ? 1.0f : 0.0f);   // retail nudges ring 2 by 1px
-                    for (int k = 0; k < 6; ++k) {
-                        float t0 = a0 + float(k) * (kTwoPi / 6.0f);
-                        float t1 = t0 + dash;
-                        const SDL_FPoint p0 = selectionRingPoint(rb, rx, ry, std::cos(t0), std::sin(t0), body, cosF, sinF);
-                        const SDL_FPoint p1 = selectionRingPoint(rb, rx, ry, std::cos(t1), std::sin(t1), body, cosF, sinF);
-                        pushSeg(overlayBatch_,
-                                ox0 + ox + p0.x * zms, oy0 + p0.y * zms,
-                                ox0 + ox + p1.x * zms, oy0 + p1.y * zms,
-                                th, col);
-                    }
+                const float reach = std::max(rb.halfX, rb.halfZ) * 1.5f * zms + 4;
+                if (ox0 + reach < 0 || ox0 - reach > mvw || oy0 + reach < 0 || oy0 - reach > winH) continue;
+                const SDL_Color col{83, 223, 79, 255};
+                const float th = std::max(1.0f, zms);
+                const float cs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+                SDL_FPoint p[4];
+                for (int k = 0; k < 4; ++k) p[k] = selectionBoxCorner(rb, cs[k][0], cs[k][1], body, cosF, sinF);
+                for (int k = 0; k < 4; ++k) {
+                    const SDL_FPoint& a = p[k];
+                    const SDL_FPoint& b2 = p[(k + 1) % 4];
+                    pushSeg(overlayBatch_, ox0 + a.x * zms, oy0 + a.y * zms, ox0 + b2.x * zms, oy0 + b2.y * zms, th, col);
                 }
                 // (Order markers are drawn by drawOrderTrails -- retail puts the
                 // order kind's own animated CURSOR at each waypoint, not a ring.)
@@ -2838,7 +2795,8 @@
         // The number is the recall key (squad 10 shows as "0"). Skipped when zoomed
         // far out so it doesn't clutter the field. Drawn in FLAT green: tinting the
         // shaded tan glyph art gave a dark, mottled outline that was hard to read.
-        if (hudFont_.ok() && zm > 0.55f && !posterFrame_)
+        // In the UI face (blockText): hudFont_ is TA:K's bodfontbody, which TA lacks.
+        if (zm > 0.55f && !posterFrame_)
             overlayPass(2, withAir(unitpass::squadMarkerBand(overlayView, footMin, footMax)), [&](const UnitR& u, bool draw) {
                 if (!u.alive() || u.embarked() || !u.type || u.player != hudOwner ||
                     u.squad == 0)
@@ -2851,10 +2809,9 @@
                 char key = (num == 10) ? '0' : char('0' + num);
                 std::string lbl(1, key);
                 if (u.squad < 0) lbl += 'F';   // formation
-                float sc = std::clamp(1.1f * zm, 0.9f, 1.7f);
-                float tw = float(hudFont_.width(lbl, sc));
-                hudFont_.drawSolid(ren_, lbl, cx - tw / 2, cy, sc,
-                                   SDL_Color{70, 240, 90, 255});   // the selection-UI green
+                const float px = std::clamp(1.6f * zm, 1.4f, 2.6f);
+                const float tw = blockWidth(lbl, px);
+                blockText(lbl, cx - tw / 2, cy, px, SDL_Color{70, 240, 90, 255});   // the selection-UI green
                 return true;
             });
 

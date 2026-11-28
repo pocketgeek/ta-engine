@@ -1,6 +1,7 @@
 #pragma once
 
-// Retail's selection ring (icd 0x4fd0d0): the sizes and the points, kept apart from
+// The selection box (TotalA.exe 0x46a530 -> 0x467a50; Kingdoms' ring, icd 0x4fd0d0,
+// is two dashed ellipses on the same box): the sizes and the points, kept apart from
 // the drawing so tools/selection_ring_test.cpp can hold them to the binary.
 
 #include "client/appglobals.h"   // kProjY/kProjZ
@@ -18,6 +19,7 @@
 struct SelectionRingBox {
     float halfX=12.0f,halfZ=12.0f;   // defaults cover a model that never loaded
     float midX=0.0f,midY=0.0f,midZ=0.0f;
+    float minY=0.0f;   // the box's bottom: TA's selection box lies there
 };
 
 inline SelectionRingBox selectionRingBox(const ta::tdo::Object& root) {
@@ -29,7 +31,7 @@ inline SelectionRingBox selectionRingBox(const ta::tdo::Object& root) {
                 const float w=root.vertices[v+size_t(k)]+offset[k];
                 lo[k]=std::min(lo[k],w);hi[k]=std::max(hi[k],w);
             }
-    return {(hi[0]-lo[0])*0.5f,(hi[2]-lo[2])*0.5f,(hi[0]+lo[0])*0.5f,(hi[1]+lo[1])*0.5f,(hi[2]+lo[2])*0.5f};
+    return {(hi[0]-lo[0])*0.5f,(hi[2]-lo[2])*0.5f,(hi[0]+lo[0])*0.5f,(hi[1]+lo[1])*0.5f,(hi[2]+lo[2])*0.5f,lo[1]};
 }
 
 // One ring point at angle (cosA,sinA), relative to the model origin on screen at zoom
@@ -40,6 +42,18 @@ inline SDL_FPoint selectionRingPoint(const SelectionRingBox& box,float radiusX,f
                                      float cosA,float sinA,const Xform& body,float cosF,float sinF) {
     float w[3];
     body.apply(box.midX+radiusX*cosA,box.midY,box.midZ+radiusZ*sinA,w);
+    const float rz=-w[0]*sinF+w[2]*cosF;
+    return {w[0]*cosF+w[2]*sinF,-(w[1]*kProjY+rz*kProjZ)};
+}
+
+// TotalA.exe's selection box (0x467a50): a corner of the root box's footprint at its
+// bottom (minX/maxX, minY, minZ/maxZ; sx, sz = -1 or +1), turned by the unit's three
+// angles (0x4b6cc0, unit+0x64..+0x68) as the body's vertices are, relative to the
+// model origin on screen at zoom 1.
+inline SDL_FPoint selectionBoxCorner(const SelectionRingBox& box,float sx,float sz,
+                                     const Xform& body,float cosF,float sinF) {
+    float w[3];
+    body.apply(box.midX+sx*box.halfX,box.minY,box.midZ+sz*box.halfZ,w);
     const float rz=-w[0]*sinF+w[2]*cosF;
     return {w[0]*cosF+w[2]*sinF,-(w[1]*kProjY+rz*kProjZ)};
 }

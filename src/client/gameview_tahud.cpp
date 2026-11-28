@@ -266,11 +266,17 @@ std::string upperStr(std::string s) {
     // per type with how many (drawSelPortraits; a click keeps that type, Shift+click
     // drops it). The unit under the pointer gets no readout.
     void GameView::renderTaSelection(int winW, int winH) {
+        selPanelTop_ = 0;
         if (!taConsole_ || !taTopBar_ || selection_.empty()) return;
         const float edge = ta::buildrow::kEdge, areaW = float(mapViewW(winW));
-        const float bottom = (buildMenuRect_.w > 0 ? buildMenuRect_.y : float(winH)) - edge;
+        float bottom = (buildMenuRect_.w > 0 ? buildMenuRect_.y : float(winH)) - edge;
+        // With a build menu filling the view there is no room above it: the panel then
+        // hangs from under the resource bar instead (raise lifts `bottom` to fit `h`).
+        const float minTop = (taResourceRect_.h > 0 ? taResourceRect_.y + taResourceRect_.h : 0.0f) + edge;
+        const auto fit = [&](float h) { if (bottom - h < minTop) bottom = minTop + h; };
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         const auto panel = [&](const SDL_FRect& box) {
+            selPanelTop_ = box.y;
             SDL_SetRenderDrawColor(ren_, 14, 12, 10, 215);
             SDL_RenderFillRectF(ren_, &box);
             SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
@@ -283,8 +289,31 @@ std::string upperStr(std::string s) {
                 const float P = 64.0f * uiScale_, gap = 4.0f * uiScale_, room = std::max(0.0f, areaW * 0.8f - P);
                 const sp::Layout L = sp::layout(std::max(2, int(groups.size())), P, P, gap, room, kSelPortraitMinScale);
                 const float stripW = L.width + P;
+                fit(P + 12 + std::max(1.4f, 1.3f * uiScale_) * 7 + 12);
                 const SDL_FRect primary{std::round(areaW / 2 - stripW / 2 + L.width), bottom - P - 6, P, P};
-                panel({primary.x - L.width - 6, primary.y - 6, stripW + 12, P + 12});
+                // Over the strip, as tak-engine's info bar: the squad label when the
+                // selection is exactly one group or formation ("GROUP 3", "FORMATION 3"),
+                // and the selection's total health.
+                const std::string squad = selSquadLabel();
+                const auto tot = selTotals();
+                const float tpx = std::max(1.4f, 1.3f * uiScale_), headH = 7 * tpx + 12;
+                fit(P + 12 + headH);
+                const float left = primary.x - L.width;
+                panel({left - 6, primary.y - 6 - headH, stripW + 12, P + 12 + headH});
+                float hx = left;
+                if (!squad.empty()) {
+                    blockText(squad, hx, primary.y - headH, tpx, {120, 240, 130, 255});
+                    hx += blockWidth(squad, tpx) + 10 * tpx;
+                }
+                if (tot.maxHp > 0) {
+                    const float bw = std::max(20.0f, left + stripW - hx), frac = std::clamp(tot.hpFrac(), 0.0f, 1.0f);
+                    const float by = primary.y - headH + 7 * tpx / 2 - 2;
+                    const SDL_FRect full{hx, by, std::floor(bw * frac), 4}, rest{hx + std::floor(bw * frac), by, bw - std::floor(bw * frac), 4};
+                    SDL_SetRenderDrawColor(ren_, 0, 220, 0, 255);
+                    SDL_RenderFillRectF(ren_, &full);
+                    SDL_SetRenderDrawColor(ren_, 200, 0, 0, 255);
+                    SDL_RenderFillRectF(ren_, &rest);
+                }
                 if (groups.size() == 1) {   // one type: its portrait and how many
                     selPortraitRects_.clear();
                     SDL_Texture* ic = iconFor(groups.front().type);
@@ -305,9 +334,12 @@ std::string upperStr(std::string s) {
         const float fh = float(std::max(8, taConsole_->height()));
         const float pic = 64, textW = 210, logo = std::max(fh, 16.0f);
         const bool own = u->player == hudPlayer();
-        const float textH = logo + 3 + 6 + (fh + 2) * (own ? 3 : 1);
+        bool armed = false;   // a kill count only for what can kill
+        for (const auto& wp : u->type->weapons) armed = armed || wp.damage > 0;
+        const float textH = logo + 3 + 6 + (fh + 2) * ((own ? 2 : 0) + (armed ? 1 : 0));
         const float innerH = std::max(pic, textH), innerW = pic + 8 + textW;
         const float boxW = (innerW + 12) * k, boxH = (innerH + 12) * k;
+        fit(boxH);
         const SDL_FRect box{std::round(areaW / 2 - boxW / 2), bottom - boxH, boxW, boxH};
         panel(box);
         ta::GuiLayout F;
@@ -327,6 +359,11 @@ std::string upperStr(std::string s) {
             SDL_RenderCopyF(ren_, t, nullptr, &d);
         }
         taConsole_->draw(ren_, F, x0 + logo + 4, y + (logo - fh) / 2, u->displayName(), nameC);
+        if (own && u->squad != 0) {   // its group or formation, right of the name
+            const std::string sq = ta::selportraits::squadLabel(int(u->squad));
+            taConsole_->draw(ren_, F, x0 + w - float(taConsole_->width(sq)), y + (logo - fh) / 2, sq,
+                             SDL_Color{120, 240, 130, 255});
+        }
         y += logo + 3;
         if (u->type->maxHp > 0) {
             const float frac = std::clamp(u->hp / float(u->type->maxHp), 0.0f, 1.0f);
@@ -338,7 +375,7 @@ std::string upperStr(std::string s) {
             SDL_RenderFillRectF(ren_, &rest);
         }
         y += 6;
-        {
+        if (armed) {
             std::string kl = std::to_string(u->kills) + (u->kills == 1 ? " kill" : " kills");
             if (u->kills > 4) kl += " - Veteran";
             taConsole_->draw(ren_, F, x0, y, kl, white);

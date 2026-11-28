@@ -792,3 +792,17 @@ See §1.5 and §1.6. In short:
 - Front-end states 0xE / 0xF / 0x10 and the credits / intro paths.
 - Who opens TABMENU (a key or the bottom bar).
 - Whether `ARMMAIN.GUI` / `SAVEGAME.GUI` / `ANYMSN.GUI` are still used.
+
+## Selection box (main view) [S]
+
+A selected unit (`+0x110` bit 4) is drawn by the unit pass (0x4699c3..0x4699eb for
+`(flags&3)==1`, 0x469b6d..0x469b8a otherwise) through 0x46a530, which draws only while
+`G+0x37f2f` bit 2 is set (on at game start, 0x430e84; the developer code "SelBoxes",
+handler 0x416e00, toggles it). The box is 0x4cb650 -> 0x4cb6a0's min/max over the
+ROOT piece's own vertices (recurse 0; min/max start at 0, so the origin is inside; a
+piece of 2 vertices or fewer adds none), with no padding. 0x467a50 takes its footprint
+at the bottom -- (minX,minY,minZ) (maxX,minY,minZ) (maxX,minY,maxZ) (minX,minY,maxZ) --
+turns each corner by the unit's angles (0x4b6cc0, unit+0x64..+0x68), adds the unit's
+position and joins the four with solid lines (0x4be950) in `G+0xdd5` = `G+0xdcb[10]`:
+guipal 10 (85,255,85), nearest palette.pal 233 (83,223,79). No animation. Kingdoms'
+two counter-rotating dashed ellipses at 1.2x the same box are not TA's.

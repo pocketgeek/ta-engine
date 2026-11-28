@@ -1868,8 +1868,9 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         // Above the information bar AND the build row, its TRAINING line and tooltip
         // (chatbox.h hudFloor): the box never covers HUD text, at any scale.
         const float barTop = float(winH - barH());
-        const float bottom = cb::hudFloor(barTop, buildRowBaseH(), buildBarScale_, buildRowTop_,
-                                          hudShown(), margin);
+        float bottom = cb::hudFloor(barTop, buildRowBaseH(), buildBarScale_, buildRowTop_,
+                                    hudShown(), margin);
+        if (hudShown() && selPanelTop_ > 0) bottom = std::min(bottom, selPanelTop_ - margin);   // nor the selection
         // The box may use 45% of the play area's height, so long as it fits above the
         // HUD; higher up it would start to cover the battle rather than annotate it.
         const float maxBoxH = std::max(0.0f, std::min(barTop * 0.45f, bottom - 2 * margin));
