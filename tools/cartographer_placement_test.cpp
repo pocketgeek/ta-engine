@@ -13,7 +13,7 @@
 //   ... terrain [world...]  every section: browser pick, stamp by click, undo, redo
 //   ... features [world...] every feature: pick, place, undo, redo, erase, undo
 //   ... units [world...]    every unit type, on terrain the game accepts
-//   ... slots [world...]    start slots 1-8 (a ninth is refused) and a region
+//   ... slots [world...]    start slots 1-10 (an eleventh is refused) and a region
 //   ... feature-ops [world...]  every feature operation on every feature: select,
 //                         shift-select, drag, box select, properties, group drag,
 //                         copy/paste/duplicate/cut/delete, live symmetry (all kinds),
@@ -32,6 +32,7 @@
 // Every frame checks that the browser lists only items of the current list.
 // Without data every mode exits 77 (skipped).
 
+#include "crt/crt.h"
 #include "cartographer/editor.h"
 #include "cartographer/document.h"
 #include "cartographer/editorstate.h"
@@ -714,8 +715,8 @@ bool unitSession(const std::string& data,const std::string& world,Tally& tally) 
             if(type)++tally.kinds["side-"+type->side];
             else {++tally.kinds["no-definition"];std::cout<<"note: "<<types[item]<<" has an .fbi the unit registry does not define (placed 1x1; Check Map reports it)\n";}
             ++tally.kinds["from-"+definitionSource(e.vfs,plain,"units/"+lowerText(types[item])+".fbi","")];
-            player=int(item%8);
-            for(int p=e.currentPlayer;p!=player;p=(p+1)%8)in.key(SDLK_RIGHTBRACKET);
+            player=int(item%size_t(ta::crt::kMaxOwners));   // TA's ten owners; ] cycles them
+            for(int p=e.currentPlayer;p!=player;p=(p+1)%ta::crt::kMaxOwners)in.key(SDLK_RIGHTBRACKET);
             pick.search(in,int(item),types[item]);phase=PICK;return true;
         }
         case PICK: {
@@ -778,8 +779,8 @@ int unitsWorkflow(const std::string& data,std::vector<std::string> worlds) {
     return 0;
 }
 
-// Start slots 1-8 and a region on a fresh map: each placed by a canvas click,
-// undone, redone, erased and restored; a ninth start is refused with a message;
+// Start slots 1-10 and a region on a fresh map: each placed by a canvas click,
+// undone, redone, erased and restored; an eleventh start is refused with a message;
 // then save, reopen and compare (.ota starts, .crt region).
 bool slotSession(const std::string& data,const std::string& world,Tally& tally) {
     const auto root=tempRoot("slots");isolateProfile(root);
@@ -799,11 +800,11 @@ bool slotSession(const std::string& data,const std::string& world,Tally& tally) 
         for(;;)switch(phase) {
         case START: check(starts.empty(),label+": a blank map has no starts");tool(in,Editor::STARTS);mode(in,Editor::MODE_PLACE);phase=PLACE;return true;
         case PLACE: {
-            if(++number>8) {   // all slots used: the ninth click is refused
+            if(++number>10) {   // all ten of TA's slots used: the eleventh click is refused
                 const auto p=focus(e,200*16+8.f,200*16+8.f);mode(in,Editor::MODE_PLACE);in.click(p.x,p.y);phase=NINTH;return true;
             }
             ++tally.listed;
-            expected.push_back({number,20+(number-1)%4*60,30+(number-1)/4*150});
+            expected.push_back({number,20+(number-1)%5*50,30+(number-1)/5*150});   // ten: two rows of five
             const auto p=startPoint(expected.back());mode(in,Editor::MODE_PLACE);in.click(p.x,p.y);phase=PLACED;return true;
         }
         case PLACED: if(!matches()) {fail("click did not place StartPos at the clicked cell");return false;}
@@ -819,7 +820,7 @@ bool slotSession(const std::string& data,const std::string& world,Tally& tally) 
         case RESTORED: if(!matches()) {fail("undo of the erase");return false;}
             ++tally.restored;phase=PLACE;continue;
         case NINTH: {
-            if(!check(matches() && e.modal==Editor::M_MESSAGE,label+": a ninth start is refused with a message (have "+std::to_string(starts.size())+")"))return false;
+            if(!check(matches() && e.modal==Editor::M_MESSAGE,label+": an eleventh start is refused with a message (have "+std::to_string(starts.size())+")"))return false;
             ++tally.refused;in.key(SDLK_RETURN);
             // A region: the REGIONS canvas, Place mode, drag a box.
             regions(in);mode(in,Editor::MODE_PLACE);
@@ -864,11 +865,11 @@ int slotsWorkflow(const std::string& data,std::vector<std::string> worlds) {
     if(worlds.empty())worlds=kWorlds;
     for(const auto& world:worlds) {
         Tally tally;
-        if(slotSession(data,world,tally))check(tally.placed==8 && tally.reloaded==8 && tally.refused==1,world+": eight start slots and a region");
+        if(slotSession(data,world,tally))check(tally.placed==10 && tally.reloaded==10 && tally.refused==1,world+": ten start slots and a region");
         tally.print(world+" start slots");
     }
     if(!failures.empty())return 1;
-    std::cout<<"PASS: start slots 1-8 and regions place by click, undo, redo, erase and survive save/reopen; a ninth start is refused\n";
+    std::cout<<"PASS: start slots 1-10 and regions place by click, undo, redo, erase and survive save/reopen; an eleventh start is refused\n";
     return 0;
 }
 

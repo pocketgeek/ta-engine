@@ -24,7 +24,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <cstdio>
 #include <string>
 #include <tuple>
@@ -476,11 +475,13 @@ int main() {
         w.tick(1.0f/30.0f);
         check(w.unit(id)->x==x && w.unit(id)->z==z,
               "deferred builder placement cannot add a movement step into the site");
-        check(w.unit(id)->buildSiteId && w.unit(id)->heading==Bam(1000),
-              "builder begins its pivot on the placement dispatch");
+        // TotalA.exe MobileBuild (0x403a20): no stage turns the body; StartBuilding
+        // gets the heading to the site (0x403dca) and the script aims its nanolathe.
+        check(w.unit(id)->buildSiteId && w.unit(id)->heading==Bam(0),
+              "builder places the site without turning its body");
         w.tick(1.0f/30.0f);
-        check(w.unit(id)->heading==Bam(2000) && w.unit(id)->x==x && w.unit(id)->z==z,
-              "working builder turns exactly once and skips the ordinary mover");
+        check(w.unit(id)->heading==Bam(0) && w.unit(id)->x==x && w.unit(id)->z==z,
+              "working builder holds its heading and skips the ordinary mover");
     }
     {
         World w;
@@ -743,8 +744,9 @@ int main() {
             const bool ended = u.orders.empty() && (dx * dx + dz * dz <= accepted * accepted || failedEnd[i]);
             arrived += ended;
             if (!ended) {
-                std::printf("    unfinished id=%d pos=(%.3f,%.3f) speed=%.3f mode=%u orders=%zu\n",
-                            u.id, u.x.toFloat(), u.z.toFloat(), u.speed.toFloat(),
+                std::printf("    unfinished id=%d index=%zu goal=(%d,%d) pos=(%.3f,%.3f) radius=%d failed=%d speed=%.3f mode=%u orders=%zu\n",
+                            u.id, i, 800 + 48 * int(i % 4), 320 + 48 * int(i / 4), u.x.toFloat(), u.z.toFloat(),
+                            radii[i], int(failedEnd[i]), u.speed.toFloat(),
                             unsigned(u.groundMovementMode), u.orders.size());
                 for (const auto& o : u.orders)
                     std::printf("      point=(%.3f,%.3f) segment=(%.3f,%.3f) goal=%d\n",

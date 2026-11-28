@@ -1012,7 +1012,11 @@ int main(int argc, char** argv) {
         std::printf("unexplored landing over a ground unit: Retail %d overlap ticks (one flyer), Legion %d, "
                     "Legion walking %d (landed %d of 1, %d/%d of 4)\n",groundRetail.first,groundLegion.first,
                     walkLegion.first,groundRetail.second,groundLegion.second,walkLegion.second);
-        check(groundRetail.first>0,"retail lands on a ground unit at an unexplored site");
+        // TA's smallest sight mask (anims/vismasks.gaf: 160 px for any sightdistance up
+        // to 160, docs/retail-fog.md) explores the ground under the lander itself, so
+        // 509400 tests the site and the lone flyer lands clear of the ground unit.
+        check(groundRetail.first==0 && groundRetail.second==1,
+              "retail's lander explores its own site and lands clear of a ground unit");
         check(groundLegion.first==0 && groundLegion.second==4,
               "Legion flyers land clear of a standing ground unit even at an unexplored site");
         // A unit that walks in under a descender (stage 3) is not refused:

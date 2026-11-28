@@ -216,6 +216,10 @@ int main(int argc,char** argv) {
             const float cx=2000,cz=2000;
             const int ordered=w.spawn(&ground,cx+300,cz,0.f,1),other=w.spawn(&ground,cx+300,cz+250,0.f,1);
             const int me=w.spawn(&jugg,cx,cz,1.5707963f,0);
+            // A passive spotter of ours by the second unit: the laser's sweep picks
+            // from what its player sees (TA's fog, list +5), as any automatic slot.
+            auto eye=*registry.find("armpw");eye.id="eye";eye.weapons.clear();eye.weapon={};eye.shootMe=false;eye.maxVel={};
+            if (const int e=w.spawn(&eye,cx+300,cz+330,0.f,0); e>0) {w.unit(e)->fireState=0;w.unit(e)->moveState=0;}
             w.attack(me,ordered,false);
             int ticks=0,mixed=0,run=0,sweptOther=0,bombsAtOrdered=0,bombsAtOther=0,lasersAtOther=0;
             for (int tick=0;tick<1800;++tick) {

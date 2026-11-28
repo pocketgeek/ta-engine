@@ -168,6 +168,10 @@ int main(int argc,char** argv) {
     const std::vector<uint8_t> wide(64*64,100);
     auto field=[&](sim::World& w) {
         w.setTerrain(wide,64,64,20);
+        // Every feature known from the start (the lobby's mapped option): the area's
+        // pick is among what its player has explored, and TA's sight masks reach
+        // less than the whole field from the start (the fogged cases below test that).
+        w.setRoomVision(true,false);
         w.setMapPlacementFeatures(std::vector<uint16_t>(64*64,0xffff),{});
         w.addFeature(1,200,200,1,1,1,false);w.addFeature(2,600,200,1,1,1,false);
         w.addFeature(3,200,700,1,1,1,false);w.addFeature(4,900,700,1,1,1,false);
@@ -306,9 +310,13 @@ int main(int argc,char** argv) {
             check(w.unit(b)->reclaimId==20*64+25,"a fogged but explored map feature is picked");
         }
         {
+            // Picked only from what is explored: not while the builder is still 300 px
+            // off. (Walking in, it explores the feature itself -- TA's smallest sight
+            // mask reaches 160 px whatever the sightdistance -- and then takes it.)
             sim::World w;const int b=fogged(w,false);
-            w.reclaimArea(b,384,304,432,352,false);untilPick(w,b,0,900);
-            check(w.unit(b)->orders.empty() && w.unit(b)->reclaimId==0,"a never-explored one is not");
+            w.reclaimArea(b,384,304,432,352,false);
+            for (int t=0;t<15;++t) w.tick(1.0f/30);
+            check(w.unit(b)->reclaimId==0,"a never-explored one is not picked from afar");
         }
         {
             sim::World w;const int b=fogged(w,false);w.setRoomVision(true,false);
