@@ -9,6 +9,7 @@
 // floats over the top of the view. Each piece has its own scale in Options, and the
 // build row and the resource bar their own left / center / right placement.
 
+#include "client/buildrow.h"
 #include "client/gameview.h"
 #include "client/artscale.h"
 #include "client/guiart.h"
@@ -184,7 +185,6 @@ std::string upperStr(std::string s) {
         const float pad = hudColPad();
         const float colX = float(winW - hudColW());
         float y = pad + miniBoxSize() + pad;
-        if (hudShown()) y = renderTaUnitInfo(winW, y);
         {   // the STATS PANEL drops rows rather than push the order buttons off the window
             const float floor = float(winH) - pad - (hudShown() ? taOrdersHeight() + pad : 0.0f);
             const float bottom = drawStatsPanel(colX + pad, float(winW) - pad, y + pad / 2, floor);
@@ -194,6 +194,7 @@ std::string upperStr(std::string s) {
             renderTaOrders(winW, y);
             renderTaResourceBar(winW, winH);
             drawPanel(winW, winH);
+            renderTaSelection(winW, winH);
         }
     }
 
@@ -259,82 +260,103 @@ std::string upperStr(std::string s) {
     // its metal make / use "+%.1f" / "-%.1f" and energy "+%.0f" / "-%.0f"
     // (0x46b16d..0x46b2b3); then the unit under the pointer, its name and health
     // (0x46b492..0x46b55f). At UI SCALE x STATS SCALE.
-    float GameView::renderTaUnitInfo(int winW, float top) {
-        if (!taConsole_ || !taTopBar_) return top;
-        const UnitR* u = selection_.empty() ? nullptr : frameUnitP(selection_.front());
-        if (u && (!u->alive() || !u->type)) u = nullptr;
-        // The unit under the pointer, in the view or on the minimap (0x48cd80).
-        const UnitR* h = nullptr;
-        if (const UnitR* hv = pointerUnit(); hv && hv->alive() && hv->type && hv != u) h = hv;
-        if (!u && !h) return top;
-        const float k = statsScaleEff(), pad = hudColPad();
+    // The selection, at the bottom centre of the view (over the build menu when one
+    // is up). One unit: its picture, emblem and name, health, kill count, and for one
+    // of the viewed player's its metal / energy made and used. Several: one portrait
+    // per type with how many (drawSelPortraits; a click keeps that type, Shift+click
+    // drops it). The unit under the pointer gets no readout.
+    void GameView::renderTaSelection(int winW, int winH) {
+        if (!taConsole_ || !taTopBar_ || selection_.empty()) return;
+        const float edge = ta::buildrow::kEdge, areaW = float(mapViewW(winW));
+        const float bottom = (buildMenuRect_.w > 0 ? buildMenuRect_.y : float(winH)) - edge;
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        const auto panel = [&](const SDL_FRect& box) {
+            SDL_SetRenderDrawColor(ren_, 14, 12, 10, 215);
+            SDL_RenderFillRectF(ren_, &box);
+            SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
+            SDL_RenderDrawRectF(ren_, &box);
+        };
+        if (selection_.size() > 1) {
+            namespace sp = ta::selportraits;
+            const auto groups = selTypeGroups();
+            if (groups.size() > 1 || (groups.size() == 1 && groups.front().ids.size() > 1)) {
+                const float P = 64.0f * uiScale_, gap = 4.0f * uiScale_, room = std::max(0.0f, areaW * 0.8f - P);
+                const sp::Layout L = sp::layout(std::max(2, int(groups.size())), P, P, gap, room, kSelPortraitMinScale);
+                const float stripW = L.width + P;
+                const SDL_FRect primary{std::round(areaW / 2 - stripW / 2 + L.width), bottom - P - 6, P, P};
+                panel({primary.x - L.width - 6, primary.y - 6, stripW + 12, P + 12});
+                if (groups.size() == 1) {   // one type: its portrait and how many
+                    selPortraitRects_.clear();
+                    SDL_Texture* ic = iconFor(groups.front().type);
+                    if (ic) SDL_RenderCopyF(ren_, ic, nullptr, &primary);
+                    const std::string num = std::to_string(groups.front().ids.size());
+                    const float bpx = 2.2f * uiScale_, nw = blockWidth(num, bpx);
+                    const SDL_FRect nb{primary.x + P - nw - 6, primary.y + P - 7 * bpx - 6, nw + 4, 7 * bpx + 4};
+                    SDL_SetRenderDrawColor(ren_, 0, 0, 0, 205);
+                    SDL_RenderFillRectF(ren_, &nb);
+                    blockText(num, nb.x + 2, nb.y + 2, bpx, {255, 235, 140, 255});
+                } else drawSelPortraits(primary, room, gap, 2.2f * uiScale_);
+                return;
+            }
+        }
+        const UnitR* u = frameUnitP(selection_.front());
+        if (!u || !u->alive() || !u->type) return;
+        const float k = statsScaleEff();
+        const float fh = float(std::max(8, taConsole_->height()));
+        const float pic = 64, textW = 210, logo = std::max(fh, 16.0f);
+        const bool own = u->player == hudPlayer();
+        const float textH = logo + 3 + 6 + (fh + 2) * (own ? 3 : 1);
+        const float innerH = std::max(pic, textH), innerW = pic + 8 + textW;
+        const float boxW = (innerW + 12) * k, boxH = (innerH + 12) * k;
+        const SDL_FRect box{std::round(areaW / 2 - boxW / 2), bottom - boxH, boxW, boxH};
+        panel(box);
         ta::GuiLayout F;
         F.scale = k;
-        F.ox = float(winW - hudColW()) + pad;
-        F.oy = top;
-        const float w = (float(hudColW()) - 2 * pad) / k;   // the block's width in its own units
-        const float fh = float(std::max(8, taConsole_->height()));
+        F.ox = box.x + 6 * k;
+        F.oy = box.y + 6 * k;
+        if (SDL_Texture* ic = iconFor(u->type->id)) {
+            const SDL_FRect d = F.rect(0, (innerH - pic) / 2, pic, pic);
+            SDL_RenderCopyF(ren_, ic, nullptr, &d);
+        }
+        const float x0 = pic + 8, w = textW;
         const SDL_Color nameC = taTopBar_->paletteColor(0x53);
         const SDL_Color white{255, 255, 255, 255}, made{0, 255, 0, 255}, spent{255, 64, 64, 255}, dim{170, 175, 185, 255};
-        auto health = [&](float y, const UnitR& v) {
-            if (v.type->maxHp <= 0) return;
-            const float frac = std::clamp(v.hp / float(v.type->maxHp), 0.0f, 1.0f);
+        float y = (innerH - textH) / 2;
+        if (SDL_Texture* t = taLogo(playerColorSlot(u->player))) {
+            const SDL_FRect d = F.rect(x0, y, logo, logo);
+            SDL_RenderCopyF(ren_, t, nullptr, &d);
+        }
+        taConsole_->draw(ren_, F, x0 + logo + 4, y + (logo - fh) / 2, u->displayName(), nameC);
+        y += logo + 3;
+        if (u->type->maxHp > 0) {
+            const float frac = std::clamp(u->hp / float(u->type->maxHp), 0.0f, 1.0f);
             const float filled = std::floor(w * frac);
-            const SDL_FRect full = F.rect(0, y, filled, 3), rest = F.rect(filled, y, w - filled, 3);
+            const SDL_FRect full = F.rect(x0, y, filled, 3), rest = F.rect(x0 + filled, y, w - filled, 3);
             SDL_SetRenderDrawColor(ren_, 0, 220, 0, 255);
             SDL_RenderFillRectF(ren_, &full);
             SDL_SetRenderDrawColor(ren_, 200, 0, 0, 255);
             SDL_RenderFillRectF(ren_, &rest);
-        };
-        auto heading = [&](float y, const UnitR& v) {   // emblem + name; returns the next row
-            const float logo = std::max(fh, 16.0f);
-            if (SDL_Texture* t = taLogo(playerColorSlot(v.player))) {
-                const SDL_FRect d = F.rect(0, y, logo, logo);
-                SDL_RenderCopyF(ren_, t, nullptr, &d);
-            }
-            taConsole_->draw(ren_, F, logo + 4, y + (logo - fh) / 2, v.displayName(), nameC);
-            return y + logo + 3;
-        };
-        float y = 0;
-        if (u) {
-            y = heading(y, *u);
-            health(y, *u);
-            y += 6;
-            if (u->kills > 0) {
-                std::string kl = std::to_string(u->kills) + (u->kills == 1 ? " kill" : " kills");
-                if (u->kills > 4) kl += " - Veteran";
-                taConsole_->draw(ren_, F, 0, y, kl, white);
-                y += fh + 2;
-            }
-            if (u->player == hudPlayer()) {
-                char b[32];
-                auto row = [&](const char* label, const char* mfmt, float mk, const char* ufmt, float us) {
-                    taConsole_->draw(ren_, F, 0, y, label, dim);
-                    std::snprintf(b, sizeof b, mfmt, double(std::max(0.0f, mk)));
-                    taConsole_->draw(ren_, F, w * 0.45f, y, b, made);
-                    std::snprintf(b, sizeof b, ufmt, double(std::max(0.0f, us)));
-                    taConsole_->draw(ren_, F, w * 0.73f, y, b, spent);
-                    y += fh + 2;
-                };
-                row("Metal", "+%.1f", u->make[1], "-%.1f", u->use[1]);
-                row("Energy", "+%.0f", u->make[0], "-%.0f", u->use[0]);
-            }
         }
-        if (h) {
-            if (u) y += 4;
-            if (!mainViewVisible(*h)) {
-                // 0x46af3d -> 0x46b6f3: a unit the viewed player does not see -- a radar
-                // or sonar dot on the minimap -- is only "S: " (a sonar contact) or "R: "
-                // and "Unidentified object", its name and health withheld.
-                taConsole_->draw(ren_, F, 0, y, std::string(h->sonarSeen ? "S: " : "R: ") + "Unidentified object", nameC);
-                y += fh + 2;
-            } else {
-                y = heading(y, *h);
-                health(y, *h);
-                y += 6;
-            }
+        y += 6;
+        {
+            std::string kl = std::to_string(u->kills) + (u->kills == 1 ? " kill" : " kills");
+            if (u->kills > 4) kl += " - Veteran";
+            taConsole_->draw(ren_, F, x0, y, kl, white);
+            y += fh + 2;
         }
-        return F.py(y) + pad / 2;
+        if (own) {
+            char b[32];
+            auto row = [&](const char* label, const char* mfmt, float mk, const char* ufmt, float us) {
+                taConsole_->draw(ren_, F, x0, y, label, dim);
+                std::snprintf(b, sizeof b, mfmt, double(std::max(0.0f, mk)));
+                taConsole_->draw(ren_, F, x0 + w * 0.45f, y, b, made);
+                std::snprintf(b, sizeof b, ufmt, double(std::max(0.0f, us)));
+                taConsole_->draw(ren_, F, x0 + w * 0.73f, y, b, spent);
+                y += fh + 2;
+            };
+            row("Metal", "+%.1f", u->make[1], "-%.1f", u->use[1]);
+            row("Energy", "+%.0f", u->make[0], "-%.0f", u->use[0]);
+        }
     }
 
     // The metal / energy bar (TotalA.exe 0x4690ab..0x46960b): the side's PANELTOP art

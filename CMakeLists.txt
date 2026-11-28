@@ -1774,6 +1774,13 @@ if(TA_TEST_DATA)
     # The Release client intentionally strips the local game/dev command path.
     # Keep this headless client integration fixture in Debug configurations.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_test(NAME selection_bar COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/selection-bar-test.png")
+        set_tests_properties(selection_bar PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_SELBAR_TEST=1"
+            PASS_REGULAR_EXPRESSION "PASS: selection bar\n"
+            TIMEOUT 60)
         add_test(NAME squads COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/squads-test.png")

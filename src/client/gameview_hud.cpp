@@ -960,7 +960,7 @@ namespace {
             const float tpx = std::max(1.0f, px), tw = blockWidth(tip, tpx), dh = ta::uiTextDescent(tpx);
             const float tx = std::clamp(tipAt.x + tipAt.w / 2 - tw / 2, 6.0f,
                                         std::max(6.0f, float(winW_) - tw - 6));
-            const float ty = float(winH_ - barH()) - 7 * tpx - dh - 10;
+            const float ty = tipAt.y - 7 * tpx - dh - 14;   // above the strip
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
             SDL_FRect tb{tx - 5, ty - 4, tw + 10, 7 * tpx + dh + 8};
             SDL_RenderFillRectF(ren_, &tb);

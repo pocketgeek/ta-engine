@@ -285,7 +285,7 @@ public:
     TaOrdersCrop taOrdersCrop(ta::TaGuiView& page) const;
     float taOrdersHeight();                              // the order buttons' height on screen, 0 for none
     float renderTaOrders(int winW, float top);           // returns the bottom
-    float renderTaUnitInfo(int winW, float top);         // returns the bottom
+    void renderTaSelection(int winW, int winH);          // bottom centre of the view
     void renderTaResourceBar(int winW, int winH);
     void renderTaFrame(int winW, int winH);   // the right-hand column's backing
     void loadTaFrame();

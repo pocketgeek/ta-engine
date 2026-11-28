@@ -3226,6 +3226,42 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: factory build menu\n");
             return;
         }
+        if (ta::devFlag("TA_SELBAR_TEST")) {
+            // The selection at the bottom centre: a multi-selection's portraits, one per
+            // type; a click keeps that type, Shift+click drops it.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("selection bar: "+what);
+                std::fprintf(stderr,"PASS: selection bar: %s\n",what.c_str());
+            };
+            noFog_=true;edgeScrollOn_=false;
+            constexpr int W=1280,H=960;
+            const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
+            const int me=localPlayer_;
+            std::vector<int> pws,rocks;
+            for (int i=0;i<3;++i) pws.push_back(spawn("armpw",cx+float(i)*40,cz,0,me));
+            for (int i=0;i<2;++i) rocks.push_back(spawn("armrock",cx+float(i)*40,cz+60,0,me));
+            const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
+            auto all=[&]{std::vector<int> v=pws;v.insert(v.end(),rocks.begin(),rocks.end());return v;};
+            auto sorted=[](std::vector<int> v){std::sort(v.begin(),v.end());return v;};
+            const auto rectOf=[&](const char* type)->SDL_FRect {
+                for (const auto& [r,t]:selPortraitRects_) if (t==type) return r;
+                return SDL_FRect{};
+            };
+            selection_=all();frame();frame();
+            check(selPortraitRects_.size()==2,"two portraits for two types");
+            const SDL_FRect rr=rectOf("armrock");
+            check(rr.w>0 && rr.y>float(H)/2 && rr.x+rr.w/2>float(mapViewW(W))*0.2f && rr.x+rr.w/2<float(mapViewW(W))*0.8f,
+                  "the strip sits at the bottom centre of the view");
+            check(selPortraitClick(rr.x+rr.w/2,rr.y+rr.h/2,true) && sorted(selection_)==sorted(rocks),"a click keeps that type");
+            selection_=all();frame();
+            const SDL_FRect r2=rectOf("armrock");
+            SDL_SetModState(KMOD_LSHIFT);
+            const bool took=selPortraitClick(r2.x+r2.w/2,r2.y+r2.h/2,true);
+            SDL_SetModState(KMOD_NONE);
+            check(took && sorted(selection_)==sorted(pws),"Shift+click drops that type");
+            std::fprintf(stderr,"PASS: selection bar\n");
+            return;
+        }
         if (ta::devFlag("TA_SQUAD_TEST")) {
             // Control groups (Ctrl+N) and formations (Alt+N) through real key events,
             // then recall with the plain digit.
