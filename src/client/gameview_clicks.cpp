@@ -401,6 +401,47 @@ namespace {
         return true;
     }
 
+    int GameView::upgradableExtractorAt(const ta::sim::UnitType* type, int builderId, float x, float z) const {
+        if (!type || type->extractsMetal <= 0) return 0;
+        const UnitR* b = frameUnitP(builderId);
+        if (!b || !b->type || !b->type->canReclaim || !b->type->canMove || b->type->isStructure()) return 0;
+        const float hx = type->footX * 8.0f, hz = type->footZ * 8.0f;
+        for (const UnitR* u : front().live) {
+            if (!u->alive() || !u->type || u->player != b->player || u->underConstruction) continue;
+            if (u->type->extractsMetal <= 0 || u->type->extractsMetal >= type->extractsMetal) continue;
+            const float ux = u->type->footX * 8.0f, uz = u->type->footZ * 8.0f;
+            if (std::abs(u->x - x) < hx + ux && std::abs(u->z - z) < hz + uz) return u->id;
+        }
+        return 0;
+    }
+
+    // Reclaim the weaker extractor, then build the better one in its place, as one
+    // step of the queue: `queue` places the pair (front: the build goes in first, so
+    // the reclaim ends up ahead of it).
+    bool GameView::issueUpgradeBuild(int builderId, const ta::sim::UnitType* type, float x, float z, uint8_t queue) {
+        const int old = upgradableExtractorAt(type, builderId, x, z);
+        if (!old) return false;
+        ta::net::Command r;
+        r.kind = ta::net::Cmd::ReclaimUnit;
+        r.unitId = builderId;
+        r.targetId = old;
+        ta::net::Command c;
+        c.kind = ta::net::Cmd::Build;
+        c.unitId = builderId;
+        c.x = x; c.z = z;
+        std::snprintf(c.type, sizeof c.type, "%s", type->id.c_str());
+        if ((queue & 3) == ta::net::kQueueFront) {
+            c.queue = ta::net::kQueueFront; issue(c);
+            r.queue = ta::net::kQueueFront; issue(r);
+        } else {
+            r.queue = queue; issue(r);
+            c.queue = ta::net::kQueueAppend; issue(c);
+        }
+        notice_ = "UPGRADING EXTRACTOR";
+        noticeTimer_ = 2;
+        return true;
+    }
+
     bool GameView::placeMetalAt(float wx, float wz, uint8_t queue) {
         if (!placing_ || selection_.empty() || !snapToMetal(placing_, wx, wz)) return false;
         const int builder = selectedBuilder() ? selectedBuilder()->id : selection_.front();
@@ -414,6 +455,10 @@ namespace {
             issue(c);
             return true;
         }
+        // A weaker extractor of ours first: the deposit (a feature) under it would
+        // otherwise read as clearable, and the build behind the clearing would find
+        // the extractor still there.
+        if (issueUpgradeBuild(builder, placing_, wx, wz, queue)) return true;
         std::vector<int> feats;
         if (clearableAt(placing_, wx, wz, feats) && !feats.empty()) {
             issueClearThenBuild(builder, placing_, wx, wz, feats, queue);
@@ -431,7 +476,8 @@ namespace {
         const UnitR* b = frameUnitP(builder);
         const float fx = b ? b->x : (x0 + x1) / 2, fz = b ? b->z : (z0 + z1) / 2;
         for (const auto& s : ta::client::metalspots::inBox(metalSpots(placing_), x0, z0, x1, z1, fx, fz))
-            if (canPlacePreview(placing_, s.x, s.z) || placePreviewClearable(placing_, s.x, s.z)) out.push_back(s);
+            if (canPlacePreview(placing_, s.x, s.z) || placePreviewClearable(placing_, s.x, s.z) ||
+                upgradableExtractorAt(placing_, builder, s.x, s.z)) out.push_back(s);
         return out;
     }
 
@@ -455,6 +501,7 @@ namespace {
                 issue(c);
                 return true;
             }
+            if (issueUpgradeBuild(builder, placing_, s.x, s.z, q)) return true;   // before the clearing (placeMetalAt)
             if (clearableAt(placing_, s.x, s.z, feats) && !feats.empty()) {
                 issueClearThenBuild(builder, placing_, s.x, s.z, feats, q);
                 return true;

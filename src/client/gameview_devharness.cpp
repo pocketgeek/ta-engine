@@ -3226,6 +3226,51 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: factory build menu\n");
             return;
         }
+        if (ta::devFlag("TA_MEX_UPGRADE_TEST")) {
+            // An advanced extractor placed on a deposit holding a basic one of yours:
+            // the builder reclaims the old one, then builds the new one there.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("mex upgrade: "+what);
+                std::fprintf(stderr,"PASS: mex upgrade: %s\n",what.c_str());
+            };
+            noFog_=true;edgeScrollOn_=false;
+            const int me=localPlayer_;
+            writableWorld().setStartResources(me,1e6f,1e6f);
+            const auto* moho=registry_.find("armmoho");
+            check(moho && moho->extractsMetal>0,"armmoho extracts metal");
+            const auto& spots=metalSpots(moho);
+            check(!spots.empty(),"the map has deposits");
+            const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
+            // A deposit a Moho can stand on (some take a basic extractor only).
+            const ta::client::metalspots::Spot* spot=nullptr;
+            float best=1e30f;
+            for (const auto& sp:spots)
+                if (canPlaceLocked(moho,sp.x,sp.z)) {
+                    const float d=(sp.x-cx)*(sp.x-cx)+(sp.z-cz)*(sp.z-cz);
+                    if (d<best) {best=d;spot=&sp;}
+                }
+            check(spot!=nullptr,"a deposit takes a Moho");
+            const int old=spawn("armmex",spot->x,spot->z,0,me);
+            const int ack=spawn("armack",spot->x+120,spot->z,0,me);
+            check(old>=0 && ack>=0,"fixture spawned");
+            for (int i=0;i<3;++i) {writableWorld().tick(1.f/30);captureFrame();}
+            selection_={ack};placing_=moho;
+            check(placeMetalAt(spot->x,spot->z,ta::net::kQueueReplace),"the placement is taken");
+            const auto& ords=world_.unit(ack)->orders;
+            check(ords.size()>=2 && ords.front().reclaimUnit==old,"the builder reclaims the old extractor first");
+            bool built=false,gone=false;
+            for (int t=0;t<30*240 && !built;++t) {
+                writableWorld().tick(1.f/30);
+                if (t%30==0) captureFrame();
+                gone=gone||!world_.unit(old)||!world_.unit(old)->alive();
+                for (const auto& u:world_.units())
+                    if (u.alive() && u.type==moho && u.player==me) built=true;
+            }
+            check(gone,"the old extractor is gone");
+            check(built,"an armmoho stands (or is rising) on the deposit");
+            std::fprintf(stderr,"PASS: mex upgrade\n");
+            return;
+        }
         if (ta::devFlag("TA_SELBAR_TEST")) {
             // The selection at the bottom centre: a multi-selection's portraits, one per
             // type; a click keeps that type, Shift+click drops it.

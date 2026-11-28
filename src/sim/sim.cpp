@@ -11644,7 +11644,26 @@ void World::queueBuild(int builderId, const UnitType* type, float x, float z, bo
     if (!b || !b->alive() || !b->type || !b->type->isBuilder || b->type->isStructure() ||
         b->underConstruction || !type) return;
     std::vector<int> clearing;
-    if (!canPlaceOrder(type,x,z,b->player,builderId) &&
+    // Ours: an extractor upgrade. The site may hold a weaker extractor of the
+    // builder's own that this builder has a reclaim queued for (the client sends
+    // RECLAIMUNIT then the build); the site is judged without it, as it will be
+    // gone when the build's turn comes.
+    const auto upgradeClears=[&] {
+        if (!queue || type->extractsMetal<=0) return false;
+        const int sx=footprintOrigin(Fixed::fromFloat(x),type->footX);
+        const int sz=footprintOrigin(Fixed::fromFloat(z),type->footZ);
+        for (const Order& o:b->orders) {
+            const Unit* old=o.reclaimUnit>0 ? unit(o.reclaimUnit) : nullptr;
+            if (!old || !old->alive() || !old->type || old->player!=b->player) continue;
+            if (old->type->extractsMetal<=0 || old->type->extractsMetal>=type->extractsMetal) continue;
+            // The site takes the old one's place (startBuild tests the site again,
+            // with the old one gone, when this order's turn comes).
+            const int ox=footprintOrigin(old->x,old->type->footX),oz=footprintOrigin(old->z,old->type->footZ);
+            if (sx<ox+old->type->footX && ox<sx+type->footX && sz<oz+old->type->footZ && oz<sz+type->footZ) return true;
+        }
+        return false;
+    };
+    if (!canPlaceOrder(type,x,z,b->player,builderId) && !upgradeClears() &&
         (!b->type->canReclaim || !b->type->canMove ||
          !clearableForPlacement(type,x,z,clearing,b->player))) return;
     // Stable nearest-first order, computed authoritatively on every peer.

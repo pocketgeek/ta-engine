@@ -3808,7 +3808,12 @@ private:
     // An extractor's build point: the nearest deposit's within reach (true), or false
     // when there is none. Anything that does not snap is left where it is (true).
     bool snapToMetal(const ta::sim::UnitType* t, float& wx, float& wz);
-    bool placeMetalAt(float wx, float wz, uint8_t queue);   // one extractor on the deposit nearest (wx, wz)
+    bool placeMetalAt(float wx, float wz, uint8_t queue);
+    // Ours: a weaker extractor of the local player's standing where an extractor of
+    // `type` would go (its id), for the builder to reclaim before it builds the
+    // better one; 0 when none, or the builder cannot reclaim.
+    int upgradableExtractorAt(const ta::sim::UnitType* type, int builderId, float x, float z) const;
+    bool issueUpgradeBuild(int builderId, const ta::sim::UnitType* type, float x, float z, uint8_t queue);   // one extractor on the deposit nearest (wx, wz)
     bool placeMetalBox(float x0, float z0, float x1, float z1, uint8_t queue);   // one on every free deposit in the box
     std::vector<ta::client::metalspots::Spot> metalBoxSpots(float x0, float z0, float x1, float z1);
     bool shiftBuildPlaced_ = false; // disarm placement on Shift release after queued work

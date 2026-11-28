@@ -1774,6 +1774,13 @@ if(TA_TEST_DATA)
     # The Release client intentionally strips the local game/dev command path.
     # Keep this headless client integration fixture in Debug configurations.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_test(NAME mex_upgrade COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/mex-upgrade-test.png")
+        set_tests_properties(mex_upgrade PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_MEX_UPGRADE_TEST=1"
+            PASS_REGULAR_EXPRESSION "PASS: mex upgrade\n"
+            TIMEOUT 300)
         add_test(NAME selection_bar COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/selection-bar-test.png")
