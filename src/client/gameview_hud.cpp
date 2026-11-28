@@ -727,8 +727,9 @@ namespace {
             if (u->type->onOffable && !u->active) continue;
             const SDL_FPoint p = toMini(u->x, u->z - float((u->worldPosition[1] >> 16) >> 1));
             const float ypx = float(u->worldPosition[1] >> 16);
-            if (u->type->radar) ring(p, float(u->type->radar) + 2 * std::max(0.0f, ypx), kGreen);
-            if (u->type->sonar) ring(p, float(u->type->sonar), kGreen);
+            // The ranges detection uses: DOUBLE SIGHT/RADAR doubles them (World::radarDistance).
+            if (u->type->radar) ring(p, float(worldTables().radarDistance(*u->type)) + 2 * std::max(0.0f, ypx), kGreen);
+            if (u->type->sonar) ring(p, float(worldTables().sonarDistance(*u->type)), kGreen);
             if (u->type->radarJam) ring(p, float(u->type->radarJam), kRed);
             if (u->type->sonarJam) ring(p, float(u->type->sonarJam), kRed);
             if (u->type->antiWeapons)
