@@ -200,9 +200,40 @@ int targetingCase(const char* data) {
     }
     return failures?1:0;
 }
+// Ours: a factory told to guard a unit (World::guard on a producer) keeps the guard as
+// its rally, and each unit it then makes comes out guarding that unit.
+int factoryGuardCase(const char* data) {
+    auto vfs=ta::hpi::mountRetailRoot(data);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
+    const auto* lab=registry.find("armlab");const auto* com=registry.find("armcom");const auto* pw=registry.find("armpw");
+    if(!lab || !com || !pw){std::printf("FAIL missing armlab, armcom or armpw\n");return 1;}
+    int failures=0;
+    const auto check=[&](bool ok,const char* what){failures+=!ok;std::printf("%s %s\n",ok?"PASS":"FAIL",what);};
+    check(lab->canGuard && (lab->orderFlags & ta::sim::UnitType::kOrderGuard),"a factory takes DEFEND");
+    ta::sim::World w;
+    w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,20);
+    w.buildNavClasses(registry);
+    w.setStartResources(0,1e6f,1e6f);
+    const int factory=w.spawn(lab,2048,2048,0,0);
+    const int ward=w.spawn(com,2048+400,2048+300,0,0);
+    w.guard(factory,ward,false);
+    check(w.unit(factory)->rally.size()==1 && w.unit(factory)->rally[0].guard,"the guard is the factory's rally");
+    w.train(factory,pw,1);
+    int out=0;
+    for(int tick=0;tick<3000 && !out;++tick) {
+        w.tick(1.f/30.f);
+        for(const auto& u:w.units()) if(u.type==pw && u.alive() && !u.underConstruction)out=u.id;
+    }
+    check(out!=0,"the factory builds a peewee");
+    const auto* o=out ? w.unit(out) : nullptr;
+    check(o && !o->orders.empty() && o->orders.front().guard && o->orders.front().targetId==ward,
+          "the peewee comes out guarding the commander");
+    return failures?1:0;
+}
 int main(int argc,char** argv) {
     if(argc==3 && std::strcmp(argv[2],"reach")==0)return reachCases(argv[1]);
     if(argc==3 && std::strcmp(argv[2],"targeting")==0)return targetingCase(argv[1]);
+    if(argc==3 && std::strcmp(argv[2],"factoryguard")==0)return factoryGuardCase(argv[1]);
     if(argc==3 && std::strcmp(argv[2],"site")==0)return siteCase(argv[1]);
     if(argc!=2)return 2;
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);

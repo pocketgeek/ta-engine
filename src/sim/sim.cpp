@@ -533,6 +533,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 // (canreclamate); 0x42ca5a..0x42ca99: bit 13, CLOAK's, is cloakcost > 0.
                 if (f & UnitType::kOrderReclaim) f |= UnitType::kOrderRepair;
                 if (int32_t(info->numberOr("cloakcost", 0)) > 0) f |= UnitType::kOrderCloak;
+                // Ours: a production building guards through its output (World::guard
+                // sets a guard rally), so it takes DEFEND, G and a right-click on your
+                // own unit as Guard. Retail factories carry no canguard.
+                if (t.isBuilder && t.maxVel <= Fixed()) { f |= UnitType::kOrderGuard; t.canGuard = true; }
                 t.orderFlags = f;
             }
             {
@@ -6417,7 +6421,17 @@ void World::guard(int unitId, int targetId, bool queue) {
     Unit* u = unit(unitId);
     Unit* t = unit(targetId);
     if (!u || !t || !u->alive() || !t->alive() || u->id == t->id) return;
-    if (!u->type || !u->type->canMove || u->player != t->player) return;
+    if (!u->type || u->player != t->player) return;
+    // A production building (or a mobile builder repeating) cannot guard; its
+    // output does: the guard joins the rally plan each unit it makes takes on
+    // (finishProduction), as its move / patrol / attack orders do.
+    if ((u->type->isStructure() && u->type->producesUnits()) || u->repeatType) {
+        Order o{t->x, t->z, targetId};
+        o.guard = true;
+        setRally(*u, o, queue);
+        return;
+    }
+    if (!u->type->canMove) return;
     if (!queue) {
         u->orders.clear();
         cancelPath(*u);
@@ -19311,6 +19325,11 @@ void World::finishProduction(int producerId,Unit& finished) {
             if (ro.targetId) {
                 const Unit* tg = unit(ro.targetId);
                 if (!tg || !tg->alive()) continue;
+                // A guard rally: the output guards the unit (a structure's holds it).
+                if (ro.guard) {
+                    if (!t->isStructure() && tg->id != id) guard(id, ro.targetId, true);
+                    continue;
+                }
                 // An output that cannot attack it (no weapon, or none for the
                 // layer it is on) drops the step here, not on its first tick,
                 // when the leg would go with nothing left to start in its place.

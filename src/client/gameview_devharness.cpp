@@ -3226,6 +3226,41 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"PASS: factory build menu\n");
             return;
         }
+        if (ta::devFlag("TA_SQUAD_TEST")) {
+            // Control groups (Ctrl+N) and formations (Alt+N) through real key events,
+            // then recall with the plain digit.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("squads: "+what);
+                std::fprintf(stderr,"PASS: squads: %s\n",what.c_str());
+            };
+            noFog_=true;edgeScrollOn_=false;
+            constexpr int W=1280,H=960;
+            const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
+            const int me=localPlayer_;
+            const int a=spawn("armpw",cx,cz,0,me),b=spawn("armpw",cx+40,cz,0,me);
+            const int c=spawn("armpw",cx+80,cz,0,me),k=spawn("armck",cx+120,cz,0,me);
+            check(a>=0 && b>=0 && c>=0 && k>=0,"fixture spawned");
+            const auto frame=[&] {captureFrame();beginFrame();cosmeticStep(0);prepare(W,H);draw(W,H);endFrame();};
+            const auto key=[&](SDL_Keycode sym,uint16_t mod) {
+                SDL_SetModState(SDL_Keymod(mod));
+                SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=sym;e.key.keysym.mod=mod;input(e,W,H);
+                e.type=SDL_KEYUP;input(e,W,H);
+                SDL_SetModState(KMOD_NONE);
+                for (int i=0;i<2;++i) {writableWorld().tick(1.f/30);frame();}
+            };
+            auto sorted=[](std::vector<int> v){std::sort(v.begin(),v.end());return v;};
+            frame();
+            selection_={a,b,k};key(SDLK_1,KMOD_LCTRL);
+            check(world_.unit(a)->squad==1 && world_.unit(k)->squad==1,"Ctrl+1 puts the selection in group 1");
+            selection_.clear();key(SDLK_1,KMOD_NONE);
+            check(sorted(selection_)==sorted(std::vector<int>{a,b,k}),"1 recalls group 1, its builder too");
+            selection_={c};key(SDLK_2,KMOD_LALT);
+            check(world_.unit(c)->squad==-2,"Alt+2 makes formation 2");
+            selection_.clear();key(SDLK_2,KMOD_NONE);
+            check(selection_==std::vector<int>{c},"2 recalls formation 2");
+            std::fprintf(stderr,"PASS: squads\n");
+            return;
+        }
         if (ta::devFlag("TA_IDLE_BUILDERS_TEST")) {
             // IDLE BUILDERS: one portrait per type of idle builder or factory of the local
             // player, a click selects the next one and goes to it, Shift selects them all,

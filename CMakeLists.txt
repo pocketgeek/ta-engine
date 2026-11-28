@@ -1667,6 +1667,7 @@ if(TA_TEST_DATA)
     add_test(NAME structure_combat_reach COMMAND structure_combat_test "${TA_TEST_DATA}" reach)
     add_test(NAME structure_combat_site COMMAND structure_combat_test "${TA_TEST_DATA}" site)
     add_test(NAME structure_combat_targeting COMMAND structure_combat_test "${TA_TEST_DATA}" targeting)
+    add_test(NAME structure_combat_factoryguard COMMAND structure_combat_test "${TA_TEST_DATA}" factoryguard)
     add_test(NAME hold_flyer COMMAND hold_flyer_test "${TA_TEST_DATA}")
     add_test(NAME naval_combat COMMAND naval_combat_test "${TA_TEST_DATA}")
     add_test(NAME legion_naval_combat COMMAND naval_combat_test "${TA_TEST_DATA}" --legion)
@@ -1773,6 +1774,13 @@ if(TA_TEST_DATA)
     # The Release client intentionally strips the local game/dev command path.
     # Keep this headless client integration fixture in Debug configurations.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_test(NAME squads COMMAND taclient game "Ashap Plateau"
+            --data "${TA_TEST_DATA}" --testbuild --time 0
+            --shot "${CMAKE_CURRENT_BINARY_DIR}/squads-test.png")
+        set_tests_properties(squads PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_SQUAD_TEST=1"
+            PASS_REGULAR_EXPRESSION "PASS: squads\n"
+            TIMEOUT 60)
         add_test(NAME idle_builders COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/idle-builders-test.png")

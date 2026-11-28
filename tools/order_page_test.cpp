@@ -120,7 +120,8 @@ int main(int argc, char** argv) {
         for (const char* id : {"armpw", "armfig"})
             expect(id, {unitOf(type(id))}, {"MOVE", "STOP", "ATTACK", "DEFEND", "PATROL", "FIREORD", "MOVEORD"}, {"LOAD"});
         // The kbot lab: canmove canpatrol canstop and both standing orders, no canguard.
-        expect("armlab", {unitOf(type("armlab"))}, {"MOVE", "STOP", "PATROL", "FIREORD", "MOVEORD"}, {"LOAD"});
+        // DEFEND is ours on a factory (retail greys it): its guard is a rally for its output.
+        expect("armlab", {unitOf(type("armlab"))}, {"MOVE", "STOP", "DEFEND", "PATROL", "FIREORD", "MOVEORD"}, {"LOAD"});
         // Onoffable buildings: ONOFF alone.
         for (const char* id : {"armsolar", "armmakr"}) expect(id, {unitOf(type(id))}, {"ONOFF"}, {"LOAD"});
         // A transport: LOAD and UNLOAD, BLAST hidden; no standing orders (both 0).

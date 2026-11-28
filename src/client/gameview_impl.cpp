@@ -4555,8 +4555,8 @@
             keepOneWatchOwner();
         } else for (const UnitR* _up : front().live) {
             const UnitR& u = *_up;
-            if (u.alive() && u.player == localPlayer_ && u.type &&
-                std::abs(int(u.squad)) == num && !u.type->isBuilder)
+            // Every member, builders and factories too (TA:K left its builders out).
+            if (u.alive() && u.player == localPlayer_ && u.type && std::abs(int(u.squad)) == num)
                 selection_.push_back(u.id);
         }
         lastRecalledSquad_ = selection_.empty() ? 0 : num;
