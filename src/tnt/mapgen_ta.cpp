@@ -384,12 +384,27 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
             }
         if (any) m.seaLevel = uint8_t(seaFloor + (border - seaFloor) * W.seaShare / 100);
     }
-    const double density = 0.35 + 0.5 * (p.reliefDensity / 255.0);
-    for (int by = 0; by < m.blocksY; ++by)
-        for (int bx = 0; bx < m.blocksX; ++bx) {
+    // HILLS: how often a block starts a section, 0 (none: the flat tile mix alone)
+    // to 90%, drawn from the family's sections with real relief (more than 10
+    // between their lowest and highest point) -- its flat ones only add more of
+    // what the open ground already is.
+    std::vector<size_t> hilly;
+    for (size_t si : pool) {
+        const auto [lo, hi] = std::minmax_element(all[si].heights.begin(), all[si].heights.end());
+        if (lo != all[si].heights.end() && int(*hi) - int(*lo) > 10) hilly.push_back(si);
+    }
+    const std::vector<size_t>& hills = hilly.empty() ? pool : hilly;
+    // Sections go down at random spots until they cover the slider's share of the
+    // land (0 to 85%), so the middle of the slider is half as hilly as its top
+    // (a per-block chance saturates: one section covers many blocks).
+    size_t landBlocks = 0, covered = 0;
+    for (uint8_t v : used) landBlocks += !v;
+    const size_t want = size_t(double(landBlocks) * 0.85 * (p.reliefDensity / 255.0));
+    for (int attempt = 0; covered < want && attempt < m.blocksX * m.blocksY * 4; ++attempt) {
+        {
+            const int bx = int(roll(rng, uint64_t(m.blocksX))), by = int(roll(rng, uint64_t(m.blocksY)));
             if (used[size_t(by) * m.blocksX + bx]) continue;
-            if (roll01(rng) > density) continue;
-            const size_t si = pool[size_t(roll(rng, pool.size()))];
+            const size_t si = hills[size_t(roll(rng, hills.size()))];
             const Sct& s = all[si];
             if (bx + s.w > m.blocksX || by + s.h > m.blocksY) continue;
             bool free = true;
@@ -405,7 +420,9 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
             for (int z = 0; z < s.h * 2; ++z)
                 for (int x = 0; x < s.w * 2; ++x)
                     m.heights[size_t(by * 2 + z) * m.width + bx * 2 + x] = s.heights[size_t(z) * s.w * 2 + x];
+            covered += size_t(s.w) * size_t(s.h);
         }
+    }
     m.tileCount = int(m.tileGfx.size() / 1024);
     m.tileKeys.assign(m.tileIndex.begin(), m.tileIndex.end());
     m.tileCols.assign(m.tileIndex.size(), 0);
