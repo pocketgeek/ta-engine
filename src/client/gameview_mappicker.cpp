@@ -229,13 +229,12 @@ int seatedHumans(const ta::net::RoomView& room) {
         char hl[32]; std::snprintf(hl, sizeof hl, "HEIGHT:  %d", genParams_.heightCells / 32);
         lbCycle(px + kHalfW + kGap, py, kHalfW, kRowH, hl, true, [sizeCycle](int direction) { sizeCycle(true, direction); });
         py += kRowH + kGap * 2;   // a wider break between the pickers and the sliders
-        // HILLS: how much of the map is laid with the world's terrain sections. Its level
-        // reads at the right end of its label line, where the bar ends; RE-ROLL SEED shares
-        // the row.
-        {
-            const float bx = px, by = py + 16, bw = kHalfW, bh = 14;
-            const uint8_t val = genParams_.reliefDensity;
-            genSliderRect_[0] = SDL_FRect{bx, by, bw, bh};
+        // The sliders, two to a row: HILLS (how much of the map is laid with the world's
+        // terrain sections) and METAL (deposits), TREES and ROCKS; RE-ROLL SEED under them. Each level reads at the right end of its label
+        // line, where the bar ends.
+        const auto slider = [&](int index, const char* label, uint8_t val, float sx, float sy) {
+            const float bx = sx, by = sy + 16, bw = kHalfW, bh = 14;
+            genSliderRect_[index] = SDL_FRect{bx, by, bw, bh};
             SDL_FRect bar{bx, by, bw, bh};
             SDL_SetRenderDrawColor(ren_, 30, 34, 46, 255); SDL_RenderFillRectF(ren_, &bar);
             const float t = val / 255.0f;
@@ -246,12 +245,17 @@ int seatedHumans(const ta::net::RoomView& room) {
             SDL_SetRenderDrawColor(ren_, 70, 76, 96, 255); SDL_RenderDrawRectF(ren_, &bar);
             const std::string level = val == 0 ? "NONE" : val < 86 ? "LOW" : val < 171 ? "MED" : "HIGH";
             const float levelW = blockWidth(level, 1.3f);
-            blockText("HILLS", bx, py + 2, ta::uiTextFitPx("HILLS", 1.3f, bw - levelW - 8), {180, 185, 195, 255});
-            blockText(level, bx + bw - levelW, py + 2, 1.3f, {160, 165, 180, 255});
-        }
-        py += 8;
-        px += kHalfW + kGap;
-        lbBtn(px, py, kHalfW, kRowH, "RE-ROLL SEED", true, [this] {
+            blockText(label, bx, sy + 2, ta::uiTextFitPx(label, 1.3f, bw - levelW - 8), {180, 185, 195, 255});
+            blockText(level, bx + bw - levelW, sy + 2, 1.3f, {160, 165, 180, 255});
+        };
+        constexpr float kSliderRow = 38;
+        slider(0, "HILLS", genParams_.reliefDensity, px, py);
+        slider(1, "METAL", genParams_.manaDensity, px + kHalfW + kGap, py);
+        py += kSliderRow;
+        slider(2, "TREES", genParams_.treeDensity, px, py);
+        slider(3, "ROCKS", genParams_.rockDensity, px + kHalfW + kGap, py);
+        py += kSliderRow;
+        lbBtn(px, py + 4, kHalfW, kRowH, "RE-ROLL SEED", true, [this] {
             genParams_.seed = genParams_.seed * 6364136223846793005ULL + 1442695040888963407ULL;
             applyGenParams();
         });

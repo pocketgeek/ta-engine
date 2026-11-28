@@ -3109,7 +3109,7 @@ private:
     // the status line): one value both sides.
     static constexpr float kCreateMargin = 16.0f;
     int genSlider_ = -1;
-    SDL_FRect genSliderRect_[1]{};   // HILLS
+    SDL_FRect genSliderRect_[4]{};   // HILLS, METAL, TREES, ROCKS
     void applyGenParams();             // re-encode genParams_ -> the panel's RANDOM candidate (picker_.gen)
     void setGenSlider(int i, float mx);  // drag a density slider from a panel-x
     SDL_FRect mapListRect_{};          // the list box (rows area) -- wheel target

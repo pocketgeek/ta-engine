@@ -38,10 +38,10 @@ struct Params {
     uint8_t  mapType = Green;
     uint16_t widthCells = 256, heightCells = 256;   // multiples of 32, clamped
     uint8_t  players = 2;            // 2..kMaxPlayers
-    uint8_t  treeDensity = 128;      // (unused by the TA generator)
-    uint8_t  rockDensity = 96;       // (unused)
-    uint8_t  manaDensity = 128;      // (unused)
-    uint8_t  waterDensity = 96;      // (unused)
+    uint8_t  treeDensity = 128;      // TREES: woods of the world's trees; 0 = none
+    uint8_t  rockDensity = 96;       // ROCKS: the world's reclaimable rocks; 0 = none
+    uint8_t  manaDensity = 128;      // METAL: deposits by each start (2..6) and clusters over the map
+    uint8_t  waterDensity = 96;      // (unused: the sections join at one level and never dip below it)
     uint8_t  layout = 0;             // (unused)
     uint8_t  reliefDensity = 128;    // HILLS: how much of the map is laid with sections; 0 = fewest
     uint8_t  manaScatter = 0;        // (unused)

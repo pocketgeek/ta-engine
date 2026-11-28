@@ -919,7 +919,10 @@ std::string defaultGameName(const std::string& player) {
         if (r.w <= 0) return;
         float t = std::clamp((mx - r.x) / r.w, 0.0f, 1.0f);
         uint8_t v = uint8_t(t * 255.0f + 0.5f);
-        if (i == 0) genParams_.reliefDensity = v;   // HILLS, the one slider
+        if (i == 0) genParams_.reliefDensity = v;        // HILLS
+        else if (i == 1) genParams_.manaDensity = v;     // METAL
+        else if (i == 2) genParams_.treeDensity = v;     // TREES
+        else if (i == 3) genParams_.rockDensity = v;     // ROCKS
     }
 
     void GameView::scanModPacks() {

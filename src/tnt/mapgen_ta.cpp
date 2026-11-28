@@ -26,6 +26,15 @@ namespace ta::mapgen {
 
 namespace {
 
+// Draws that are the same on every standard library: the std distributions are
+// implementation-defined, and every peer rolls the map from its recipe.
+uint64_t roll(std::mt19937_64& rng, uint64_t n) { return n ? rng() % n : 0; }
+int rollIn(std::mt19937_64& rng, int lo, int hi) { return hi < lo ? lo : lo + int(roll(rng, uint64_t(hi - lo + 1))); }
+double roll01(std::mt19937_64& rng) { return double(rng() >> 11) * 0x1p-53; }
+
+// A world feature the generator may place (features/<world>/*.tdf).
+struct Feat { std::string name; int fx = 1, fz = 1; };
+
 struct Sct {
     int w = 0, h = 0;                 // blocks
     std::vector<uint8_t> tiles;       // count * 1024
@@ -152,8 +161,8 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
     for (int by = 0; by < m.blocksY; ++by)
         for (int bx = 0; bx < m.blocksX; ++bx) {
             if (used[size_t(by) * m.blocksX + bx]) continue;
-            if (std::uniform_real_distribution<double>(0, 1)(rng) > density) continue;
-            const size_t si = pool[std::uniform_int_distribution<size_t>(0, pool.size() - 1)(rng)];
+            if (roll01(rng) > density) continue;
+            const size_t si = pool[size_t(roll(rng, pool.size()))];
             const Sct& s = all[si];
             if (bx + s.w > m.blocksX || by + s.h > m.blocksY) continue;
             bool free = true;
@@ -183,8 +192,13 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         const int cz = int(m.height / 2 + std::sin(a) * m.height * 0.36);
         r.starts.push_back({std::clamp(cx, 4, m.width - 5), std::clamp(cz, 4, m.height - 5)});
     }
-    // Ore: the world's metal features, a few near every start and a scatter.
-    std::vector<std::string> ores;
+    // The world's features: TREES (category trees), ROCKS (category rocks, reclaimable
+    // metal) and metal deposits (metal > 0 and indestructible -- the patches a
+    // TotalA.exe map writes its metal from, 0x4220ab). Shipped maps lay their
+    // deposits with the world's metal patches and only now and then its aqua ore,
+    // never its glyphs; Metal's own patches are none (its metal is surface metal),
+    // so it gets its reclaimable metal features.
+    std::vector<Feat> trees, rocks, patches, aqua, salvage;
     for (const auto& path : vfs.list(std::string("features/") + W.features)) {
         if (ta::vpath::extension(path) != ".tdf") continue;
         try {
@@ -192,43 +206,88 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
             auto root = tdf::parseText(std::string(b.begin(), b.end()), path);
             for (const auto& name : root.childOrder) {
                 const tdf::Node* f = root.child(name);
-                if (f && f->numberOr("metal", 0) > 0 && f->numberOr("indestructible", 0) != 0) ores.push_back(name);
+                if (!f) continue;
+                std::string cat = f->valueOr("category", ""), low = name;
+                for (char& c : cat) c = char(std::tolower(static_cast<unsigned char>(c)));
+                for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+                const Feat ft{name, std::clamp(int(f->numberOr("footprintx", 1)), 1, 8),
+                              std::clamp(int(f->numberOr("footprintz", 1)), 1, 8)};
+                const bool metal = f->numberOr("metal", 0) > 0, hard = f->numberOr("indestructible", 0) != 0;
+                if (metal && hard && low.find("glyph") == std::string::npos)
+                    (low.find("aquaore") != std::string::npos ? aqua : patches).push_back(ft);
+                else if (metal && !hard && f->numberOr("reclaimable", 0) != 0 && cat.find("rock") != std::string::npos)
+                    rocks.push_back(ft);
+                else if (!metal && !hard && cat.find("tree") != std::string::npos)
+                    trees.push_back(ft);
+                else if (metal && f->numberOr("reclaimable", 0) != 0) salvage.push_back(ft);
             }
         } catch (...) {}
     }
-    // Metal has no ore deposits (its metal is the map's surfacemetal): scatter the
-    // world's reclaimable metal features (towers, pipes) instead.
-    if (ores.empty())
-        for (const auto& path : vfs.list(std::string("features/") + W.features)) {
-            if (ta::vpath::extension(path) != ".tdf") continue;
-            try {
-                auto b = vfs.read(path);
-                auto root = tdf::parseText(std::string(b.begin(), b.end()), path);
-                for (const auto& name : root.childOrder) {
-                    const tdf::Node* f = root.child(name);
-                    if (f && f->numberOr("metal", 0) > 0) ores.push_back(name);
-                }
-            } catch (...) {}
-        }
-    if (!ores.empty()) {
-        auto place = [&](int cx, int cz) {
-            if (cx < 2 || cz < 2 || cx + 4 >= m.width || cz + 4 >= m.height) return;
-            const std::string& name = ores[std::uniform_int_distribution<size_t>(0, ores.size() - 1)(rng)];
-            auto it = std::find(m.featureNames.begin(), m.featureNames.end(), name);
-            uint16_t idx;
-            if (it == m.featureNames.end()) { idx = uint16_t(m.featureNames.size()); m.featureNames.push_back(name); }
-            else idx = uint16_t(it - m.featureNames.begin());
-            m.features[size_t(cz) * m.width + cx] = idx;
-        };
-        for (const auto& [sx, sz] : r.starts)
-            for (int k = 0; k < 4; ++k) {
-                const double a = 2.0 * 3.14159265358979323846 * k / 4 + 0.6;
-                place(sx + int(std::cos(a) * 10), sz + int(std::sin(a) * 10));
+    if (patches.empty() && aqua.empty()) patches = salvage;   // Metal
+
+    // One feature to a cell, footprints apart, never in the sea; trees and rocks also
+    // keep clear of the starts.
+    std::vector<uint8_t> taken(size_t(m.width) * m.height, 0);
+    for (const auto& [sx, sz] : r.starts)
+        for (int z = sz - 6; z <= sz + 6; ++z)
+            for (int x = sx - 6; x <= sx + 6; ++x)
+                if (x >= 0 && z >= 0 && x < m.width && z < m.height) taken[size_t(z) * m.width + x] = 2;   // start ground
+    auto place = [&](const Feat& f, int cx, int cz, bool atStart) {
+        if (cx < 2 || cz < 2 || cx + f.fx + 2 >= m.width || cz + f.fz + 2 >= m.height) return false;
+        for (int z = cz; z < cz + f.fz; ++z)
+            for (int x = cx; x < cx + f.fx; ++x) {
+                const uint8_t t = taken[size_t(z) * m.width + x];
+                if (t == 1 || (t == 2 && !atStart)) return false;
+                if (m.heights[size_t(z) * m.width + x] <= m.seaLevel) return false;
             }
-        const int scatter = 2 + (m.width * m.height) / 4096;
-        for (int k = 0; k < scatter; ++k)
-            place(std::uniform_int_distribution<int>(4, m.width - 8)(rng),
-                  std::uniform_int_distribution<int>(4, m.height - 8)(rng));
+        for (int z = cz; z < cz + f.fz; ++z)
+            for (int x = cx; x < cx + f.fx; ++x) taken[size_t(z) * m.width + x] = 1;
+        auto it = std::find(m.featureNames.begin(), m.featureNames.end(), f.name);
+        uint16_t idx;
+        if (it == m.featureNames.end()) { idx = uint16_t(m.featureNames.size()); m.featureNames.push_back(f.name); }
+        else idx = uint16_t(it - m.featureNames.begin());
+        m.features[size_t(cz) * m.width + cx] = idx;
+        return true;
+    };
+    const double area = double(m.width) * m.height;
+    // METAL: a cluster by every start, and clusters over the map, each a few patches
+    // side by side (aqua ore one time in eight where the world has both).
+    if (!patches.empty() || !aqua.empty()) {
+        auto deposit = [&]() -> const Feat& {
+            if (!aqua.empty() && (patches.empty() || roll(rng, 8) == 0)) return aqua[size_t(roll(rng, aqua.size()))];
+            return patches[size_t(roll(rng, patches.size()))];
+        };
+        auto cluster = [&](int cx, int cz, int count, bool atStart) {
+            for (int k = 0, tries = 0; k < count && tries < count * 8; ++tries) {
+                const Feat& f = deposit();
+                if (place(f, cx + rollIn(rng, -4, 4), cz + rollIn(rng, -4, 4), atStart)) ++k;
+            }
+        };
+        const int perStart = 2 + int(p.manaDensity) * 4 / 255;   // 2..6
+        for (const auto& [sx, sz] : r.starts) {
+            const double a = roll01(rng) * 6.283185307179586;
+            cluster(sx + int(std::cos(a) * 9), sz + int(std::sin(a) * 9), perStart, true);
+        }
+        const int sites = int(area / 8192.0 * (0.5 + 2.5 * p.manaDensity / 255.0));
+        for (int k = 0; k < sites; ++k)
+            cluster(rollIn(rng, 6, m.width - 10), rollIn(rng, 6, m.height - 10), rollIn(rng, 1, 3), false);
+    }
+    // TREES: woods, each a clump round a centre.
+    if (!trees.empty() && p.treeDensity) {
+        const int woods = int(area / 2048.0 * p.treeDensity / 255.0);
+        for (int k = 0; k < woods; ++k) {
+            const int cx = rollIn(rng, 4, m.width - 6), cz = rollIn(rng, 4, m.height - 6);
+            const int n = rollIn(rng, 6, 24), radius = rollIn(rng, 3, 8);
+            for (int j = 0; j < n; ++j)
+                place(trees[size_t(roll(rng, trees.size()))], cx + rollIn(rng, -radius, radius),
+                      cz + rollIn(rng, -radius, radius), false);
+        }
+    }
+    // ROCKS: scattered one by one.
+    if (!rocks.empty() && p.rockDensity) {
+        const int count = int(area / 1024.0 * p.rockDensity / 255.0);
+        for (int k = 0; k < count; ++k)
+            place(rocks[size_t(roll(rng, rocks.size()))], rollIn(rng, 4, m.width - 8), rollIn(rng, 4, m.height - 8), false);
     }
     return r;
 }
