@@ -54,7 +54,8 @@ bool parseSct(const std::vector<uint8_t>& d, Sct& s, const std::vector<uint8_t>&
     s.tileMap = std::move(m.tileIndex);
     s.heights = std::move(m.heights);
     // Border height: the edge's most common height when every edge cell is within
-    // 3 of it (sections are authored to join at one level, give or take a step).
+    // 6 of it (sections are authored to join at one level, give or take a step;
+    // Lava's land pieces join between 43 and 49).
     const int cw = int(w) * 2, ch = int(h) * 2;
     std::vector<int> edge;
     for (int x = 0; x < cw; ++x) { edge.push_back(s.heights[size_t(x)]); edge.push_back(s.heights[size_t((ch - 1) * cw + x)]); }
@@ -63,7 +64,7 @@ bool parseSct(const std::vector<uint8_t>& d, Sct& s, const std::vector<uint8_t>&
     for (int e : edge) ++counts[e];
     const int b = int(std::max_element(counts, counts + 256) - counts);
     bool ok = true;
-    for (int e : edge) if (std::abs(e - b) > 3) { ok = false; break; }
+    for (int e : edge) if (std::abs(e - b) > 6) { ok = false; break; }
     s.border = ok ? b : -1;
     {   // The ground texture the section joins with: its corner tile's mean
         // luminance through the game palette, in steps of 24.
@@ -80,14 +81,17 @@ bool parseSct(const std::vector<uint8_t>& d, Sct& s, const std::vector<uint8_t>&
 }
 
 // The engine's six world slots onto TA's section and feature folders.
-struct TaWorld { const char* sections; const char* features; const char* planet; int sea; };
+// seaShare: with WATER, the sea level's share of the way from the sea floor to the
+// land, as the world's shipped maps hold it (Green Planet 75 under land at 84,
+// Red Planet about 50 under 85, Archipelago 84 under 86, Lava 23 under 43).
+struct TaWorld { const char* sections; const char* features; const char* planet; int sea; int seaShare; };
 const TaWorld kTaWorlds[] = {
-    {"greenworld", "green", "Green Planet", 0},
-    {"mars", "mars", "Red Planet", 0},
-    {"archipelago", "archi", "Archipelago", 0},
-    {"metal", "metal", "Metal", 0},
-    {"moon", "moon", "Moon", 0},
-    {"lava", "lava", "Lava", 0},
+    {"greenworld", "green", "Green Planet", 0, 89},
+    {"mars", "mars", "Red Planet", 0, 62},
+    {"archipelago", "archi", "Archipelago", 0, 97},
+    {"metal", "metal", "Metal", 0, 85},
+    {"moon", "moon", "Moon", 0, 85},
+    {"lava", "lava", "Lava", 0, 53},
 };
 
 }  // namespace
@@ -121,15 +125,25 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         Sct s;
         try { if (parseSct(vfs.read(path), s, pal)) all.push_back(std::move(s)); } catch (...) {}
     }
-    // The largest family sharing one border height.
-    std::map<int, std::vector<size_t>> fam;   // key: border height * 32 + ground texture
-    for (size_t i = 0; i < all.size(); ++i)
-        if (all[i].border >= 0) fam[all[i].border * 32 + all[i].ground].push_back(i);
-    // Prefer land (a border above 16): the largest such family, else the largest.
+    // The largest family joining at one height (within 3: Lava's land pieces join at
+    // 43 to 45) over one ground texture. Prefer land (a border above 16): the largest
+    // such family, else the largest.
     int border = 0;
     std::vector<size_t> pool;
-    for (auto& [k, v] : fam) if (k / 32 >= 16 && v.size() > pool.size()) { pool = v; border = k / 32; }
-    if (pool.empty()) for (auto& [k, v] : fam) if (v.size() > pool.size()) { pool = v; border = k / 32; }
+    std::map<int, int> heightsSeen;   // border * 32 + ground -> sections
+    for (const auto& c : all) if (c.border >= 0) ++heightsSeen[c.border * 32 + c.ground];
+    for (bool landOnly : {true, false}) {
+        for (const auto& [key, unused] : heightsSeen) {
+            (void)unused;
+            const int b = key / 32, g = key % 32;
+            if (landOnly && b < 16) continue;
+            std::vector<size_t> family;
+            for (size_t i = 0; i < all.size(); ++i)
+                if (all[i].border >= 0 && all[i].ground == g && std::abs(all[i].border - b) <= 3) family.push_back(i);
+            if (family.size() > pool.size()) { pool = std::move(family); border = b; }
+        }
+        if (!pool.empty()) break;
+    }
     if (pool.empty()) throw std::runtime_error(std::string("no tileable TA sections for ") + W.sections);
 
     Result r;
@@ -221,8 +235,8 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
             break;
         }
     // The four straight coasts and some sea, with the coasts' land at the height the
-    // land sections join at (Metal's coasts stand at 139 under walls at 255, Lava's
-    // at 43 over ground at 22: they would meet in cliffs, so those stay dry). A
+    // land sections join at (Metal's coasts stand at 139 under walls at 255: they would
+    // meet in cliffs, so Metal stays dry). On Lava the sea is lava (lavaWorld). A
     // corner the set lacks is made land by the pass below.
     bool coasts = seaTileSection >= 0;
     for (int pt : {3, 5, 10, 12}) coasts = coasts && !byPattern[pt].empty();
@@ -309,7 +323,7 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
                     for (int xx = 0; xx < S * 2; ++xx)
                         m.heights[size_t(by * 2 + zz) * m.width + bx * 2 + xx] = c.heights[size_t(zz) * S * 2 + xx];
             }
-        if (any) m.seaLevel = uint8_t(seaFloor + (border - seaFloor) * 85 / 100);
+        if (any) m.seaLevel = uint8_t(seaFloor + (border - seaFloor) * W.seaShare / 100);
     }
     const double density = 0.35 + 0.5 * (p.reliefDensity / 255.0);
     for (int by = 0; by < m.blocksY; ++by)

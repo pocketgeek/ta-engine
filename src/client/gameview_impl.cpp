@@ -5,6 +5,7 @@
 #include "client/retailaim.h"
 #include "client/tabeamdraw.h"
 #include "client/gameview.h"
+#include "tnt/mapgen.h"
 #include "client/buildline.h"
 #include "client/reclaimpick.h"
 #include "client/gamespeed.h"
@@ -40,6 +41,9 @@
         : ren_(ren), vfs_(std::move(vfs)), mapView_(ren, vfs_, mapPath),
           installRoot_(installRoot), mods_(mods),
           mapPath_(mapPath), side_(side), aiSide_(aiSide) {
+        // A random map has no .ota: its world says whether the sea is lava.
+        if(ta::mapgen::isGeneratedMapId(mapPath))
+            try { debrisLavaWorld_=ta::mapgen::lavaWorld(ta::mapgen::decodeMapId(mapPath).mapType); } catch(...) {}
         if(vfs_.has(mapSibling(".ota"))) {
             const auto ota=vtdf(mapSibling(".ota"));
             if(const auto* header=ota.child("globalheader")) {
