@@ -296,14 +296,17 @@
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
                    overBuildMenu(float(e.button.x), float(e.button.y))) {
             // Build-strip borders and gaps are UI too, not world order targets.
-        } else if (e.type == SDL_MOUSEBUTTONDOWN && taResourceRect_.w > 0 &&
-                   float(e.button.x) >= taResourceRect_.x && float(e.button.x) < taResourceRect_.x + taResourceRect_.w &&
-                   float(e.button.y) >= taResourceRect_.y && float(e.button.y) < taResourceRect_.y + taResourceRect_.h) {
-            // The resource bar over the top of the view: a press on it is not an order.
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
                    selPortraitClick(float(e.button.x), float(e.button.y),
                                     e.button.button == SDL_BUTTON_LEFT)) {
             // info-bar type portrait: select only that type (Shift: drop it)
+        } else if (e.type == SDL_MOUSEBUTTONDOWN &&
+                   ((overRect(taResourceRect_, float(e.button.x), float(e.button.y)) &&
+                     !overRect(taGapRect_, float(e.button.x), float(e.button.y))) ||
+                    overRect(taSelPanelRect_, float(e.button.x), float(e.button.y)))) {
+            // The resource bar's halves over the top of the view, and the selection
+            // panel hanging between them: a press on them is not an order. The empty
+            // gap is the map's.
         } else if ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) &&
                    (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) &&
                    hudShown() && taHudEvent(e)) {

@@ -267,10 +267,12 @@ std::string upperStr(std::string s) {
     // drops it). The unit under the pointer gets no readout.
     void GameView::renderTaSelection(int winW, int winH) {
         (void)winW; (void)winH;
+        taSelPanelRect_ = {};
         const SDL_FRect slot = taGapRect_;
         if (!taConsole_ || !taTopBar_ || slot.w <= 0 || selection_.empty()) return;
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         const auto panel = [&](const SDL_FRect& box) {
+            taSelPanelRect_ = box;
             SDL_SetRenderDrawColor(ren_, 14, 12, 10, 215);
             SDL_RenderFillRectF(ren_, &box);
             SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
@@ -429,9 +431,12 @@ std::string upperStr(std::string s) {
         const float splitX = x + (kSplit - kArtX) * sc;
         taGapRect_ = {splitX, y, gapW, barH};
         {
+            // Backing under each half only: the gap shows the map until a selection
+            // panel fills it.
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
-            const SDL_FRect back{x, y, barW, barH};
-            SDL_RenderFillRectF(ren_, &back);
+            const SDL_FRect backL{x, y, splitX - x, barH}, backR{splitX + gapW, y, x + barW - splitX - gapW, barH};
+            SDL_RenderFillRectF(ren_, &backL);
+            SDL_RenderFillRectF(ren_, &backR);
             const SDL_Rect left{int(x), int(y), int(std::ceil(splitX - x)), int(std::ceil(barH))};
             SDL_RenderSetClipRect(ren_, &left);
             taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, kArtX, 0, L);

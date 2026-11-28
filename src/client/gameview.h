@@ -286,7 +286,9 @@ public:
     float taOrdersHeight();                              // the order buttons' height on screen, 0 for none
     float renderTaOrders(int winW, float top);           // returns the bottom
     void renderTaSelection(int winW, int winH);          // bottom centre of the view
-    SDL_FRect taGapRect_{0, 0, 0, 0};   // the gap between the top bar's metal and energy halves: the selection panel
+    SDL_FRect taGapRect_{0, 0, 0, 0};
+    SDL_FRect taSelPanelRect_{0, 0, 0, 0};   // the selection panel drawn in it this frame (0 wide = none)
+    bool overRect(const SDL_FRect& r, float x, float y) const { return r.w > 0 && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }   // the gap between the top bar's metal and energy halves: the selection panel
     float taGapWidth() const { return 294.0f * statsScaleEff(); }   // the single-unit panel's width
     void renderTaResourceBar(int winW, int winH);
     void renderTaFrame(int winW, int winH);   // the right-hand column's backing

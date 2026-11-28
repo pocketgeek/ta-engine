@@ -3259,6 +3259,13 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             const bool took=selPortraitClick(r2.x+r2.w/2,r2.y+r2.h/2,true);
             SDL_SetModState(KMOD_NONE);
             check(took && sorted(selection_)==sorted(pws),"Shift+click drops that type");
+            // Through the real input path too, as a player's click arrives.
+            selection_=all();frame();
+            const SDL_FRect r3=rectOf("armrock");
+            SDL_Event e{};e.type=SDL_MOUSEBUTTONDOWN;e.button.button=SDL_BUTTON_LEFT;
+            e.button.x=int(r3.x+r3.w/2);e.button.y=int(r3.y+r3.h/2);input(e,W,H);
+            e.type=SDL_MOUSEBUTTONUP;input(e,W,H);
+            check(sorted(selection_)==sorted(rocks),"a real click on a portrait reaches it");
             std::fprintf(stderr,"PASS: selection bar\n");
             return;
         }
