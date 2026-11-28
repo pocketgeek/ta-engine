@@ -3310,7 +3310,8 @@ private:
     // load, one byte per 128x128-world-unit sector holding the MAXIMUM terrain
     // height in that sector (floored at sea level), then max-DILATES that grid
     // 3x3 -- so the value a flyer reads is the highest ground within a 384x384
-    // window (icd 0x50e740; grid at world+0x19f18, sector index (x>>23,z>>23)).
+    // window (TotalA.exe 0x482dc0..0x482f15, grid at G+0x1429f; Kingdoms icd 0x50e740;
+    // sector index (x>>23,z>>23)).
     // Its navigator then aims at that value + cruisealt (0x4e42aa / 0x524b89) and
     // a servo walks the unit's Y toward it a step per tick rather than snapping.
     //

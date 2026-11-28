@@ -2260,8 +2260,13 @@ bool World::groundMissionAccepts(const Unit& u,const Order& goal) {
 }
 
 int World::flightGround(const Unit& u) const {
-    // 5066f0 relinks the center sector only when the footprint changes cells.
-    // Each tile stores the maximum of its four corners, including the far edge.
+    // TotalA.exe 0x482dc0..0x482f15 (map load): a 128-px sector's byte 0 is sea
+    // level raised to the max of its 8x8 cells' corner maxima (cell byte +5); byte 1,
+    // the one flyers read (the record at unit+0x82), is byte 0 max-dilated 3x3. The
+    // navigator 0x490690 aims more than 10 px from its goal at byte 1 + cruisealt
+    // (0x490754..0x49076b); a builder hovers there too (VTOL_MobileBuild 0x414149,
+    // VTOL_HelpBuild 0x414569). unit+0x82 is relinked only on a footprint-cell or
+    // layer change (0x47ccbd..0x47cd25; Kingdoms' 5066f0 the same).
     if (heights_.empty()) return 0;
     const int sx=std::clamp(u.flightSectorX,0,(terW_-1)/8);
     const int sz=std::clamp(u.flightSectorZ,0,(terH_-1)/8);
