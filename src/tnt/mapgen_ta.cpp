@@ -354,10 +354,10 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
 
     // The world's features: TREES (category trees), ROCKS (category rocks, reclaimable
     // metal) and metal deposits (metal > 0 and indestructible -- the patches a
-    // TotalA.exe map writes its metal from, 0x4220ab). Shipped maps lay their
-    // deposits with the world's metal patches and only now and then its aqua ore,
-    // never its glyphs; Metal's own patches are none (its metal is surface metal),
-    // so it gets its reclaimable metal features.
+    // TotalA.exe map writes its metal from, 0x4220ab). Shipped maps lay their land
+    // deposits with the world's metal patches and their sea-floor ones with its aqua
+    // ore (the blue crystals), never its glyphs; Metal's own patches are none (its
+    // metal is surface metal), so it gets its reclaimable metal features.
     std::vector<Feat> trees, rocks, patches, aqua, salvage;
     for (const auto& path : vfs.list(std::string("features/") + W.features)) {
         if (ta::vpath::extension(path) != ".tdf") continue;
@@ -384,7 +384,6 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         } catch (...) {}
     }
     if (patches.empty() && aqua.empty()) patches = salvage;   // Metal
-    if (!patches.empty()) aqua.clear();   // the crystals only where a world has nothing else
 
     // One feature to a cell, footprints apart, never in the sea; trees and rocks also
     // keep clear of the starts.
@@ -393,13 +392,31 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         for (int z = sz - 6; z <= sz + 6; ++z)
             for (int x = sx - 6; x <= sx + 6; ++x)
                 if (x >= 0 && z >= 0 && x < m.width && z < m.height) taken[size_t(z) * m.width + x] = 2;   // start ground
-    auto place = [&](const Feat& f, int cx, int cz, bool atStart) {
+    // A deposit must take an extractor: its 3 x 3 footprint centred on the deposit,
+    // with the one-cell border retail grades round a site (0x508cd0), within the
+    // extractor's MaxSlope (high - low, 0x508bc1): on land all above the sea and
+    // within 10 (armmex, cormex: MaxSlope 10, MaxWaterDepth 0); on the sea floor
+    // at least 19 under it and within 20 (armuwmex MinWaterDepth 19, MaxSlope 24;
+    // coruwmex 10, 20).
+    auto buildable = [&](const Feat& f, int cx, int cz, bool sea) {
+        const int mx = cx + f.fx / 2, mz = cz + f.fz / 2;
+        if (mx < 3 || mz < 3 || mx + 3 >= m.width || mz + 3 >= m.height) return false;
+        int lo = 255, hi = 0;
+        for (int z = mz - 2; z <= mz + 2; ++z)
+            for (int x = mx - 2; x <= mx + 2; ++x) {
+                const int h = m.heights[size_t(z) * m.width + x];
+                lo = std::min(lo, h); hi = std::max(hi, h);
+                if (taken[size_t(z) * m.width + x] == 1) return false;   // a tree or a rock in the way
+            }
+        return sea ? hi + 19 <= int(m.seaLevel) && hi - lo <= 20 : lo > int(m.seaLevel) && hi - lo <= 10;
+    };
+    auto place = [&](const Feat& f, int cx, int cz, bool atStart, bool sea = false) {
         if (cx < 2 || cz < 2 || cx + f.fx + 2 >= m.width || cz + f.fz + 2 >= m.height) return false;
         for (int z = cz; z < cz + f.fz; ++z)
             for (int x = cx; x < cx + f.fx; ++x) {
                 const uint8_t t = taken[size_t(z) * m.width + x];
                 if (t == 1 || (t == 2 && !atStart)) return false;
-                if (m.heights[size_t(z) * m.width + x] <= m.seaLevel) return false;
+                if (!sea && m.heights[size_t(z) * m.width + x] <= m.seaLevel) return false;
             }
         for (int z = cz; z < cz + f.fz; ++z)
             for (int x = cx; x < cx + f.fx; ++x) taken[size_t(z) * m.width + x] = 1;
@@ -411,11 +428,12 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         return true;
     };
     const double area = double(m.width) * m.height;
-    // METAL: a cluster by every start, and clusters over the map, each a few patches
-    // side by side (aqua ore one time in eight where the world has both).
+    // METAL: a cluster by every start, and clusters over the land and the sea floor,
+    // each a few deposits apart: patches on land, aqua ore under the sea.
     if (!patches.empty() || !aqua.empty()) {
-        auto deposit = [&]() -> const Feat& {
-            return patches.empty() ? aqua[size_t(roll(rng, aqua.size()))] : patches[size_t(roll(rng, patches.size()))];
+        auto deposit = [&](bool sea) -> const Feat& {
+            if (sea || patches.empty()) return aqua[size_t(roll(rng, aqua.size()))];
+            return patches[size_t(roll(rng, patches.size()))];
         };
         // Deposits keep 6 cells between their corners, so each takes an extractor of
         // its own with room round it, as on the shipped maps.
@@ -425,23 +443,35 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
                 if (std::abs(dx - x) < 6 && std::abs(dz - z) < 6) return false;
             return true;
         };
-        auto cluster = [&](int cx, int cz, int count, bool atStart) {
-            for (int k = 0, tries = 0; k < count && tries < count * 12; ++tries) {
-                const Feat& f = deposit();
+        auto cluster = [&](int cx, int cz, int count, bool atStart, bool sea) {
+            if (sea && aqua.empty()) return;
+            for (int k = 0, tries = 0; k < count && tries < count * 30; ++tries) {
+                const Feat& f = deposit(sea);
                 const int x = cx + rollIn(rng, -7, 7), z = cz + rollIn(rng, -7, 7);
-                if (!spaced(x, z) || !place(f, x, z, atStart)) continue;
+                if (!spaced(x, z) || !buildable(f, x, z, sea) || !place(f, x, z, atStart, sea)) continue;
                 deposits.push_back({x, z});
+                // The extractor's ground (and its border) stays clear of trees and rocks.
+                const int mx = x + f.fx / 2, mz = z + f.fz / 2;
+                for (int zz = mz - 2; zz <= mz + 2; ++zz)
+                    for (int xx = mx - 2; xx <= mx + 2; ++xx) taken[size_t(zz) * m.width + xx] = 1;
                 ++k;
             }
         };
         const int perStart = 2 + int(p.manaDensity) * 4 / 255;   // 2..6
         for (const auto& [sx, sz] : r.starts) {
             const double a = roll01(rng) * 6.283185307179586;
-            cluster(sx + int(std::cos(a) * 9), sz + int(std::sin(a) * 9), perStart, true);
+            cluster(sx + int(std::cos(a) * 9), sz + int(std::sin(a) * 9), perStart, true, false);
         }
+        // Each site lands on the land or the sea floor as it falls (a lava sea has
+        // no ore: nothing is built in it).
+        const bool seaOre = !aqua.empty() && m.seaLevel > 0 && !lavaWorld(p.mapType);
         const int sites = int(area / 8192.0 * (0.5 + 2.5 * p.manaDensity / 255.0));
-        for (int k = 0; k < sites; ++k)
-            cluster(rollIn(rng, 6, m.width - 10), rollIn(rng, 6, m.height - 10), rollIn(rng, 1, 3), false);
+        for (int k = 0; k < sites; ++k) {
+            const int cx = rollIn(rng, 6, m.width - 10), cz = rollIn(rng, 6, m.height - 10);
+            const bool sea = m.heights[size_t(cz) * m.width + cx] <= m.seaLevel;
+            if (sea && !seaOre) continue;
+            cluster(cx, cz, rollIn(rng, 1, 3), false, sea);
+        }
     }
     // TREES: woods, each a clump round a centre.
     if (!trees.empty() && p.treeDensity) {
