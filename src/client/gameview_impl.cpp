@@ -4555,8 +4555,11 @@
             keepOneWatchOwner();
         } else for (const UnitR* _up : front().live) {
             const UnitR& u = *_up;
-            // Every member, builders and factories too (TA:K left its builders out).
-            if (u.alive() && u.player == localPlayer_ && u.type && std::abs(int(u.squad)) == num)
+            // Every member, builders too (TA:K left its builders out), but not a
+            // factory: its output inherits its squad (World::finishProduction), and
+            // recalling the group is for the army, not the building that makes it.
+            if (u.alive() && u.player == localPlayer_ && u.type && std::abs(int(u.squad)) == num &&
+                !(u.type->isStructure() && u.type->producesUnits()))
                 selection_.push_back(u.id);
         }
         lastRecalledSquad_ = selection_.empty() ? 0 : num;

@@ -98,9 +98,14 @@ inline std::vector<Spot> find(const Cells& c, int fx, int fz) {
                         }
                     if (cells > 0) cands.push_back({ox, oz, yield, cells});
                 }
-            // Best yield first; ties to the top-left, so the choice is the same everywhere.
-            std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) {
+            // Best yield first; among equals (a 5x5 Moho covers a 3x3 patch from nine
+            // origins alike) the one centred on the cluster, then the top-left, so the
+            // choice is the same everywhere. Centres in half cells (doubled).
+            const int ccx = minX + maxX + 1, ccz = minZ + maxZ + 1;
+            const auto off = [&](const Cand& k) { return std::abs(2 * k.ox + fx - ccx) + std::abs(2 * k.oz + fz - ccz); };
+            std::sort(cands.begin(), cands.end(), [&](const Cand& a, const Cand& b) {
                 if (a.yield != b.yield) return a.yield > b.yield;
+                if (off(a) != off(b)) return off(a) < off(b);
                 return a.oz != b.oz ? a.oz < b.oz : a.ox < b.ox;
             });
             std::vector<Cand> taken;

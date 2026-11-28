@@ -44,6 +44,8 @@ int main() {
               "its build point is footprintSnap's centre");
         const auto big = ms::find(map.cells(), 3, 3);
         check(big.size() == 1 && big[0].ox == 10 && big[0].oz == 10, "a 3x3 extractor takes the patch whole");
+        const auto moho = ms::find(map.cells(), 5, 5);
+        check(moho.size() == 1 && moho[0].ox == 9 && moho[0].oz == 9, "a 5x5 extractor (a Moho) sits centred on a 3x3 patch");
         check(!ms::metalPlanet(map.cells()), "a patched map with SurfaceMetal 3 is no metal planet");
     }
     {

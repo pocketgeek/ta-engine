@@ -3354,6 +3354,11 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             check(world_.unit(a)->squad==1 && world_.unit(k)->squad==1,"Ctrl+1 puts the selection in group 1");
             selection_.clear();key(SDLK_1,KMOD_NONE);
             check(sorted(selection_)==sorted(std::vector<int>{a,b,k}),"1 recalls group 1, its builder too");
+            const int lab=spawn("armlab",cx+300,cz+200,0,me);
+            for (int i=0;i<2;++i) {writableWorld().tick(1.f/30);frame();}   // in the shown frame
+            selection_={a,lab};key(SDLK_4,KMOD_LCTRL);
+            selection_.clear();key(SDLK_4,KMOD_NONE);
+            check(world_.unit(lab)->squad==4 && selection_==std::vector<int>{a},"4 recalls group 4 without its factory");
             selection_={c};key(SDLK_2,KMOD_LALT);
             check(world_.unit(c)->squad==-2,"Alt+2 makes formation 2");
             selection_.clear();key(SDLK_2,KMOD_NONE);
