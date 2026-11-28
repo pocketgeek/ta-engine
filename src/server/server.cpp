@@ -3796,6 +3796,7 @@ int Server::run() {
                 auto c = std::make_unique<Client>();
                 c->id = nextClientId_++;
                 c->conn = Conn(fd,acme_?acme_->context():tlsContext_);
+                c->conn.allowServerFrames(true,false);   // its bundles may pass kMaxFrame; its client's frames may not
                 c->peer = address;
                 c->connectedMs = c->lastRecvMs = nowMs();
                 clients_[c->id] = std::move(c);

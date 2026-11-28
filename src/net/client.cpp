@@ -46,6 +46,7 @@ bool MpClient::connect(const std::string& host, uint16_t port, const std::string
     voiceHeld_ = voiceOpen_ = voiceRestart_ = voiceSlowRtt_ = false;
     name_ = name;
     if (!conn_.connect(host, port)) { err_ = conn_.error(); state_ = State::Done; return false; }
+    conn_.allowServerFrames(false,true);   // the server's tick bundles may pass kMaxFrame
     state_ = State::Connecting;
     send(Msg::Hello, helloFrame(dataHash_, name_));
     lastRecvMs_ = nowMs();
@@ -100,6 +101,7 @@ bool MpClient::reconnect() {
     waiting_.clear(); paused_ = false;
     // A short connect timeout: this runs on the render thread, and is retried.
     if (!conn_.connect(host_, port_, 1500)) { err_ = conn_.error(); state_ = State::Done; return false; }
+    conn_.allowServerFrames(false,true);
     state_ = State::Connecting;
     reconnecting_ = true; rejoinSent_ = false;
     send(Msg::Hello, helloFrame(dataHash_, name_));

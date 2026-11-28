@@ -42,6 +42,12 @@ public:
     void closeNow();
 
     // Queue a framed message (kind + payload) into the send buffer.
+    // Frames of up to kMaxServerFrame: the server sets `send` on its connections to
+    // clients, a client `recv` on its connection to the server. Otherwise kMaxFrame.
+    void allowServerFrames(bool send, bool recv) {
+        if (send) maxSendFrame_ = kMaxServerFrame;
+        if (recv) maxRecvFrame_ = kMaxServerFrame;
+    }
     void send(Msg kind, const std::vector<uint8_t>& payload);
     void send(Msg kind, const Writer& w) { send(kind, w.b); }
     void send(Msg kind) { send(kind, std::vector<uint8_t>{}); }
@@ -105,6 +111,7 @@ private:
     size_t tlsWriteSize_=0;
     bool tlsHandshake();
     int fd_ = -1;
+    size_t maxSendFrame_ = kMaxFrame, maxRecvFrame_ = kMaxFrame;
     std::string err_;
     bool peerClosed_ = false, rxDrained_ = false;
     std::vector<uint8_t> rxBuf_;

@@ -206,7 +206,7 @@ void Conn::send(Msg kind, const std::vector<uint8_t>& payload) {
     // stream paces itself at 256 KiB), so hitting this means the peer has stopped
     // reading; the connection is failed and dropped by the caller.
     constexpr size_t kMaxTxBacklog = 32u << 20;
-    if (payload.size() >= kMaxFrame || payload.size()+5 > kMaxTxBacklog ||
+    if (payload.size() >= maxSendFrame_ || payload.size()+5 > kMaxTxBacklog ||
         txBuf_.size()-txOff_ > kMaxTxBacklog-(payload.size()+5)) {
         err_ = "send backlog exceeded";
         return;
@@ -308,7 +308,9 @@ bool Conn::recv(size_t budget) {
     // worth of unvalidated bytes. Well above kMaxFrame so a legitimate maximum
     // frame plus a partial next one always fits.
     const size_t kRecvPassBytes = std::min(budget,size_t(1u<<20));    // 1 MiB serviced per pass
-    constexpr size_t kMaxRxBacklog  = 1u << 22;    // 4 MiB unread -> peer is abusive
+    // 4 MiB unread -> peer is abusive; a client reading the server's big frames
+    // holds two of them.
+    const size_t kMaxRxBacklog  = std::max<size_t>(size_t(1) << 22, 2 * size_t(maxRecvFrame_) + (1u << 20));
     size_t got = 0;
     for (;;) {
         if (got >= kRecvPassBytes) break;          // yield to the other sockets
@@ -362,7 +364,7 @@ bool Conn::poll(Frame& out) {
     const uint8_t* p = &rxBuf_[rxOff_];
     uint32_t len = uint32_t(p[0]) | (uint32_t(p[1]) << 8) |
                    (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
-    if (len < 1 || len > kMaxFrame) { err_ = "oversized/empty frame"; return false; }
+    if (len < 1 || len > maxRecvFrame_) { err_ = "oversized/empty frame"; return false; }
     if (rxBuf_.size() - rxOff_ - 4 < len) return false;   // incomplete
     out.kind = Msg(p[4]);
     out.payload.assign(p + 5, p + 4 + len);
