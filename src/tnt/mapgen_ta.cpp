@@ -156,7 +156,161 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
     };
     const uint16_t filler = uint16_t(addSection(pool[0]) + all[pool[0]].tileMap[0]);
     std::fill(m.tileIndex.begin(), m.tileIndex.end(), filler);
+    // Starts: evenly round the map, inset from the edge.
+    const int n = std::clamp(int(p.players), 2, kMaxPlayers);
+    for (int i = 0; i < n; ++i) {
+        const double a = 2.0 * 3.14159265358979323846 * (double(i) + 0.125) / n;
+        const int cx = int(m.width / 2 + std::cos(a) * m.width * 0.36);
+        const int cz = int(m.height / 2 + std::sin(a) * m.height * 0.36);
+        r.starts.push_back({std::clamp(cx, 4, m.width - 5), std::clamp(cz, 4, m.height - 5)});
+    }
     std::vector<uint8_t> used(size_t(m.blocksX) * m.blocksY, 0);
+
+    // WATER: the world's coast sections, all 16 x 16 blocks, each edge all land (the
+    // land border), all sea (the floor, about 0) or one shore across it -- so each is
+    // four corners, land or sea, a marching-squares set. A coarse grid of 16-block
+    // cells gets a corner of land or sea from a smoothed random field (the slider
+    // sets how much is sea; the start cells and their neighbours stay land), and each
+    // cell takes a section with its corners: an all-sea one (or a coast's sea corner
+    // tile), a coast, or land for the hills below. A corner pattern the world has no
+    // section for is made land. The sea is set 85% of the way up from the floor to the
+    // land, about where the shipped maps hold it (Green Planet: 75 under land at 84).
+    constexpr int S = 16;
+    std::vector<size_t> byPattern[16];   // corners NW 1, NE 2, SW 4, SE 8: set = land
+    int seaFloor = 255;
+    for (size_t i = 0; i < all.size(); ++i) {
+        const Sct& c = all[i];
+        if (c.w != S || c.h != S) continue;
+        const int cw = c.w * 2, ch = c.h * 2;
+        const auto at = [&](int x, int z) { return int(c.heights[size_t(z) * cw + x]); };
+        const auto land = [&](int h) { return h >= border - 10; };
+        const auto sea = [&](int h) { return h <= 12; };
+        const int corner[4] = {at(0, 0), at(cw - 1, 0), at(0, ch - 1), at(cw - 1, ch - 1)};
+        int pattern = 0;
+        bool ok = true;
+        for (int k = 0; k < 4; ++k) {
+            if (land(corner[k])) pattern |= 1 << k;
+            else if (!sea(corner[k])) ok = false;
+        }
+        // Each edge agrees with its corners: all land, all sea, or a shore.
+        const auto edgeOk = [&](int x0, int z0, int dx, int dz, int len, int a, int b) {
+            const bool la = pattern >> a & 1, lb = pattern >> b & 1;
+            for (int k = 0; k < len; ++k) {
+                const int h = at(x0 + dx * k, z0 + dz * k);
+                if (la && lb && !land(h)) return false;
+                if (!la && !lb && !sea(h)) return false;
+            }
+            return true;
+        };
+        ok = ok && edgeOk(0, 0, 1, 0, cw, 0, 1) && edgeOk(0, ch - 1, 1, 0, cw, 2, 3) &&
+             edgeOk(0, 0, 0, 1, ch, 0, 2) && edgeOk(cw - 1, 0, 0, 1, ch, 1, 3);
+        if (!ok || pattern == 15) continue;
+        byPattern[pattern].push_back(i);
+        for (auto h : c.heights) seaFloor = std::min(seaFloor, int(h));
+    }
+    // The sea tile when the world has no all-sea section: a coast's sea corner block.
+    int seaTileSection = -1, seaTileBlock = 0;
+    for (int pt = 1; pt < 15 && seaTileSection < 0; ++pt)
+        for (size_t si : byPattern[pt]) {
+            for (int k = 0; k < 4; ++k)
+                if (!(pt >> k & 1)) {
+                    seaTileSection = int(si);
+                    seaTileBlock = (k >= 2 ? (S - 1) * S : 0) + (k & 1 ? S - 1 : 0);
+                    break;
+                }
+            break;
+        }
+    // The four straight coasts and some sea, with the coasts' land at the height the
+    // land sections join at (Metal's coasts stand at 139 under walls at 255, Lava's
+    // at 43 over ground at 22: they would meet in cliffs, so those stay dry). A
+    // corner the set lacks is made land by the pass below.
+    bool coasts = seaTileSection >= 0;
+    for (int pt : {3, 5, 10, 12}) coasts = coasts && !byPattern[pt].empty();
+    if (coasts) {
+        const Sct& c = all[byPattern[3].front()];   // north land: its NW corner
+        coasts = std::abs(int(c.heights[0]) - border) <= 4;
+    }
+    const int gx = m.blocksX / S, gz = m.blocksY / S;
+    std::vector<uint8_t> landAt(size_t(gx + 1) * (gz + 1), 1);
+    if (coasts && p.waterDensity && gx >= 2 && gz >= 2) {
+        std::vector<double> field(landAt.size());
+        for (auto& v : field) v = roll01(rng);
+        for (int pass = 0; pass < 2; ++pass) {   // smoothed, so the sea runs in bodies
+            std::vector<double> next(field.size());
+            for (int z = 0; z <= gz; ++z)
+                for (int x = 0; x <= gx; ++x) {
+                    double sum = 0; int cnt = 0;
+                    for (int dz = -1; dz <= 1; ++dz)
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            const int nx = x + dx, nz = z + dz;
+                            if (nx < 0 || nz < 0 || nx > gx || nz > gz) continue;
+                            sum += field[size_t(nz) * (gx + 1) + nx]; ++cnt;
+                        }
+                    next[size_t(z) * (gx + 1) + x] = sum / cnt;
+                }
+            field = std::move(next);
+        }
+        std::vector<double> sorted = field;
+        std::sort(sorted.begin(), sorted.end());
+        const double share = 0.7 * p.waterDensity / 255.0;
+        const double cut = sorted[std::min(sorted.size() - 1, size_t(share * double(sorted.size())))];
+        for (size_t k = 0; k < field.size(); ++k) landAt[k] = share > 0 && field[k] < cut ? 0 : 1;
+        // Every start's cell and its neighbours stay land.
+        for (const auto& [sx, sz] : r.starts) {
+            const int cx = sx / (S * 2), cz = sz / (S * 2);
+            for (int z = cz - 1; z <= cz + 2; ++z)
+                for (int x = cx - 1; x <= cx + 2; ++x)
+                    if (x >= 0 && z >= 0 && x <= gx && z <= gz) landAt[size_t(z) * (gx + 1) + x] = 1;
+        }
+        // A pattern with no section (a diagonal, say) is made land, until none is left.
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (int z = 0; z < gz; ++z)
+                for (int x = 0; x < gx; ++x) {
+                    uint8_t* c[4] = {&landAt[size_t(z) * (gx + 1) + x], &landAt[size_t(z) * (gx + 1) + x + 1],
+                                     &landAt[size_t(z + 1) * (gx + 1) + x], &landAt[size_t(z + 1) * (gx + 1) + x + 1]};
+                    const int pt = *c[0] | *c[1] << 1 | *c[2] << 2 | *c[3] << 3;
+                    if (pt == 15 || pt == 0 || !byPattern[pt].empty()) continue;
+                    for (auto* v : c) *v = 1;
+                    changed = true;
+                }
+        }
+        bool any = false;
+        for (int z = 0; z < gz; ++z)
+            for (int x = 0; x < gx; ++x) {
+                const int pt = landAt[size_t(z) * (gx + 1) + x] | landAt[size_t(z) * (gx + 1) + x + 1] << 1 |
+                               landAt[size_t(z + 1) * (gx + 1) + x] << 2 | landAt[size_t(z + 1) * (gx + 1) + x + 1] << 3;
+                if (pt == 15) continue;
+                any = true;
+                const int bx = x * S, by = z * S;
+                if (pt == 0 && byPattern[0].empty()) {   // open sea from a coast's sea tile
+                    const uint16_t base = addSection(size_t(seaTileSection));
+                    const uint16_t tile = uint16_t(base + all[size_t(seaTileSection)].tileMap[size_t(seaTileBlock)]);
+                    for (int yy = 0; yy < S; ++yy)
+                        for (int xx = 0; xx < S; ++xx) {
+                            used[size_t(by + yy) * m.blocksX + bx + xx] = 1;
+                            m.tileIndex[size_t(by + yy) * m.blocksX + bx + xx] = tile;
+                        }
+                    for (int zz = 0; zz < S * 2; ++zz)
+                        for (int xx = 0; xx < S * 2; ++xx)
+                            m.heights[size_t(by * 2 + zz) * m.width + bx * 2 + xx] = uint8_t(seaFloor);
+                    continue;
+                }
+                const auto& list = byPattern[pt];
+                const size_t si = list[size_t(roll(rng, list.size()))];
+                const Sct& c = all[si];
+                const uint16_t base = addSection(si);
+                for (int yy = 0; yy < S; ++yy)
+                    for (int xx = 0; xx < S; ++xx) {
+                        used[size_t(by + yy) * m.blocksX + bx + xx] = 1;
+                        m.tileIndex[size_t(by + yy) * m.blocksX + bx + xx] = uint16_t(base + c.tileMap[size_t(yy) * S + xx]);
+                    }
+                for (int zz = 0; zz < S * 2; ++zz)
+                    for (int xx = 0; xx < S * 2; ++xx)
+                        m.heights[size_t(by * 2 + zz) * m.width + bx * 2 + xx] = c.heights[size_t(zz) * S * 2 + xx];
+            }
+        if (any) m.seaLevel = uint8_t(seaFloor + (border - seaFloor) * 85 / 100);
+    }
     const double density = 0.35 + 0.5 * (p.reliefDensity / 255.0);
     for (int by = 0; by < m.blocksY; ++by)
         for (int bx = 0; bx < m.blocksX; ++bx) {
@@ -184,14 +338,6 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
     m.tileCols.assign(m.tileIndex.size(), 0);
     m.tileRows.assign(m.tileIndex.size(), 0);
 
-    // Starts: evenly round the map, inset from the edge.
-    const int n = std::clamp(int(p.players), 2, kMaxPlayers);
-    for (int i = 0; i < n; ++i) {
-        const double a = 2.0 * 3.14159265358979323846 * (double(i) + 0.125) / n;
-        const int cx = int(m.width / 2 + std::cos(a) * m.width * 0.36);
-        const int cz = int(m.height / 2 + std::sin(a) * m.height * 0.36);
-        r.starts.push_back({std::clamp(cx, 4, m.width - 5), std::clamp(cz, 4, m.height - 5)});
-    }
     // The world's features: TREES (category trees), ROCKS (category rocks, reclaimable
     // metal) and metal deposits (metal > 0 and indestructible -- the patches a
     // TotalA.exe map writes its metal from, 0x4220ab). Shipped maps lay their
@@ -224,6 +370,7 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         } catch (...) {}
     }
     if (patches.empty() && aqua.empty()) patches = salvage;   // Metal
+    if (!patches.empty()) aqua.clear();   // the crystals only where a world has nothing else
 
     // One feature to a cell, footprints apart, never in the sea; trees and rocks also
     // keep clear of the starts.
@@ -254,13 +401,23 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
     // side by side (aqua ore one time in eight where the world has both).
     if (!patches.empty() || !aqua.empty()) {
         auto deposit = [&]() -> const Feat& {
-            if (!aqua.empty() && (patches.empty() || roll(rng, 8) == 0)) return aqua[size_t(roll(rng, aqua.size()))];
-            return patches[size_t(roll(rng, patches.size()))];
+            return patches.empty() ? aqua[size_t(roll(rng, aqua.size()))] : patches[size_t(roll(rng, patches.size()))];
+        };
+        // Deposits keep 6 cells between their corners, so each takes an extractor of
+        // its own with room round it, as on the shipped maps.
+        std::vector<std::pair<int, int>> deposits;
+        auto spaced = [&](int x, int z) {
+            for (const auto& [dx, dz] : deposits)
+                if (std::abs(dx - x) < 6 && std::abs(dz - z) < 6) return false;
+            return true;
         };
         auto cluster = [&](int cx, int cz, int count, bool atStart) {
-            for (int k = 0, tries = 0; k < count && tries < count * 8; ++tries) {
+            for (int k = 0, tries = 0; k < count && tries < count * 12; ++tries) {
                 const Feat& f = deposit();
-                if (place(f, cx + rollIn(rng, -4, 4), cz + rollIn(rng, -4, 4), atStart)) ++k;
+                const int x = cx + rollIn(rng, -7, 7), z = cz + rollIn(rng, -7, 7);
+                if (!spaced(x, z) || !place(f, x, z, atStart)) continue;
+                deposits.push_back({x, z});
+                ++k;
             }
         };
         const int perStart = 2 + int(p.manaDensity) * 4 / 255;   // 2..6
