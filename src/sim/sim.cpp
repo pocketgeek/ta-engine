@@ -11658,7 +11658,13 @@ int World::startBuild(int builderId, const UnitType* type, float x, float z,
     Unit* site = unit(id);
     site->underConstruction = true;
     site->buildBegun=false;
-    site->hp = Fixed::fromFloat(type->maxHp * 0.05f);
+    // TotalA.exe 0x485b27: an unfinished unit is born with its remaining work
+    // (+0x104) 1.0 and its HP word (+0x108) 0, and the build step's HP gains,
+    // int(rem * max) - int(c * max) (0x41ba60), add up to the full HP exactly as
+    // the work runs out: HP is full when the unit is done. (Ours started sites at
+    // 5% and so reached full HP that much early.) The smallest positive value,
+    // not 0, which this sim reads as dead; it is 0 whole HP.
+    site->hp = Fixed::raw(1);
     // Key off maxVel, NOT the FBI canmove flag: verwall and tarwall both declare
     // canmove=1 with no velocity, so a canMove gate left Veruna and Taros walls
     // blocking neither pathing nor line of sight while Aramon's and Creon's did.
@@ -19221,7 +19227,7 @@ void World::tickProduction(Unit& u, float dt) {
         // 0x402948: 0x48aac0(output, factory, QueryBuildInfo piece, 1) attaches
         // the output to the build piece (followBuildPiece places it each tick).
         site->buildPiece=int8_t(std::clamp(buildPiece,-1,127));
-        site->hp=Fixed::fromFloat(t->maxHp*0.05f);
+        site->hp=Fixed::raw(1);   // 0 whole HP, as retail's 0x485b27 (see buildSite)
         unit(producerId)->productionSiteId=siteId;
         if (auto it=unitScripts_.find(producerId);it!=unitScripts_.end()) {
             const auto& file=*unit(producerId)->type->script();
