@@ -2994,6 +2994,7 @@ public:
     // toggled by +LOSType; every footprint re-stamps under the new rule.
     void setTrueLos(bool on) { trueLos_ = on; }
     bool trueLos() const { return trueLos_; }
+    bool doubleSight() const { return doubleSight_; }
     bool roomMapRevealed() const { return roomMapRevealed_; }
     bool roomLosOff() const { return roomLosOff_; }
     // `player`'s whole map counts as explored: the room revealed it (no power codes

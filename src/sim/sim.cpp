@@ -12266,7 +12266,7 @@ void World::tickReclaimArea(Unit& b) {
             // Before the first exploration pass, initialize the same authored sight.
             if (sight.x<0 || sight.z<0) {
                 sight.distance=int16_t(sightDistance(*u.type));sight.sightHeight=u.type->sightHeight;
-                sight.trueLos=trueLos_;
+                sight.trueLos=trueLos_;sight.scale=doubleSight_ ? 2 : 1;
                 const Fixed y=u.type->canFly?u.flightY:u.groundY;
                 int cx,cz,eye;
                 if (trueLos_) retailTrueSightEye(u.x,y,u.z,uint8_t(seaLevel_),sight.sightHeight,cx,cz,eye);
@@ -15823,11 +15823,12 @@ void World::updateExplorationPlane() {
             if (!u.alive() || !u.type) continue;
             const int16_t distance=int16_t(sightDistance(*u.type));
             if (u.sightFootprint.distance!=distance || u.sightFootprint.sightHeight!=u.type->sightHeight ||
-                u.sightFootprint.trueLos!=trueLos_) {
+                u.sightFootprint.trueLos!=trueLos_ || u.sightFootprint.scale!=(doubleSight_ ? 2 : 1)) {
                 u.sightFootprint={};
                 u.sightFootprint.distance=distance;
                 u.sightFootprint.sightHeight=u.type->sightHeight;
                 u.sightFootprint.trueLos=trueLos_;
+                u.sightFootprint.scale=doubleSight_ ? 2 : 1;
             }
             const uint16_t viewers=size_t(u.player)<playerViewers.size() ? playerViewers[size_t(u.player)] : 0;
             const Fixed y=u.type->canFly?u.flightY:u.groundY;
@@ -15982,12 +15983,13 @@ void World::updateViewCounts() {
             }
             const int16_t distance=int16_t(sightDistance(*u.type));
             if (u.viewSight.distance!=distance || u.viewSight.sightHeight!=u.type->sightHeight ||
-                u.viewSight.trueLos!=trueLos_) {
+                u.viewSight.trueLos!=trueLos_ || u.viewSight.scale!=(doubleSight_ ? 2 : 1)) {
                 // A new sight distance, or +LOSType (0x416690 rebuilds every stamp):
                 // the old footprint comes off by its own rule, the new one goes on.
                 if (u.viewSight.active && size_t(u.viewPlayer)<planes) change(u.viewSight,u.viewPlanes,u.viewPlayer,false,shared);
                 u.viewSight={};u.viewSight.distance=distance;u.viewSight.sightHeight=u.type->sightHeight;
                 u.viewSight.trueLos=trueLos_;
+                u.viewSight.scale=doubleSight_ ? 2 : 1;
                 u.viewPlayer=-1;u.viewPlanes=0;
             }
             if (u.player<0 || size_t(u.player)>=planes || isNeutralPlayer(u.player) || !mask) continue;
@@ -21854,7 +21856,7 @@ uint64_t World::stateHash() const {
         mix(uint64_t(u.groundScanTick));
         mix(uint16_t(u.sightFootprint.x));mix(uint16_t(u.sightFootprint.z));
         mix(uint32_t(u.sightFootprint.eyeHeight));mix(uint16_t(u.sightFootprint.distance));
-        mix(u.sightFootprint.sightHeight);mix(u.sightFootprint.active);mix(u.sightFootprint.trueLos);
+        mix(u.sightFootprint.sightHeight);mix(u.sightFootprint.active);mix(u.sightFootprint.trueLos);mix(u.sightFootprint.scale);
         mix(uint16_t(u.viewSight.x));mix(uint16_t(u.viewSight.z));
         mix(uint32_t(u.viewSight.eyeHeight));mix(uint16_t(u.viewSight.distance));
         mix(u.viewSight.sightHeight);mix(u.viewSight.active);mix(uint8_t(u.viewPlayer));mix(u.viewPlanes);

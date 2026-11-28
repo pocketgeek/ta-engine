@@ -210,7 +210,30 @@ static void trueSight() {
     check(cells() == std::vector<int>{2, 3, 4, 6}, "a tower taller than the horizon shows over the wall");
     f.distance = 20;
     check(cells() == std::vector<int>{2}, "under 32 px there is no table: the centre alone");
+    // DOUBLE SIGHT (scale 2, engine option): the undoubled sight's table, its ray
+    // scaled x2 with the midpoints between, so twice as far and still unbroken.
+    {
+        RetailSightFootprint d = f;
+        d.distance = 80; d.scale = 2; d.x = 1;   // 40 px of own sight, doubled
+        std::vector<RetailExplorationHeight> flat(size_t(12) * H, RetailExplorationHeight{0, 0});
+        auto flatAt = [&](int x, int z) { return flat[size_t(z) * 12 + size_t(x)]; };
+        std::vector<int> xs;
+        retailTrueSightCells(d, 12, H, flatAt, [&](int x, int z) { if (z == 2) xs.push_back(x); });
+        check(xs == std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8, 9}, "double sight: the ray reaches twice as far, unbroken");
+        check(retailSightRadius(d) == 8, "double sight: the footprint's reach doubles");
+    }
     setRetailLosTables({});
+    // Circular past the largest mask: retail clamps at 14 cells; doubled sight draws
+    // its own disc, sight/32 cells.
+    {
+        RetailSightFootprint c;
+        c.distance = 2 * 280;   // a Peewee's sight, doubled: 17 cells
+        check(retailSightRadius(c) == 14, "Circular without double sight stops at the 14-cell mask");
+        c.scale = 2;
+        check(retailSightRadius(c) == 17, "Circular with double sight draws a 17-cell disc");
+        c.distance = 2 * 200;   // within the masks: still retail's mask
+        check(&retailSightMask(c) == &retailVisMaskTable()[7], "doubled sight inside the masks keeps retail's mask");
+    }
 
     // +LOSType is retail's group 1: it acts with CHEAT CODES off too.
     TypeRegistry reg;

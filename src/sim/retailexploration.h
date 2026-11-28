@@ -116,6 +116,10 @@ struct RetailSightFootprint {
     uint8_t sightHeight=0;
     bool active=false;
     bool trueLos=false;     // stamped with True sight's rays, else Circular's mask
+    // DOUBLE SIGHT/RADAR (an engine option, not retail): 2 doubles the footprint
+    // past retail's caps -- True's rays scaled x2 from the undoubled sight's table,
+    // Circular's disc past the 14-cell mask (retailSightMask). 1: retail exactly.
+    uint8_t scale=1;
 };
 
 // 0x481e09..0x481e52: True sight's table for a sight distance, r = sight/32
@@ -125,7 +129,9 @@ struct RetailSightFootprint {
 inline const RetailLosTable* retailLosTable(const RetailSightFootprint& sight) {
     const auto& tables=retailLosTableData();
     if (tables.empty()) return nullptr;
-    const int r=std::min(std::max(0,int(sight.distance)/32),int(tables.size())-1);
+    // Doubled sight picks the table of the unit's own sight; its rays are scaled.
+    const int sightPx=int(sight.distance)/std::max(1,int(sight.scale));
+    const int r=std::min(std::max(0,sightPx/32),int(tables.size())-1);
     return r>=1 ? &tables[size_t(r-1)] : nullptr;
 }
 
@@ -142,9 +148,22 @@ void retailTrueSightCells(const RetailSightFootprint& sight,int width,int height
     const RetailLosTable* table=retailLosTable(sight);
     if (!table) return;
     const int e=sight.eyeHeight;
+    // DOUBLE SIGHT (scale 2, engine option): every cell of the ray at twice its
+    // offset, with the midpoint of each pair of neighbours between them, so the
+    // doubled ray is as continuous as the authored one and twice as long.
+    thread_local std::vector<std::array<int,2>> steps;
     for (const RetailLosRay& ray:*table) {
+        steps.clear();
+        if (sight.scale>1) {
+            std::array<int,2> prev{0,0};
+            for (const auto& c:ray) {
+                steps.push_back({prev[0]+c[0],prev[1]+c[1]});   // the midpoint: (2·prev + 2·c) / 2
+                steps.push_back({2*c[0],2*c[1]});
+                prev={c[0],c[1]};
+            }
+        } else for (const auto& c:ray) steps.push_back({c[0],c[1]});
         int32_t bestH=-1,bestD=0,j=1;
-        for (const auto& step:ray) {
+        for (const auto& step:steps) {
             const int x=sight.x+step[0],z=sight.z+step[1];
             if (uint32_t(x)<uint32_t(width) && uint32_t(z)<uint32_t(height)) {
                 const auto h=heightAt(x,z);
@@ -163,8 +182,26 @@ struct RetailSightVisitAll {
     bool operator()(int, int, bool) const { return true; }
 };
 
-// 0x481840..0x481868: the Circular mask frame for a sight distance.
+// 0x481840..0x481868: the Circular mask frame for a sight distance. With DOUBLE
+// SIGHT (scale 2, engine option) a sight past the largest mask (14 cells) gets a
+// disc of its own radius, sight/32 cells (at most 28), drawn as the fallback
+// masks are: dx^2 + dz^2 <= r^2 + r.
+inline const RetailVisMask& retailBigDisc(int r) {
+    static const auto discs=[] {
+        std::array<RetailVisMask,14> d;   // radius 15..28
+        for (int k=0;k<14;++k) {
+            const int rr=15+k,n=2*rr+1;
+            RetailVisMask& m=d[size_t(k)];
+            m.width=m.height=int16_t(n);m.xoff=m.yoff=int16_t(rr);m.on.assign(size_t(n)*n,0);
+            for (int j=0;j<n;++j) for (int i=0;i<n;++i)
+                m.on[size_t(j)*n+i]=(i-rr)*(i-rr)+(j-rr)*(j-rr)<=rr*rr+rr;
+        }
+        return d;
+    }();
+    return discs[size_t(std::clamp(r,15,28)-15)];
+}
 inline const RetailVisMask& retailSightMask(const RetailSightFootprint& sight) {
+    if (sight.scale>1 && int(sight.distance)/32>14) return retailBigDisc(int(sight.distance)/32);
     return retailVisMaskTable()[size_t(std::clamp(int(sight.distance)/32-5,0,9))];
 }
 // The farthest a footprint reaches from its centre cell, for dirty rectangles.
@@ -173,7 +210,7 @@ inline int retailSightRadius(const RetailSightFootprint& sight) {
         int reach=0;
         if (const RetailLosTable* t=retailLosTable(sight))
             for (const auto& ray:*t) for (const auto& c:ray) reach=std::max({reach,std::abs(int(c[0])),std::abs(int(c[1]))});
-        return reach;
+        return reach*std::max(1,int(sight.scale));
     }
     const RetailVisMask& m=retailSightMask(sight);
     return std::max({int(m.xoff),int(m.width)-1-m.xoff,int(m.yoff),int(m.height)-1-m.yoff});

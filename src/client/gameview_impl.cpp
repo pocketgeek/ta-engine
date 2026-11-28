@@ -1674,6 +1674,8 @@
                     ta::sim::RetailSightFootprint sight;
                     sight.distance = int16_t(world_.sightDistance(*u.type));
                     sight.sightHeight = u.type->sightHeight;
+                    sight.trueLos = world_.trueLos();
+                    sight.scale = world_.doubleSight() ? 2 : 1;
                     ta::sim::retailUpdateSight(sight, u.x, u.type->canFly ? u.flightY : u.groundY, u.z,
                         uint8_t(world_.mapSea()), false, w, h, 0,
                         [&](int x, int z) { return fogPreviewHeights_[size_t(z) * w + x]; },
