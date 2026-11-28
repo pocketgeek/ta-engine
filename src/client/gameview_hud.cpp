@@ -1348,7 +1348,8 @@ bool GameView::idleBuilder(const UnitR& u) const {
 
 // IDLE BUILDERS (Options > Interface): a column at the right edge of the play area,
 // one portrait per type of idle builder or factory of yours (a count when there are
-// several), sized like the build menu's icons (bottom bar height, 4:3) times its own
+// several), sized like the build menu's icons (bottom bar height; square, as TA's
+// unitpics are 64 x 64, each framed tight round its picture) times its own
 // IDLE BUILDERS SCALE, and shrunk to fit the column's height. Top, middle or bottom of the
 // play area; at the bottom it stays above a build menu that reaches under it.
 void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
@@ -1374,7 +1375,7 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
         return a.type->name < b.type->name;
     });
     const float edge = ta::buildrow::kEdge;
-    const float unitH = kBarHBase * uiScale_ - 10.0f, unitW = unitH * (4.0f / 3.0f), unitGap = 6.0f;
+    const float unitH = kBarHBase * uiScale_ - 10.0f, unitW = unitH, unitGap = 6.0f;
     // The column's room: the play area's height, above any build menu whose box
     // reaches under the column.
     // In the world view's coordinates (drawn through its viewport): winW is its width.
@@ -1401,7 +1402,7 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
     (void)winH;
     for (int i = 0; i < n; ++i) {
         auto& icon = idleRects_[size_t(i)];
-        SDL_FRect r{x, y0 + float(i) * (ih + gap), iw, ih};
+        SDL_FRect r{x, y0 + float(i) * (ih + gap), iw, ih};   // narrowed to the picture below
         icon.r = r;
         SDL_Texture* tex = iconFor(icon.type->id);
         if (!tex) tex = modelIconTex(icon.type->id, playerColorSlot(me), !isStructure(icon.type));
@@ -1412,6 +1413,8 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
                 SDL_FRect dst{r.x + (r.w - float(tw) * fit) / 2, r.y + (r.h - float(th) * fit) / 2,
                               float(tw) * fit, float(th) * fit};
                 SDL_RenderCopyF(ren_, tex, nullptr, &dst);
+                r = dst;   // the frame, the hover and the count hug the picture
+                icon.r = r;
             }
         } else {
             SDL_SetRenderDrawColor(ren_, 60, 55, 50, 255);
@@ -1429,12 +1432,13 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
             blockText(num, r.x + r.w - nw - 4 * scale, r.y + r.h - 18 * scale, px, {255, 235, 140, 255});
         }
         if (hot) {   // the name, to the left of the column
+            // Readable whatever the column's scale: at least the build menu's text size.
             const std::string tip = icon.type->name;
-            const float px = 2.0f * scale, tw = blockWidth(tip, px);
-            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
-            SDL_FRect tb{r.x - tw - 22, r.y + r.h / 2 - 13 * scale, tw + 12, 26 * scale};
+            const float px = std::max(2.6f, 3.2f * scale), tw = blockWidth(tip, px), th = 7.0f * px;
+            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 215);
+            SDL_FRect tb{r.x - tw - 26, r.y + r.h / 2 - th / 2 - 7, tw + 16, th + 14};
             SDL_RenderFillRectF(ren_, &tb);
-            blockText(tip, r.x - tw - 16, r.y + r.h / 2 - 9 * scale, px, {255, 240, 190, 255});
+            blockText(tip, r.x - tw - 18, r.y + r.h / 2 - th / 2, px, {255, 240, 190, 255});
         }
     }
 }

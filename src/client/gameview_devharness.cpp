@@ -3273,6 +3273,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             check(ordered,"commander, mobile builders, factories, each basic (cheap) to advanced");
             const SDL_FRect mid=idleRects_.front().r;
             check(mid.x+mid.w<=float(mapViewW(W)) && mid.x>float(mapViewW(W))/2,"the column sits at the right of the play area");
+            check(std::abs(mid.w-mid.h)<1.0f,"each frame hugs its square unitpic");
             const std::vector<int> kings=iconOf("armcom")->ids;
             check(idleBuilderClick(mid.x+mid.w/2,mid.y+mid.h/2,true) && selection_==std::vector<int>{kings.front()},
                   "a click selects the first idle commander");
