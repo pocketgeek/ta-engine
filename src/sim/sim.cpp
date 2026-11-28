@@ -11286,6 +11286,43 @@ bool World::canPlaceSite(const UnitType* type, float x, float z, int player) con
     return placementCheck(type,x,z,player,nullptr,nullptr,0,false,-1,true);
 }
 
+bool World::yardTerrainFits(const UnitType* type, float x, float z) const {
+    if (!type || heights_.empty()) return false;
+    const Fixed sx=footprintSnap(Fixed::fromFloat(x),type->footX), sz=footprintSnap(Fixed::fromFloat(z),type->footZ);
+    const int cx=footprintOrigin(sx,type->footX), cz=footprintOrigin(sz,type->footZ);
+    if (type->isStructure() && (cx < 1 || cz < 1 || cx + type->footX >= terW_ || cz + type->footZ >= terH_)) return false;
+    if (type->yardMap.empty() || type->yardMap.find_first_not_of(".CGOYcfowy") != std::string::npos) return true;
+    // As placementCheck's taYard branch (0x47d302..0x47d7f0), less the blockers.
+    const int sea = seaLevel_;
+    int lo = 255, hi = 0, wHi = 0;
+    for (int j = 0; j < type->footZ; ++j)
+        for (int i = 0; i < type->footX; ++i) {
+            const char cell = type->yardMap[size_t(j) * type->footX + i];
+            const bool land = cell=='y' || cell=='O' || cell=='c' || cell=='o' || cell=='f' || cell=='G';
+            const bool water = cell=='Y' || cell=='C' || cell=='w';
+            if (!land && !water) continue;
+            const int gx = cx + i, gz = cz + j;
+            int cellHi = 0, cellLo = 255;
+            for (int dz = 0; dz < 2; ++dz)
+                for (int dx = 0; dx < 2; ++dx) {
+                    const int h = heights_[size_t(std::min(gz + dz, terH_ - 1)) * terW_ + size_t(std::min(gx + dx, terW_ - 1))];
+                    cellHi = std::max(cellHi, h); cellLo = std::min(cellLo, h);
+                }
+            if (land) { lo = std::min(lo, cellLo); hi = std::max(hi, cellHi); }
+            if (water) wHi = std::max(wHi, cellHi);
+        }
+    int base;
+    if (hi < lo) base = uint8_t(sea - type->waterline);
+    else {
+        if (hi - lo > int(type->landMaxSlope)) return false;
+        base = lo;
+    }
+    if (wHi > base) return false;
+    if (lo < sea - int(type->landMaxWaterDepth)) return false;
+    if (std::max(hi, wHi) > sea - int(type->landMinWaterDepth)) return false;
+    return true;
+}
+
 bool World::canPlaceOrder(const UnitType* type, float x, float z, int player, int builderId) const {
     if (!type) return false;
     // The site the order stores (makeBuildOrder), which is the one startBuild
@@ -11657,7 +11694,9 @@ void World::queueBuild(int builderId, const UnitType* type, float x, float z, bo
             if (!old || !old->alive() || !old->type || old->player!=b->player) continue;
             if (old->type->extractsMetal<=0 || old->type->extractsMetal>=type->extractsMetal) continue;
             // The site takes the old one's place (startBuild tests the site again,
-            // with the old one gone, when this order's turn comes).
+            // with the old one gone, when this order's turn comes) -- if the ground
+            // there can take the new one at all.
+            if (!yardTerrainFits(type,x,z)) return false;
             const int ox=footprintOrigin(old->x,old->type->footX),oz=footprintOrigin(old->z,old->type->footZ);
             if (sx<ox+old->type->footX && ox<sx+type->footX && sz<oz+old->type->footZ && oz<sz+type->footZ) return true;
         }

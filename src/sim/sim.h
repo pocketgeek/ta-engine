@@ -2499,6 +2499,10 @@ public:
     // nor does the conjurer `builderId` itself on a mobile type's site: it
     // has left the site before it places it. Engine deviation: retail's
     // cursor test (429787 -> 507400) refuses any visible body.
+    // TotalA.exe 0x47d2e0's terrain half alone: the map-border bound and a TA yard
+    // map's slope and water limits over the snapped site, no units or features.
+    // Whether the ground could take `type` once whatever stands there is gone.
+    bool yardTerrainFits(const UnitType* type, float x, float z) const;
     bool canPlaceOrder(const UnitType* type, float x, float z, int player, int builderId = 0) const;
     // Observational whole-map query at cell centers. Returns empty on cancellation.
     // Reuses placementCheck with spatially bounded occupant candidates.

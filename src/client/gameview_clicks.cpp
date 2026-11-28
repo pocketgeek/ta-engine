@@ -405,6 +405,9 @@ namespace {
         if (!type || type->extractsMetal <= 0) return 0;
         const UnitR* b = frameUnitP(builderId);
         if (!b || !b->type || !b->type->canReclaim || !b->type->canMove || b->type->isStructure()) return 0;
+        // Only where the ground takes the better one (its slope and water limits):
+        // a deposit some extractors fit and it does not keeps its old extractor.
+        if (!liveWorld()->yardTerrainFits(type, x, z)) return 0;
         const float hx = type->footX * 8.0f, hz = type->footZ * 8.0f;
         for (const UnitR* u : front().live) {
             if (!u->alive() || !u->type || u->player != b->player || u->underConstruction) continue;

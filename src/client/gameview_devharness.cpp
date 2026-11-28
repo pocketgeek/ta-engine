@@ -3268,6 +3268,18 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             check(gone,"the old extractor is gone");
             check(built,"an armmoho stands (or is rising) on the deposit");
+            // A deposit a basic extractor fits and a Moho does not: refused, the old one kept.
+            const auto* mex=registry_.find("armmex");
+            const ta::client::metalspots::Spot* poor=nullptr;
+            for (const auto& sp:spots)
+                if (&sp!=spot && canPlaceLocked(mex,sp.x,sp.z) && !world_.yardTerrainFits(moho,sp.x,sp.z)) {poor=&sp;break;}
+            if (poor) {
+                const int keep=spawn("armmex",poor->x,poor->z,0,me);
+                for (int i=0;i<3;++i) {writableWorld().tick(1.f/30);captureFrame();}
+                selection_={ack};placing_=moho;
+                check(!placeMetalAt(poor->x,poor->z,ta::net::kQueueReplace) &&
+                      world_.unit(keep) && world_.unit(keep)->alive(),"a deposit the Moho cannot stand on keeps its extractor");
+            } else std::fprintf(stderr,"(no deposit here takes a basic extractor but not a Moho)\n");
             std::fprintf(stderr,"PASS: mex upgrade\n");
             return;
         }
