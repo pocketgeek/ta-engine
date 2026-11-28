@@ -168,8 +168,67 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
         baseOf[si] = base;
         return base;
     };
-    const uint16_t filler = uint16_t(addSection(pool[0]) + all[pool[0]].tileMap[0]);
-    std::fill(m.tileIndex.begin(), m.tileIndex.end(), filler);
+    // Open ground: not one tile over and over but a random mix of the family's flat
+    // tiles -- blocks of its sections whose four height samples sit within 2 of the
+    // border, so the ground stays level -- from up to 12 sections, no tile twice beside
+    // itself. A family with none falls back to its first section's corner tile.
+    std::vector<uint16_t> plain;
+    {
+        std::vector<size_t> order(pool);
+        for (size_t i = order.size(); i > 1; --i) std::swap(order[i - 1], order[size_t(roll(rng, i))]);
+        int sections = 0;
+        for (size_t si : order) {
+            if (sections >= 12) break;
+            const Sct& c = all[si];
+            std::vector<int> blocks;
+            for (int y = 0; y < c.h; ++y)
+                for (int x = 0; x < c.w; ++x) {
+                    bool flat = true;
+                    for (int dz = 0; dz < 2 && flat; ++dz)
+                        for (int dx = 0; dx < 2 && flat; ++dx)
+                            flat = std::abs(int(c.heights[size_t(y * 2 + dz) * c.w * 2 + x * 2 + dx]) - border) <= 2;
+                    if (flat) blocks.push_back(y * c.w + x);
+                }
+            if (blocks.size() < 4) continue;
+            const uint16_t base = addSection(si);
+            for (int b : blocks) plain.push_back(uint16_t(base + c.tileMap[size_t(b)]));
+            ++sections;
+        }
+        std::sort(plain.begin(), plain.end());
+        plain.erase(std::unique(plain.begin(), plain.end()), plain.end());
+        // Only tiles near the mix's usual brightness: a darker or lighter variant
+        // stands out as a square on open ground.
+        if (pal.size() >= 1024 && plain.size() > 8) {
+            std::vector<std::pair<int, uint16_t>> lum;
+            for (uint16_t t : plain) {
+                int sum = 0;
+                for (int i = 0; i < 1024; ++i) {
+                    const uint8_t c = m.tileGfx[size_t(t) * 1024 + size_t(i)];
+                    sum += pal[size_t(c) * 4] * 3 + pal[size_t(c) * 4 + 1] * 6 + pal[size_t(c) * 4 + 2];   // RGBA entries
+                }
+                lum.push_back({sum / 1024, t});
+            }
+            std::vector<int> v;
+            for (const auto& [l, t] : lum) v.push_back(l);
+            std::nth_element(v.begin(), v.begin() + long(v.size() / 2), v.end());
+            const int median = v[v.size() / 2];
+            std::vector<uint16_t> kept;
+            for (const auto& [l, t] : lum) if (std::abs(l - median) * 100 <= median * 8) kept.push_back(t);
+            if (kept.size() >= 4) plain = std::move(kept);
+        }
+    }
+    if (plain.empty()) plain.push_back(uint16_t(addSection(pool[0]) + all[pool[0]].tileMap[0]));
+    for (int by = 0; by < m.blocksY; ++by)
+        for (int bx = 0; bx < m.blocksX; ++bx) {
+            uint16_t t = plain[size_t(roll(rng, plain.size()))];
+            for (int tries = 0; tries < 4 && plain.size() > 2; ++tries) {
+                const bool left = bx > 0 && m.tileIndex[size_t(by) * m.blocksX + bx - 1] == t;
+                const bool up = by > 0 && m.tileIndex[size_t(by - 1) * m.blocksX + bx] == t;
+                if (!left && !up) break;
+                t = plain[size_t(roll(rng, plain.size()))];
+            }
+            m.tileIndex[size_t(by) * m.blocksX + bx] = t;
+        }
     // Starts: evenly round the map, inset from the edge.
     const int n = std::clamp(int(p.players), 2, kMaxPlayers);
     for (int i = 0; i < n; ++i) {
