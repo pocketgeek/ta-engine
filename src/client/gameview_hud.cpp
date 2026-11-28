@@ -665,11 +665,24 @@ namespace {
     void GameView::drawMinimapMarkers(const SDL_FRect& r, float mapW, float mapH) {
         if (!radLogosLoaded_) {
             radLogosLoaded_ = true;
-            for (int i = 0; i < 10; ++i) {
-                radLogo_[size_t(i)] = ta::gafTexture(ren_, vfs_, "fx", "radlogo", i);
-                nucLogo_[size_t(i)] = ta::gafTexture(ren_, vfs_, "fx", "nuclogo", i);
-            }
-            radLogoHigh_ = ta::gafTexture(ren_, vfs_, "fx", "radlogohigh", 0);
+            // In the game palette (palettes/palette.pal), as the minimap draws them: the
+            // GUI palette gafTexture uses maps the player-colour entries alike, which
+            // made every dot one colour. Point-sampled: 4 x 4 art scaled up stays crisp.
+            try {
+                const std::string palPath = "palettes/palette.pal", gafPath = "anims/fx.gaf";
+                const auto pal = ta::gaf::Palette::fromBytes(vfs_.read(palPath), palPath);
+                for (auto& sq : ta::gaf::load(vfs_.read(gafPath), pal, -1, gafPath)) {
+                    auto make = [&](size_t k) -> SDL_Texture* {
+                        if (k >= sq.frames.size() || !sq.frames[k].width) return nullptr;
+                        SDL_Texture* t = ta::art::makeTexture(ren_, sq.frames[k].rgba, sq.frames[k].width, sq.frames[k].height);
+                        if (t) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
+                        return t;
+                    };
+                    if (sq.name == "radlogo") for (size_t i = 0; i < 10; ++i) radLogo_[i] = make(i);
+                    else if (sq.name == "nuclogo") for (size_t i = 0; i < 10; ++i) nucLogo_[i] = make(i);
+                    else if (sq.name == "radlogohigh") radLogoHigh_ = make(0);
+                }
+            } catch (const std::exception& e) { std::fprintf(stderr, "minimap logos: %s\n", e.what()); }
         }
         if (!radLogo_[0]) return;
         const float px = std::max(1.0f, std::round(std::min(r.w, r.h) / 128.0f));
