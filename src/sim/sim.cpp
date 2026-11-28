@@ -8126,9 +8126,9 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
     // list is the 7-tick result every scan of the player shares, so a scan
     // costs the list's length and no grid cells. The list is id-sorted (see
     // rebuildVisibleLists), the order the grid gather used to sort into.
-    // 411ae0's fallback to list +0x25 when nothing is found and the owner has
-    // a live, switched-on istargetingupgrade unit (411bb4..411bd4, 413290,
-    // 4118de..4118f7) is not ported: no shipped FBI sets istargetingupgrade.
+    // TotalA.exe 0x40ae6b..0x40b0b8: when nothing is found and the owner has a
+    // switched-on Targeting Facility (+0x79), the same gather runs over the radar
+    // list (+0x15): radar contacts become targets (see rebuildVisibleLists).
     // The candidates live in a reused scratch vector: the mission scans call
     // this far more often than the sweep.
     std::vector<int>& candidates=pickCandidates_;
@@ -8140,6 +8140,13 @@ int World::retailSelectTarget(Unit& u,int slot,bool sweep) {
         if (retailCentreDist2(u,*e)>radius2) continue;
         candidates.push_back(id);
     }
+    if (candidates.empty() && players_[size_t(u.player)].targeting)
+        for (const int id:players_[size_t(u.player)].radarEnemies) {
+            const Unit* e=unit(id);
+            if (!e || !e->alive() || e->hp<=Fixed() || !e->type || e->embarked() || allied(e->player,u.player)) continue;
+            if (retailCentreDist2(u,*e)>radius2) continue;
+            candidates.push_back(id);
+        }
     int32_t best=INT32_MAX,bestBad=INT32_MAX;
     int pick=0,pickBad=0;
     const bool mobile=!u.type->isStructure();
@@ -16308,6 +16315,53 @@ void World::rebuildVisibleLists(int player) {
     // units_ is id order in practice; sort so lookups may binary-search.
     std::sort(owner.visibleEnemies.begin(),owner.visibleEnemies.end());
     std::sort(owner.visibleAllies.begin(),owner.visibleAllies.end());
+    // TotalA.exe 0x40abed..0x40ac06: a finished own unit whose type has
+    // istargetingupgrade (def +0x241 bit 10) and is activated (+0x10e bit 0) sets
+    // +0x79. Only then does the picker read the radar list, so only then is it built.
+    owner.targeting=false;
+    owner.radarEnemies.clear();
+    for (const auto& u:units_)
+        if (u.player==player && u.alive() && u.hp>Fixed() && u.type && u.type->targetingUpgrade &&
+            !u.underConstruction && !u.embarked() && retailActivated(u)) {owner.targeting=true;break;}
+    if (!owner.targeting) return;
+    // List +0x15 (0x40ab3f): hostile units with +0x110 bit 8 -- a radar contact
+    // or in sight (0x467440, docs/retail-fog.md 4.1). Radar: within radardistance
+    // + 2 * height of a switched-on radar the player's sight is shared with (its
+    // own; an ally's by the engine's D2 rule), not stealth, top at or above the
+    // sea, and outside every other player's switched-on radar jammer (an ally's
+    // too). (dx^2 >> 32) + (dz^2 >> 32) < R^2 on 16.16 positions.
+    struct Disc {int64_t x,z,r2;};
+    std::vector<Disc> radars,jammers;
+    for (const auto& u:units_) {
+        if (!u.alive() || !u.type || u.underConstruction || u.embarked() || !retailActivated(u)) continue;
+        if (u.type->radar && (viewShareMask(u.player)>>player & 1)) {
+            const int32_t ypx=int32_t(int16_t(uint32_t((u.type->canFly?u.flightY:u.groundY).v)>>16));
+            const int64_t r=int64_t(radarDistance(*u.type))+2*std::max(0,ypx);
+            radars.push_back({u.x.v,u.z.v,r*r});
+        }
+        if (u.type->radarJam && u.player!=player) {
+            const int64_t r=u.type->radarJam;
+            jammers.push_back({u.x.v,u.z.v,r*r});
+        }
+    }
+    for (const auto& u:units_) {
+        if (!u.alive() || u.hp<=Fixed() || !u.type || allied(player,u.player) || isNeutralPlayer(u.player)) continue;
+        bool contact=std::binary_search(owner.visibleEnemies.begin(),owner.visibleEnemies.end(),u.id);
+        if (!contact && !u.type->stealth && !u.embarked()) {
+            const Fixed y=u.type->canFly?u.flightY:u.groundY;
+            const int topPx=int16_t(uint32_t(y.v+u.type->modelTop)>>16);
+            const auto within=[&](const Disc& d) {
+                const int64_t dx=int64_t(u.x.v)-d.x,dz=int64_t(u.z.v)-d.z;
+                return ((dx*dx)>>32)+((dz*dz)>>32)<d.r2;
+            };
+            if (topPx>=seaLevel_) {
+                for (const auto& d:radars) if (within(d)) {contact=true;break;}
+                if (contact) for (const auto& d:jammers) if (within(d)) {contact=false;break;}
+            }
+        }
+        if (contact) owner.radarEnemies.push_back(u.id);
+    }
+    std::sort(owner.radarEnemies.begin(),owner.radarEnemies.end());
 }
 
 SimPool& World::simPool() {
@@ -22015,6 +22069,7 @@ uint64_t World::stateHash() const {
         mix(t.visibleRefresh);
         mix(t.visibleEnemies.size());for (int id:t.visibleEnemies) mix(uint32_t(id));
         mix(t.visibleAllies.size());for (int id:t.visibleAllies) mix(uint32_t(id));
+        mix(t.targeting);mix(t.radarEnemies.size());for (int id:t.radarEnemies) mix(uint32_t(id));
         // Team assignment drives sim behaviour (splash/acquire/auras) but is set
         // from setup -- fold it in so a lobby/config mismatch faults immediately
         // as a desync instead of diverging mysteriously.

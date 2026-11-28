@@ -2163,6 +2163,13 @@ struct Player {
     // so a target stays a candidate up to 6 ticks after it leaves sight.
     // Hashed.
     std::vector<int> visibleEnemies, visibleAllies;
+    // TotalA.exe 0x40aa60: +0x79, the player owns a finished, switched-on
+    // istargetingupgrade unit (a Targeting Facility); and list +0x15 as the
+    // picker 0x40ad80 reads it, the hostile units that are this player's radar
+    // contacts or in its sight -- built only while `targeting` is set, the one
+    // time the picker reads it. Hashed.
+    bool targeting = false;
+    std::vector<int> radarEnemies;
     uint32_t visibleRefresh = 0;
     bool  defeated = false;   // no living units; set by the sim's win check
     int32_t defeatedAt = -1;  // TICK when `defeated` first went true (-1 = still in)

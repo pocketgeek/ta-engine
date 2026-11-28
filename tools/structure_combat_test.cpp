@@ -159,8 +159,50 @@ int siteCase(const char* data) {
     return quiet && fires?0:1;
 }
 } // namespace
+// TotalA.exe 0x40ad80: with nothing in sight in range, a player owning a finished,
+// switched-on Targeting Facility (istargetingupgrade, +0x79) picks from its radar
+// contacts (list +0x15). An Arm Big Bertha with a radar tower beside it, a Core
+// solar collector out of sight but on radar at 1200 px, the gun on Fire At Will
+// (its type's own standing order is Hold Fire): without the facility the gun
+// never fires; with it, it shells the collector.
+int targetingCase(const char* data) {
+    auto vfs=ta::hpi::mountRetailRoot(data);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
+    const auto* bertha=registry.find("armbrtha");const auto* radar=registry.find("armrad");
+    const auto* facility=registry.find("armtarg");const auto* victim=registry.find("corsolar");
+    if(!bertha || !radar || !facility || !victim){std::printf("FAIL missing armbrtha, armrad, armtarg or corsolar\n");return 1;}
+    const float distance=1200.0f;
+    if(bertha->weapons.empty() || distance>bertha->weapons[0].range || float(radar->radar)<distance+100)
+        {std::printf("FAIL the case's distance is not in the gun's and the radar's reach\n");return 1;}
+    int failures=0;
+    for(const bool withFacility:{false,true}) {
+        ta::sim::World w;
+        w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,64);
+        w.buildNavClasses(registry);
+        const int gun=w.spawn(bertha,2048,4096,0,0);
+        w.unit(gun)->fireState=2;   // armbrtha ships StandingFireOrder=0 (Hold Fire)
+        w.setStartResources(0,1e6f,1e6f);   // 1500 energy a shot
+        w.spawn(radar,2048,4096+160,0,0);
+        if(withFacility)w.spawn(facility,2048-160,4096,0,0);
+        const int target=w.spawn(victim,2048+distance,4096,0,1);
+        const auto full=ta::sim::Fixed::fromInt(victim->maxHp);
+        long damage=0;
+        for(int tick=0;tick<1800;++tick) {
+            w.tick(1.f/30.f);
+            if(!w.unit(target))break;
+            damage+=victim->maxHp-w.unit(target)->hp.floorInt();
+            w.unit(target)->hp=full;
+        }
+        const bool ok=withFacility ? damage>0 : damage==0;
+        failures+=!ok;
+        std::printf("%s armbrtha %s a targeting facility deals %ld to a radar-only corsolar in 60 s\n",
+                    ok?"PASS":"FAIL",withFacility?"with":"without",damage);
+    }
+    return failures?1:0;
+}
 int main(int argc,char** argv) {
     if(argc==3 && std::strcmp(argv[2],"reach")==0)return reachCases(argv[1]);
+    if(argc==3 && std::strcmp(argv[2],"targeting")==0)return targetingCase(argv[1]);
     if(argc==3 && std::strcmp(argv[2],"site")==0)return siteCase(argv[1]);
     if(argc!=2)return 2;
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);

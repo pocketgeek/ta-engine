@@ -229,7 +229,15 @@ instead of the counts: 0x465ac0 → 0x408090, 0x4658e0, 0x49bf2f.
 ### 4.2 What the bits do
 Bit 8 or 9 → minimap dot (§5). Bit 9 lets a submerged unit pass 0x465ac0, so a
 submerged unit is drawn when it is a sonar contact **and** in LOS. The bits
-feed the hover text. Targeting reads `(+0x110>>8) & mask` (0x40ab3f) [I].
+feed the hover text. Targeting reads `(+0x110>>8) & mask` (0x40ab3f) [S]: the
+list rebuild 0x40aa60 puts every hostile unit with bit 8 (radar contact or in
+sight) on player list `+0x15`, and sets `+0x79` when the player owns a finished,
+activated `istargetingupgrade` unit (Targeting Facility). The target gather
+0x40ad80 (under the picker 0x40b7b0, used by the fire-at-will sweep and the
+standby scan) takes the in-sight list `+5` first; **only when that yields nothing
+in range and `+0x79` is set** does it gather from `+0x15` instead (0x40ae6b..
+0x40b0b8, same range / live / not-dying checks). So with a facility every unit
+fires at radar contacts in its reach, preferring anything it can see.
 
 ## 5. Minimap
 
