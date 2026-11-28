@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     for (const auto& h:heights) {mixBits(float(h[0]));mixBits(float(h[1]));}
     for (int i=0;i<512;++i) {
         ta::sim::RetailSightFootprint sight{int16_t(i%16-2),int16_t(i/16%18-2),
-            i%385-64,int16_t(i*17%512),uint8_t(i),false};
+            int16_t(i%385-64),int16_t(i*17%512),uint8_t(i),false};
         ta::sim::retailSightFootprint(sight,true,true,12,14,uint8_t(i%16),
             [&](int x,int z){return heights[size_t(z)*12+x];},
             [](int x,int z,int delta,uint16_t mask){

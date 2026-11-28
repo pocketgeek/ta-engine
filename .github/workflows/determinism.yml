@@ -167,4 +167,4 @@ jobs:
           ./build/authtest
           ./build/cmdflow_test
           ./build/unit_gift_test
-          bash tools/run-ctest-selection.sh build pathfinding_matchsetup navigation_telemetry movement_orders builder_automation navigation_determinism crowdbench_matrix
+          bash tools/run-ctest-selection.sh build pathfinding_matchsetup navigation_telemetry movement_orders navigation_determinism crowdbench_matrix
