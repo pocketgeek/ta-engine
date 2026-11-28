@@ -360,6 +360,10 @@ void turnRate() {
 sim::UnitType siteType() {
     sim::UnitType t;t.id="keep";t.maxHp=3000;t.footX=t.footZ=4;t.sight=40;t.sightHeight=24;
     t.buildTime=100000;   // an unattended site decays slowly instead of vanishing
+    // Standing on the ground (as gunner and dummy): with no support a synthetic
+    // type keeps y 0, under this world's sea (20), where retail's visibility test
+    // (TotalA.exe 0x465ac0) hides it from everyone but sonar.
+    t.upright=true;
     return t;
 }
 void sites() {
