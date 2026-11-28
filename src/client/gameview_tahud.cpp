@@ -260,23 +260,17 @@ std::string upperStr(std::string s) {
     // its metal make / use "+%.1f" / "-%.1f" and energy "+%.0f" / "-%.0f"
     // (0x46b16d..0x46b2b3); then the unit under the pointer, its name and health
     // (0x46b492..0x46b55f). At UI SCALE x STATS SCALE.
-    // The selection, at the bottom centre of the view (over the build menu when one
-    // is up). One unit: its picture, emblem and name, health, kill count, and for one
+    // The selection, in the gap between the top bar's metal and energy halves,
+    // hanging from it (taGapRect_; ours). One unit: its picture, emblem and name, health, kill count, and for one
     // of the viewed player's its metal / energy made and used. Several: one portrait
     // per type with how many (drawSelPortraits; a click keeps that type, Shift+click
     // drops it). The unit under the pointer gets no readout.
     void GameView::renderTaSelection(int winW, int winH) {
-        selPanelTop_ = 0;
-        if (!taConsole_ || !taTopBar_ || selection_.empty()) return;
-        const float edge = ta::buildrow::kEdge, areaW = float(mapViewW(winW));
-        float bottom = (buildMenuRect_.w > 0 ? buildMenuRect_.y : float(winH)) - edge;
-        // With a build menu filling the view there is no room above it: the panel then
-        // hangs from under the resource bar instead (raise lifts `bottom` to fit `h`).
-        const float minTop = (taResourceRect_.h > 0 ? taResourceRect_.y + taResourceRect_.h : 0.0f) + edge;
-        const auto fit = [&](float h) { if (bottom - h < minTop) bottom = minTop + h; };
+        (void)winW; (void)winH;
+        const SDL_FRect slot = taGapRect_;
+        if (!taConsole_ || !taTopBar_ || slot.w <= 0 || selection_.empty()) return;
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         const auto panel = [&](const SDL_FRect& box) {
-            selPanelTop_ = box.y;
             SDL_SetRenderDrawColor(ren_, 14, 12, 10, 215);
             SDL_RenderFillRectF(ren_, &box);
             SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
@@ -286,20 +280,21 @@ std::string upperStr(std::string s) {
             namespace sp = ta::selportraits;
             const auto groups = selTypeGroups();
             if (groups.size() > 1 || (groups.size() == 1 && groups.front().ids.size() > 1)) {
-                const float P = 64.0f * uiScale_, gap = 4.0f * uiScale_, room = std::max(0.0f, areaW * 0.8f - P);
+                // In the gap, hanging from the top bar: the portraits shrink (or go to two
+                // rows) to its width.
+                const float tpx0 = std::clamp(slot.w / 230.0f, 1.0f, std::max(1.0f, 1.3f * uiScale_));
+                const float P = std::min(64.0f * uiScale_, slot.w - 12), gap = 4.0f * uiScale_, room = std::max(0.0f, slot.w - 12 - P);
                 const sp::Layout L = sp::layout(std::max(2, int(groups.size())), P, P, gap, room, kSelPortraitMinScale);
                 const float stripW = L.width + P;
-                fit(P + 12 + std::max(1.4f, 1.3f * uiScale_) * 7 + 12);
-                const SDL_FRect primary{std::round(areaW / 2 - stripW / 2 + L.width), bottom - P - 6, P, P};
+                const SDL_FRect primary{std::round(slot.x + slot.w / 2 - stripW / 2 + L.width), slot.y + 6 + tpx0 * 7 + 12, P, P};
                 // Over the strip, as tak-engine's info bar: the squad label when the
                 // selection is exactly one group or formation ("GROUP 3", "FORMATION 3"),
                 // and the selection's total health.
                 const std::string squad = selSquadLabel();
                 const auto tot = selTotals();
-                const float tpx = std::max(1.4f, 1.3f * uiScale_), headH = 7 * tpx + 12;
-                fit(P + 12 + headH);
+                const float tpx = tpx0, headH = 7 * tpx + 12;
                 const float left = primary.x - L.width;
-                panel({left - 6, primary.y - 6 - headH, stripW + 12, P + 12 + headH});
+                panel({slot.x, slot.y, slot.w, P + 12 + headH});
                 float hx = left;
                 if (!squad.empty()) {
                     blockText(squad, hx, primary.y - headH, tpx, {120, 240, 130, 255});
@@ -330,7 +325,7 @@ std::string upperStr(std::string s) {
         }
         const UnitR* u = frameUnitP(selection_.front());
         if (!u || !u->alive() || !u->type) return;
-        const float k = statsScaleEff();
+        const float k = slot.w / 294.0f;   // taGapWidth's units: the panel fills the gap
         const float fh = float(std::max(8, taConsole_->height()));
         const float pic = 64, textW = 210, logo = std::max(fh, 16.0f);
         const bool own = u->player == hudPlayer();
@@ -339,8 +334,7 @@ std::string upperStr(std::string s) {
         const float textH = logo + 3 + 6 + (fh + 2) * ((own ? 2 : 0) + (armed ? 1 : 0));
         const float innerH = std::max(pic, textH), innerW = pic + 8 + textW;
         const float boxW = (innerW + 12) * k, boxH = (innerH + 12) * k;
-        fit(boxH);
-        const SDL_FRect box{std::round(areaW / 2 - boxW / 2), bottom - boxH, boxW, boxH};
+        const SDL_FRect box{slot.x, slot.y, std::max(boxW, slot.w), boxH};   // hanging from the top bar's gap
         panel(box);
         ta::GuiLayout F;
         F.scale = k;
@@ -410,10 +404,14 @@ std::string upperStr(std::string s) {
     void GameView::renderTaResourceBar(int winW, int winH) {
         (void)winH;
         const auto& s = ta::sides::at(taFrameSide_);
-        constexpr float kArtX = 129, kArtW = 640 - kArtX, kArtH = 32;
+        // Split at art x 400, between the metal half (logo, METAL*, to 395) and the
+        // energy half (ENERGY*, from 400): the selection panel sits in the gap (ours).
+        constexpr float kArtX = 129, kArtW = 640 - kArtX, kArtH = 32, kSplit = 400;
         const float areaW = float(mapViewW(winW));
-        const float sc = std::max(0.1f, std::min(uiScale_ * resourceBarScale_, areaW / kArtW));
-        const float barW = kArtW * sc, barH = kArtH * sc;
+        const float gapW0 = std::min(taGapWidth(), areaW * 0.42f);   // the panel scales to it
+        const float sc = std::max(0.1f, std::min(uiScale_ * resourceBarScale_, (areaW - gapW0) / kArtW));
+        const float gapW = std::min(gapW0, std::max(0.0f, areaW - kArtW * sc));
+        const float barW = kArtW * sc + gapW, barH = kArtH * sc;
         const float x = resourceBarAlign_ == 0 ? 0.0f
                       : resourceBarAlign_ == 2 ? areaW - barW
                                                : std::round((areaW - barW) / 2);
@@ -422,17 +420,26 @@ std::string upperStr(std::string s) {
         if (resourceBarAlign_ != 2) topLeft_.place(y, barH);
         if (resourceBarAlign_ != 0) statsBottom_ = y + barH;
         taResourceRect_ = {x, y, barW, barH};
-        ta::GuiLayout L;
+        ta::GuiLayout L;   // the metal half
         L.scale = sc;
         L.ox = x - kArtX * sc;
         L.oy = y;
+        ta::GuiLayout R = L;   // the energy half, past the gap
+        R.ox += gapW;
+        const float splitX = x + (kSplit - kArtX) * sc;
+        taGapRect_ = {splitX, y, gapW, barH};
         {
-            const SDL_Rect clip{int(x), int(y), int(std::ceil(barW)), int(std::ceil(barH))};
-            SDL_RenderSetClipRect(ren_, &clip);
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
             const SDL_FRect back{x, y, barW, barH};
             SDL_RenderFillRectF(ren_, &back);
+            const SDL_Rect left{int(x), int(y), int(std::ceil(splitX - x)), int(std::ceil(barH))};
+            SDL_RenderSetClipRect(ren_, &left);
             taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, kArtX, 0, L);
+            const SDL_Rect right{int(splitX + gapW), int(y), int(std::ceil(x + barW - splitX - gapW)), int(std::ceil(barH))};
+            SDL_RenderSetClipRect(ren_, &right);
+            taTopBar_->drawSequence(s.intGaf, "PANELTOP", 0, kArtX, 0, R);
+            const SDL_Rect all{int(x), int(y), int(std::ceil(barW)), int(std::ceil(barH))};
+            SDL_RenderSetClipRect(ren_, &all);
         }
         // +View: the viewed player's books (TotalA.exe reads +0x2a43 for the bar).
         const int shown = std::clamp(watchOnly() ? hudPlayer() : seenAs(), 0, std::max(0, frameNumPlayers() - 1));
@@ -470,9 +477,11 @@ std::string upperStr(std::string s) {
                 const SDL_FRect d = L.rect(float(r.x), float(r.y), float(r.w - r.x + 1), float(r.h - r.y + 1));
                 SDL_RenderCopyF(ren_, logo, nullptr, &d);
             }
+        const auto half = [&](const char* key) -> const ta::GuiLayout& { return key[0] == 'E' ? R : L; };
         auto bar = [&](const char* key, float value, float cap, SDL_Color c) {
             auto it = taBarRects_.find(key);
             if (it == taBarRects_.end() || cap <= 0) return;
+            const ta::GuiLayout& L = half(key);
             const SDL_Rect r = it->second;
             const float frac = std::clamp(value / cap, 0.0f, 1.0f);
             const SDL_FRect f = L.rect(float(r.x), float(r.y), float(r.w - r.x) * frac, float(std::max(1, r.h - r.y + 1)));
@@ -482,6 +491,7 @@ std::string upperStr(std::string s) {
         auto text = [&](const char* key, const std::string& t, SDL_Color c, bool right) {
             auto it = taBarRects_.find(key);
             if (it == taBarRects_.end() || !taConsole_) return;
+            const ta::GuiLayout& L = half(key);
             float tx = float(it->second.x);
             if (right) tx -= float(taConsole_->width(t));
             taConsole_->draw(ren_, L, tx, float(it->second.y), t, c);

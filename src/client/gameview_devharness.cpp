@@ -3250,8 +3250,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             selection_=all();frame();frame();
             check(selPortraitRects_.size()==2,"two portraits for two types");
             const SDL_FRect rr=rectOf("armrock");
-            check(rr.w>0 && rr.y>float(H)/2 && rr.x+rr.w/2>float(mapViewW(W))*0.2f && rr.x+rr.w/2<float(mapViewW(W))*0.8f,
-                  "the strip sits at the bottom centre of the view");
+            check(rr.w>0 && rr.y<float(H)/3 && rr.x>=taGapRect_.x && rr.x+rr.w<=taGapRect_.x+taGapRect_.w+1,
+                  "the strip hangs in the top bar's gap");
             check(selPortraitClick(rr.x+rr.w/2,rr.y+rr.h/2,true) && sorted(selection_)==sorted(rocks),"a click keeps that type");
             selection_=all();frame();
             const SDL_FRect r2=rectOf("armrock");
